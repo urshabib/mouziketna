@@ -1039,6 +1039,32 @@ document.addEventListener('click', (e) => {
 /* =====================================================================
    NAVIGATION
 ===================================================================== */
+/* =====================================================================
+   MOBILE BACK BUTTON / HISTORY INTEGRATION
+   Every pane switch and every overlay (fullscreen player, lyrics) push a
+   history entry. Closing an overlay goes through history.back() instead
+   of directly hiding it, so hardware back, iOS edge-swipe-back, and the
+   in-app close controls all funnel through the same popstate handler —
+   guaranteeing they behave identically and never fall out of sync.
+===================================================================== */
+let isHandlingPopstate = false;
+let overlayStack = []; // topmost = last element; 'player' | 'lyrics'
+
+window.addEventListener('popstate', (e) => {
+    if (overlayStack.length) {
+        const top = overlayStack.pop();
+        if (top === 'player') $('full-player-overlay').classList.remove('active');
+        else if (top === 'lyrics') $('lyrics-overlay').classList.remove('open');
+        return;
+    }
+    const state = e.state;
+    if (state && state.appView === 'pane') {
+        isHandlingPopstate = true;
+        switchPane(state.pane);
+        isHandlingPopstate = false;
+    }
+});
+
 function switchPane(paneId) {
     if (paneId !== 'collection') navigationOriginPane = paneId;
     document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
@@ -1049,6 +1075,9 @@ function switchPane(paneId) {
     $('main-scroller').scrollTop = 0;
     if (paneId === 'search') setTimeout(() => $('search-box-field').focus(), 60);
     if (paneId === 'admin') loadUserList();
+    if (!isHandlingPopstate) {
+        history.pushState({ appView: 'pane', pane: paneId }, '');
+    }
 }
 function triggerPaneRollback() { switchPane(navigationOriginPane); }
 function triggerGenreSearch(query) {
@@ -1844,10 +1873,17 @@ function updateLyricsHighlight() {
 }
 
 function toggleLyricsOverlay() {
-    if (!activeTrackData) { showToast("Play a song first", true); return; }
     const overlay = $('lyrics-overlay');
-    overlay.classList.toggle('open');
-    if (overlay.classList.contains('open')) { lastHighlightedLyricIndex = -1; updateLyricsHighlight(); }
+    if (overlay.classList.contains('open')) {
+        history.back(); // popstate handler does the actual closing
+        return;
+    }
+    if (!activeTrackData) { showToast("Play a song first", true); return; }
+    overlay.classList.add('open');
+    overlayStack.push('lyrics');
+    history.pushState({ appOverlay: 'lyrics' }, '');
+    lastHighlightedLyricIndex = -1;
+    updateLyricsHighlight();
 }
 audioEngine.addEventListener('timeupdate', updateLyricsHighlight);
 
@@ -2207,7 +2243,14 @@ function toggleShuffle() {
     saveSessionState(true);
 }
 function toggleFullScreenPlayer() {
-    $('full-player-overlay').classList.toggle('active');
+    const overlay = $('full-player-overlay');
+    if (overlay.classList.contains('active')) {
+        history.back(); // popstate handler does the actual closing
+        return;
+    }
+    overlay.classList.add('active');
+    overlayStack.push('player');
+    history.pushState({ appOverlay: 'player' }, '');
 }
 
 function paintSlider(slider, pct) {
@@ -2316,6 +2359,125 @@ document.addEventListener('keydown', e => {
     if (e.code === 'ArrowRight' && audioEngine.src) audioEngine.currentTime = Math.min(audioEngine.currentTime + 5, audioEngine.duration || 0);
     if (e.code === 'ArrowLeft' && audioEngine.src) audioEngine.currentTime = Math.max(audioEngine.currentTime - 5, 0);
 });
+
+/* =====================================================================
+   MOBILE GESTURES
+   - Fullscreen player: swipe down anywhere except the controls/slider to
+     dismiss it, same as tapping the down-arrow. Also supports an iOS-style
+     edge swipe (start near the left edge, drag right) as an extra way out,
+     on top of whatever the OS's native edge-back gesture already does now
+     that real history entries exist for it to act on.
+   - Mini-player: swipe left for next track, swipe right for previous —
+     matches the familiar mobile music-app convention.
+===================================================================== */
+(function initFsSwipeToClose() {
+    const overlay = $('full-player-overlay');
+    let startX = 0, startY = 0, dy = 0, dragging = false, intent = null; // intent: 'vertical' | 'horizontal' | null
+
+    overlay.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        if (e.target.closest('input, .fs-controls, .fs-vol-wrap, .fs-timeline')) return; // don't hijack the seek/volume sliders or buttons
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        dy = 0; dragging = true; intent = null;
+        overlay.style.transition = 'none';
+    }, { passive: true });
+
+    overlay.addEventListener('touchmove', (e) => {
+        if (!dragging) return;
+        const curX = e.touches[0].clientX;
+        const curY = e.touches[0].clientY;
+        const dx = curX - startX;
+        dy = curY - startY;
+
+        if (intent === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+            const edgeSwipe = startX < 28 && dx > 0;
+            intent = (Math.abs(dy) > Math.abs(dx) && dy > 0) ? 'vertical' : (edgeSwipe ? 'edge' : 'other');
+        }
+        if (intent === 'vertical') {
+            overlay.style.transform = `translateY(${dy}px)`;
+            overlay.style.opacity = Math.max(1 - dy / 400, 0.4);
+            e.preventDefault();
+        } else if (intent === 'edge') {
+            overlay.style.transform = `translateX(${dx}px)`;
+            overlay.style.opacity = Math.max(1 - dx / 350, 0.4);
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    overlay.addEventListener('touchend', () => {
+        if (!dragging) return;
+        dragging = false;
+        overlay.style.transition = '';
+        const shouldClose = (intent === 'vertical' && dy > 110) || intent === 'edge' && overlay.style.transform && parseFloat(overlay.style.transform.replace(/[^\d.-]/g, '')) > 90;
+        overlay.style.transform = '';
+        overlay.style.opacity = '';
+        if (shouldClose) toggleFullScreenPlayer();
+        intent = null;
+    });
+    overlay.addEventListener('touchcancel', () => {
+        dragging = false; intent = null;
+        overlay.style.transition = ''; overlay.style.transform = ''; overlay.style.opacity = '';
+    });
+})();
+
+(function initMiniPlayerSwipe() {
+    const mini = $('mini-player');
+    let startX = 0, startY = 0, dx = 0, dragging = false, wasSwipe = false;
+
+    mini.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        dx = 0; dragging = true; wasSwipe = false;
+        mini.style.transition = 'none';
+    }, { passive: true });
+
+    mini.addEventListener('touchmove', (e) => {
+        if (!dragging) return;
+        const curX = e.touches[0].clientX;
+        const curY = e.touches[0].clientY;
+        dx = curX - startX;
+        const dyAbs = Math.abs(curY - startY);
+        if (Math.abs(dx) > dyAbs && Math.abs(dx) > 10) {
+            wasSwipe = true;
+            mini.style.transform = `translateX(${dx}px)`;
+            mini.style.opacity = Math.max(1 - Math.abs(dx) / 250, 0.3);
+        }
+    }, { passive: true });
+
+    mini.addEventListener('touchend', () => {
+        if (!dragging) return;
+        dragging = false;
+        const threshold = 70;
+        if (wasSwipe && Math.abs(dx) > threshold) {
+            const goingNext = dx < 0; // swipe left = next, swipe right = previous
+            mini.style.transition = 'transform .18s ease, opacity .18s ease';
+            mini.style.transform = `translateX(${goingNext ? '-120%' : '120%'})`;
+            mini.style.opacity = '0';
+            setTimeout(() => {
+                mini.style.transition = 'none';
+                mini.style.transform = '';
+                mini.style.opacity = '';
+                if (goingNext) playNextTrack(); else playPrevTrack();
+                requestAnimationFrame(() => { mini.style.transition = ''; });
+            }, 180);
+        } else {
+            mini.style.transition = 'transform .18s ease, opacity .18s ease';
+            mini.style.transform = '';
+            mini.style.opacity = '';
+        }
+    });
+    mini.addEventListener('touchcancel', () => {
+        dragging = false;
+        mini.style.transition = ''; mini.style.transform = ''; mini.style.opacity = '';
+    });
+
+    // A swipe shouldn't also register as a tap-to-open-fullscreen
+    mini.addEventListener('click', (e) => {
+        if (wasSwipe) { e.stopImmediatePropagation(); e.preventDefault(); wasSwipe = false; }
+    }, true);
+})();
 
 /* =====================================================================
    PLAYLIST MODALS
@@ -2660,6 +2822,7 @@ async function buildRecommendations() {
     } else {
         applyIdentityUI(null);
     }
+    history.replaceState({ appView: 'pane', pane: 'home' }, '');
 })();
 </script>
 </body>
