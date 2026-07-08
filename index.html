@@ -1,0 +1,2666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>MOUZIKA</title>
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MOUZIKA">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<!-- Social share preview (WhatsApp/Discord/iMessage/etc read these tags).
+     Update the three "content" URLs below to your real hosted domain once
+     deployed — link-preview scrapers need a fully-qualified https:// URL,
+     a relative path won't render. -->
+<meta property="og:title" content="MOUZIKA">
+<meta property="og:description" content="Your music, your library, your suggestions.">
+<meta property="og:image" content="https://REPLACE-WITH-YOUR-DOMAIN/icon-512.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="MOUZIKA">
+<meta name="twitter:image" content="https://REPLACE-WITH-YOUR-DOMAIN/icon-512.png">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+<style>
+:root {
+    --bg: #000000;
+    --panel: #121212;
+    --panel-2: #181818;
+    --elev: #1f1f1f;
+    --elev-2: #2a2a2a;
+    --accent: #ff6b1a;
+    --accent-hover: #ff8b47;
+    --accent-soft: rgba(255,107,26,0.15);
+    --text: #ffffff;
+    --dim: #b3b3b3;
+    --dimmer: #7a7a7a;
+    --danger: #f15e6c;
+    --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; transition-timing-function: cubic-bezier(.22,.9,.32,1); }
+button, .track-card, .icon-btn, .hover-play, .btn-solid, .btn-outline, .btn-play-big, .nav li, .side-lib-item, .genre-card, .filter-pill, .pb-btn, .pb-action, .user-chip, .mobile-nav li {
+    transition: transform .15s cubic-bezier(.22,.9,.32,1), background .18s, color .18s, opacity .2s, box-shadow .2s, filter .2s;
+}
+button:active, .btn-solid:active, .btn-outline:active, .btn-play-big:active, .hover-play:active, .icon-btn:active, .pb-btn:active, .pb-action:active, .filter-pill:active, .genre-card:active {
+    transform: scale(0.94);
+}
+html, body { height: 100%; }
+body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+    overflow: hidden;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+button { font-family: inherit; }
+input { font-family: inherit; }
+img { user-select: none; }
+
+/* ===== LAYOUT SHELL ===== */
+.shell { display: flex; flex-direction: column; height: 100vh; height: 100dvh; padding: 8px; gap: 8px; }
+.workspace { display: flex; flex: 1; gap: 8px; min-height: 0; }
+
+/* ===== SIDEBAR ===== */
+.sidebar { width: 260px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.side-block { background: var(--panel); border-radius: var(--radius); padding: 18px 20px; }
+.logo { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.5px; display: flex; align-items: baseline; gap: 10px; margin-bottom: 20px; }
+.logo i { color: var(--accent); font-size: 1.7rem; align-self: center; }
+.logo-signature { font-family: 'Caveat', cursive; font-weight: 700; font-size: 1rem; color: var(--dim); letter-spacing: 0; margin-left: 2px; }
+.mobile-only-logo { display: none; margin-bottom: 0; }
+.nav { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.nav li {
+    color: var(--dim); font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 16px;
+    font-size: 0.98rem; padding: 9px 10px; border-radius: 6px; transition: color .18s, background .18s;
+}
+.nav li:hover { color: var(--text); }
+.nav li.active { color: var(--text); background: var(--elev); }
+.nav li i { font-size: 1.45rem; }
+.side-lib { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.side-lib-head { display: flex; justify-content: space-between; align-items: center; color: var(--dim); font-weight: 700; margin-bottom: 14px; }
+.side-lib-head span { display: flex; align-items: center; gap: 12px; font-size: 0.98rem; cursor: pointer; transition: color .18s; }
+.side-lib-head span:hover { color: var(--text); }
+.side-lib-head i.ri-add-line { font-size: 1.3rem; cursor: pointer; padding: 5px; border-radius: 50%; transition: color .18s, background .18s; }
+.side-lib-head i.ri-add-line:hover { color: var(--text); background: var(--elev); }
+.side-lib-list { display: flex; flex-direction: column; gap: 2px; }
+.side-lib-item { display: flex; align-items: center; gap: 12px; padding: 7px 8px; border-radius: 6px; cursor: pointer; transition: background .18s; }
+.side-lib-item:hover { background: var(--elev); }
+.side-lib-item .thumb {
+    width: 44px; height: 44px; border-radius: 6px; flex-shrink: 0; object-fit: cover;
+    background: linear-gradient(135deg, #2c2c2c, #171717); display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; color: var(--dimmer);
+}
+.side-lib-item .thumb.liked-grad { background: linear-gradient(135deg, var(--accent), #7a2c00); color: #fff; }
+.side-lib-item .meta { min-width: 0; }
+.side-lib-item .meta h5 { font-size: 0.92rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-lib-item .meta p { font-size: 0.78rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-lib-item.playing-now .meta h5 { color: var(--accent); }
+
+/* ===== MAIN PANEL ===== */
+main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow-y: auto; position: relative; min-width: 0; scroll-behavior: smooth; }
+.main-inner { padding: 20px 28px 140px; display: flex; flex-direction: column; gap: 34px; min-height: 100%; }
+.main-topbar {
+    position: sticky; top: 0; z-index: 500; display: flex; align-items: center; gap: 14px;
+    padding: 14px 28px; margin: 0 -28px; top: -20px; padding-top: 20px;
+    background: linear-gradient(to bottom, rgba(18,18,18,0.97), rgba(18,18,18,0.85)); backdrop-filter: blur(12px);
+}
+.topbar-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
+.user-chip {
+    margin-left: auto; display: flex; align-items: center; gap: 8px; background: var(--elev); border-radius: 30px;
+    padding: 6px 14px 6px 8px; cursor: pointer; font-weight: 700; font-size: 0.88rem; transition: background .18s; flex-shrink: 0;
+}
+.user-chip:hover { background: var(--elev-2); }
+.user-chip .avatar {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex;
+    align-items: center; justify-content: center; font-size: 1rem; color: #fff;
+}
+
+.view-pane { display: none; flex-direction: column; gap: 34px; }
+.view-pane.active { display: flex; animation: fadeIn .35s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.shelf-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
+.shelf-head h3 { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.4px; }
+.shelf-head .shelf-action { color: var(--dim); font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: color .18s; }
+.shelf-head .shelf-action:hover { color: var(--text); }
+
+.music-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 18px; }
+
+/* ===== CARDS ===== */
+.track-card {
+    background: transparent; padding: 12px; border-radius: 8px; cursor: pointer; position: relative;
+    transition: background .25s ease; display: flex; flex-direction: column;
+}
+.track-card:hover { background: var(--elev); }
+.card-art-wrap { position: relative; margin-bottom: 12px; }
+.card-art-wrap img, .card-art-wrap .generic-cover {
+    width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; display: block;
+    background: linear-gradient(135deg, #2a2a2a, #141414); box-shadow: 0 8px 22px rgba(0,0,0,0.45);
+}
+.card-art-wrap .generic-cover { display: flex; align-items: center; justify-content: center; font-size: 3rem; color: var(--dimmer); }
+.card-art-wrap .round { border-radius: 50%; }
+.hover-play {
+    position: absolute; right: 8px; bottom: 8px; width: 46px; height: 46px; border-radius: 50%;
+    background: var(--accent); color: #000; display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; box-shadow: 0 8px 16px rgba(0,0,0,0.5); border: none; cursor: pointer;
+    opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s, background .18s;
+}
+.track-card:hover .hover-play { opacity: 1; transform: none; }
+.hover-play:hover { background: var(--accent-hover); transform: scale(1.06); }
+.track-card h4 { font-size: 0.96rem; font-weight: 700; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track-card p { color: var(--dim); font-size: 0.84rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.type-tag { background: var(--elev-2); color: var(--dim); font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.4px; padding: 1px 6px; border-radius: 4px; margin-right: 6px; }
+.track-card.playing h4 { color: var(--accent); }
+
+.card-icons { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; pointer-events: none; }
+.icon-btn {
+    pointer-events: auto; width: 32px; height: 32px; border-radius: 50%; background: rgba(0,0,0,0.65);
+    display: flex; align-items: center; justify-content: center; font-size: 1.05rem; color: var(--dim);
+    cursor: pointer; opacity: 0; transition: opacity .2s, color .18s, transform .18s; border: none;
+}
+.track-card:hover .icon-btn { opacity: 1; }
+.icon-btn:hover { color: var(--text); transform: scale(1.08); }
+.icon-btn.liked { color: var(--accent); opacity: 1; }
+.icon-btn.trash:hover { color: var(--danger); }
+
+/* Equalizer badge on playing card */
+.eq-badge { position: absolute; left: 10px; bottom: 12px; display: flex; align-items: flex-end; gap: 2.5px; height: 16px; }
+.eq-badge span { width: 3.5px; background: var(--accent); border-radius: 2px; animation: eq 0.9s ease-in-out infinite; }
+.eq-badge span:nth-child(1) { animation-delay: 0s; } .eq-badge span:nth-child(2) { animation-delay: .25s; } .eq-badge span:nth-child(3) { animation-delay: .5s; }
+@keyframes eq { 0%,100% { height: 5px; } 50% { height: 16px; } }
+.animate-spin { animation: spin 0.9s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .eq-badge span { animation: none; height: 10px; } .view-pane.active { animation: none; } }
+
+/* Skeletons */
+.skel-card .skel { background: linear-gradient(100deg, #1c1c1c 40%, #262626 50%, #1c1c1c 60%); background-size: 200% 100%; animation: shimmer 1.3s infinite; border-radius: 6px; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.skel-card .skel.art { width: 100%; aspect-ratio: 1; margin-bottom: 12px; }
+.skel-card .skel.line { height: 13px; margin-bottom: 7px; width: 85%; }
+.skel-card .skel.line.short { width: 55%; }
+
+/* Genres */
+.genre-card {
+    border-radius: 8px; padding: 18px; cursor: pointer; aspect-ratio: 16/8.5; position: relative; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: flex-end; transition: transform .25s ease, filter .25s;
+}
+.genre-card:hover { transform: scale(1.025); filter: brightness(1.12); }
+.genre-card h4 { font-size: 1.15rem; font-weight: 800; z-index: 2; text-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+.genre-card i { position: absolute; right: -8px; top: -8px; font-size: 4.2rem; opacity: 0.28; transform: rotate(22deg); }
+
+/* ===== COLLECTION HEADER ===== */
+.collection-hero { display: flex; align-items: flex-end; gap: 26px; }
+.collection-hero .hero-art {
+    width: 210px; height: 210px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+    box-shadow: 0 12px 50px rgba(0,0,0,0.6); background: linear-gradient(135deg, #2a2a2a, #141414);
+    display: flex; align-items: center; justify-content: center; font-size: 5.5rem; color: var(--dimmer);
+}
+.collection-hero .hero-art.round { border-radius: 50%; }
+.collection-hero .hero-art.liked-grad { background: linear-gradient(135deg, var(--accent), #6b2600); color: #fff; }
+.hero-info { min-width: 0; }
+.hero-info .kicker { text-transform: uppercase; font-size: 0.75rem; font-weight: 800; letter-spacing: 1.2px; color: var(--dim); }
+.hero-info h2 { font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 900; letter-spacing: -1.5px; line-height: 1.05; margin: 8px 0 10px; overflow-wrap: anywhere; }
+.hero-info .sub { color: var(--dim); font-weight: 600; font-size: 0.9rem; }
+.hero-actions { display: flex; gap: 14px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+.btn-play-big {
+    background: var(--accent); color: #000; border: none; border-radius: 50px; padding: 13px 32px;
+    font-size: 1rem; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    transition: transform .18s, background .18s;
+}
+.btn-play-big:hover { transform: scale(1.04); background: var(--accent-hover); }
+.btn-outline {
+    background: transparent; color: var(--text); border: 1px solid #6a6a6a; border-radius: 50px;
+    padding: 11px 22px; font-size: 0.88rem; font-weight: 700; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px; transition: border-color .18s, transform .18s;
+}
+.btn-outline:hover { border-color: #fff; transform: scale(1.02); }
+.back-btn {
+    background: rgba(0,0,0,0.45); border: none; color: var(--text); width: 38px; height: 38px; border-radius: 50%;
+    font-size: 1.4rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    margin-bottom: 18px; transition: background .18s;
+}
+.back-btn:hover { background: var(--elev-2); }
+
+/* ===== SEARCH ===== */
+.search-wrap { position: relative; max-width: 440px; width: 100%; z-index: 600; }
+.search-bar {
+    width: 100%; padding: 13px 44px 13px 46px; border-radius: 50px; border: 2px solid transparent; outline: none;
+    background: var(--elev); color: var(--text); font-size: 0.95rem; font-weight: 500; transition: background .18s, border-color .18s;
+}
+.search-bar:focus { background: var(--elev-2); border-color: #4a4a4a; }
+.search-wrap > i.ri-search-line { position: absolute; left: 17px; top: 50%; transform: translateY(-50%); font-size: 1.2rem; color: var(--dim); }
+.search-clear { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 1.15rem; color: var(--dim); cursor: pointer; display: none; }
+.search-clear:hover { color: var(--text); }
+.suggestions-box {
+    position: absolute; top: calc(100% + 8px); left: 0; width: 100%; background: var(--elev); border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.7); display: none; overflow: hidden;
+}
+.suggestion-item { padding: 12px 18px; font-weight: 500; cursor: pointer; font-size: 0.93rem; display: flex; align-items: center; gap: 12px; transition: background .15s; }
+.suggestion-item i { color: var(--dim); }
+.suggestion-item:hover, .suggestion-item.hl { background: var(--elev-2); }
+.filter-row { display: flex; gap: 9px; flex-wrap: wrap; }
+.filter-pill {
+    padding: 7px 17px; background: var(--elev); border-radius: 30px; font-size: 0.85rem; cursor: pointer;
+    font-weight: 600; transition: background .18s, color .18s;
+}
+.filter-pill:hover { background: var(--elev-2); }
+.filter-pill.active { background: #fff; color: #000; font-weight: 700; }
+.artist-top-result { margin-bottom: 26px; }
+.artist-top-result .collection-hero .hero-art { width: 150px; height: 150px; font-size: 3.5rem; cursor: pointer; }
+.status-note { color: var(--dim); font-weight: 600; padding: 8px 2px; }
+.status-note.err { color: var(--danger); }
+
+/* ===== LOGIN / ADMIN ===== */
+.login-card {
+    max-width: 400px; width: 100%; margin: 40px auto 0; background: var(--panel-2); padding: 38px 34px;
+    border-radius: 14px; display: flex; flex-direction: column; gap: 16px; border: 1px solid #262626;
+}
+.login-card h3 { text-align: center; font-size: 1.6rem; font-weight: 800; margin-bottom: 8px; letter-spacing: -0.5px; }
+.login-card input {
+    padding: 14px 16px; border-radius: 8px; border: 1px solid #333; background: var(--elev); color: var(--text);
+    font-size: 0.95rem; outline: none; transition: border-color .18s;
+}
+.login-card input:focus { border-color: var(--accent); }
+.btn-solid {
+    background: var(--accent); color: #000; padding: 13px 22px; border: none; border-radius: 50px;
+    font-weight: 800; font-size: 0.95rem; cursor: pointer; transition: transform .18s, background .18s;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-solid:hover { transform: scale(1.03); background: var(--accent-hover); }
+.btn-solid:disabled { opacity: 0.6; transform: none; cursor: wait; }
+.form-msg { text-align: center; font-weight: 600; font-size: 0.88rem; min-height: 1.2em; }
+.form-msg.ok { color: #43d17c; } .form-msg.err { color: var(--danger); }
+.profile-hero { text-align: center; margin-top: 44px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.profile-hero .big-avatar {
+    width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #7a2c00);
+    display: flex; align-items: center; justify-content: center; font-size: 3.4rem; color: #fff; font-weight: 900;
+    box-shadow: 0 14px 40px rgba(255,107,26,0.25);
+}
+.stat-row { display: flex; gap: 34px; margin-top: 6px; }
+.stat-row div { text-align: center; }
+.stat-row b { font-size: 1.5rem; font-weight: 800; display: block; }
+.stat-row span { color: var(--dim); font-size: 0.82rem; font-weight: 600; }
+
+.user-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; background: var(--elev); border-radius: 10px; margin-bottom: 8px; }
+.user-row-avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), #6b2600); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0; }
+.user-row-meta { flex: 1; min-width: 0; }
+.user-row-meta h5 { font-size: 0.95rem; font-weight: 700; }
+.user-row-meta p { font-size: 0.78rem; color: var(--dim); }
+.admin-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: var(--dim); cursor: pointer; flex-shrink: 0; }
+.admin-toggle input { width: 17px; height: 17px; accent-color: var(--danger); cursor: pointer; }
+
+/* ===== PLAYER BAR (desktop) ===== */
+.player-bar {
+    height: 88px; background: var(--bg); display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; flex-shrink: 0; gap: 16px;
+}
+.pb-left { display: flex; align-items: center; gap: 13px; width: 28%; min-width: 200px; }
+.pb-left img { width: 56px; height: 56px; border-radius: 6px; object-fit: cover; background: var(--elev); cursor: pointer; }
+.pb-meta { min-width: 0; }
+.pb-meta h5 { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-meta p { font-size: 0.76rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pb-action { font-size: 1.2rem; color: var(--dim); cursor: pointer; transition: color .18s, transform .18s; background: none; border: none; }
+.pb-action:hover { color: var(--text); transform: scale(1.08); }
+.pb-action.active { color: var(--accent); }
+.pb-center { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 44%; max-width: 640px; }
+.pb-buttons { display: flex; align-items: center; gap: 22px; }
+.pb-btn { background: none; border: none; color: var(--dim); font-size: 1.25rem; cursor: pointer; transition: color .18s, transform .1s; position: relative; }
+.pb-btn:hover { color: var(--text); }
+.pb-btn.on { color: var(--accent); }
+.pb-btn.on::after { content: ''; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.pb-btn.play-main {
+    width: 40px; height: 40px; border-radius: 50%; background: #fff; color: #000; font-size: 1.35rem;
+    display: flex; align-items: center; justify-content: center;
+}
+.pb-btn.play-main:hover { transform: scale(1.07); color: #000; }
+.timeline { display: flex; align-items: center; gap: 10px; width: 100%; font-size: 0.72rem; color: var(--dim); font-weight: 500; }
+.timeline span { min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Range sliders with fill */
+input[type=range].slider { -webkit-appearance: none; appearance: none; height: 4px; border-radius: 2px; outline: none; cursor: pointer; background: #4d4d4d; flex: 1; }
+input[type=range].slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.5); opacity: 0; transition: opacity .18s;
+}
+input[type=range].slider::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; background: #fff; border: none; opacity: 0; transition: opacity .18s; }
+.timeline:hover .slider::-webkit-slider-thumb, .pb-right:hover .slider::-webkit-slider-thumb,
+.fs-timeline .slider::-webkit-slider-thumb { opacity: 1; }
+.timeline:hover .slider::-moz-range-thumb, .pb-right:hover .slider::-moz-range-thumb,
+.fs-timeline .slider::-moz-range-thumb { opacity: 1; }
+
+.pb-right { display: flex; align-items: center; gap: 11px; width: 28%; justify-content: flex-end; color: var(--dim); }
+.pb-right .slider { max-width: 105px; }
+.vol-pct { font-size: 0.75rem; font-weight: 700; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; color: var(--dim); }
+
+/* ===== MOBILE NAV + MINI PLAYER ===== */
+.mobile-nav { display: none; }
+.mini-player { display: none; }
+
+/* ===== FULLSCREEN PLAYER ===== */
+.fs-overlay {
+    position: fixed; inset: 0; top: 100%; background: linear-gradient(to bottom, #3a2413, #0c0c0c 65%);
+    z-index: 20000; transition: top .38s cubic-bezier(.3,.8,.3,1); display: flex; flex-direction: column;
+    align-items: center; padding: max(20px, env(safe-area-inset-top)) 24px max(34px, env(safe-area-inset-bottom));
+}
+.fs-overlay.active { top: 0; }
+.fs-head { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
+.fs-head i { font-size: 1.9rem; cursor: pointer; }
+.fs-head span { font-size: 0.72rem; font-weight: 800; letter-spacing: 1.5px; color: var(--dim); }
+.fs-art { width: 100%; max-width: 340px; aspect-ratio: 1; border-radius: 12px; object-fit: cover; background: var(--elev); box-shadow: 0 24px 60px rgba(0,0,0,0.7); margin: auto 0; }
+.fs-bottom { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 18px; }
+.fs-title-row { display: flex; justify-content: space-between; align-items: center; gap: 14px; }
+.fs-title-row .txt { min-width: 0; }
+.fs-title-row h2 { font-size: 1.35rem; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-title-row p { color: var(--dim); font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.fs-title-row i { font-size: 1.8rem; color: var(--dim); cursor: pointer; }
+.fs-title-row i.active { color: var(--accent); }
+.fs-timeline { display: flex; flex-direction: column; gap: 7px; }
+.fs-times { display: flex; justify-content: space-between; font-size: 0.76rem; color: var(--dim); font-weight: 600; font-variant-numeric: tabular-nums; }
+.fs-controls { display: flex; align-items: center; justify-content: space-between; }
+.fs-controls i { font-size: 1.7rem; color: #fff; cursor: pointer; }
+.fs-controls i.side { font-size: 1.45rem; color: var(--dim); position: relative; }
+.fs-controls i.side.on { color: var(--accent); }
+.fs-controls .fs-play { font-size: 4.3rem; }
+.fs-head-actions { display: flex; align-items: center; gap: 18px; }
+.fs-head-actions > i { font-size: 1.5rem; color: #fff; cursor: pointer; }
+.fs-vol-wrap { position: relative; }
+.fs-vol-popup {
+    position: absolute; top: calc(100% + 12px); right: -6px; background: var(--elev); border-radius: 16px;
+    padding: 16px 12px 14px; display: none; flex-direction: column; align-items: center; gap: 10px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.6); z-index: 21000; width: 52px;
+}
+.fs-vol-popup.open { display: flex; }
+.fs-vol-popup .vol-pct { color: var(--text); font-size: 0.72rem; }
+.fs-vol-popup i { font-size: 1.2rem; color: var(--dim); cursor: pointer; }
+input[type=range].slider.vertical {
+    width: 6px; height: 110px; padding: 0;
+    writing-mode: vertical-lr; direction: rtl; /* Chrome/Firefox vertical orientation */
+    -webkit-appearance: slider-vertical;       /* Safari vertical orientation */
+    accent-color: var(--accent);
+}
+
+/* ===== LYRICS OVERLAY ===== */
+.lyrics-overlay {
+    position: fixed; inset: 0; background: linear-gradient(to bottom, #201a14, #000 55%);
+    z-index: 22000; display: flex; flex-direction: column;
+    transform: translateY(100%); transition: transform .35s cubic-bezier(.3,.8,.3,1);
+}
+.lyrics-overlay.open { transform: translateY(0); }
+.lyrics-head { display: flex; align-items: center; gap: 14px; padding: max(18px, env(safe-area-inset-top)) 20px 14px; color: #fff; }
+.lyrics-head i { font-size: 1.9rem; cursor: pointer; }
+.lyrics-head-info { flex: 1; min-width: 0; text-align: center; }
+.lyrics-head-info h5 { font-size: 0.92rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lyrics-head-info p { font-size: 0.78rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lyrics-body { flex: 1; overflow-y: auto; padding: 30px 28px 130px; max-width: 640px; margin: 0 auto; width: 100%; }
+.lyric-line { font-size: 1.5rem; font-weight: 800; color: rgba(255,255,255,0.32); line-height: 1.55; padding: 10px 0; cursor: pointer; transition: color .25s, transform .25s; }
+.lyric-line:hover { color: rgba(255,255,255,0.6); }
+.lyric-line.active { color: #fff; transform: scale(1.02); }
+.lyrics-plain { white-space: pre-wrap; font-size: 1.1rem; line-height: 1.9; color: rgba(255,255,255,0.85); font-family: inherit; padding: 10px 0; }
+.lyrics-credit { text-align: center; padding: 14px; font-size: 0.72rem; color: var(--dimmer); }
+.lyrics-credit a { color: var(--dim); }
+@media (max-width: 820px) {
+    .lyrics-body { padding: 22px 20px 200px; }
+    .lyric-line { font-size: 1.28rem; }
+}
+
+/* ===== MODALS / TOASTS ===== */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75); display: none; justify-content: center;
+    align-items: center; z-index: 30000; backdrop-filter: blur(6px); padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal-content { background: var(--elev); padding: 24px; border-radius: 14px; width: 100%; max-width: 390px; box-shadow: 0 18px 50px rgba(0,0,0,0.85); animation: pop .22s ease; }
+@keyframes pop { from { transform: scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
+.modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; font-size: 1.15rem; font-weight: 800; }
+.modal-head i { cursor: pointer; color: var(--dim); font-size: 1.5rem; }
+.modal-head i:hover { color: #fff; }
+.modal-list { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+.modal-item { padding: 12px 14px; background: var(--elev-2); border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.93rem; display: flex; align-items: center; gap: 11px; transition: background .15s; }
+.modal-item:hover { background: #383838; }
+.modal-item i { color: var(--dim); }
+.modal-input-row { display: flex; gap: 9px; }
+.modal-input-row input { flex: 1; padding: 11px 13px; border-radius: 8px; border: 1px solid #3d3d3d; background: var(--panel-2); color: #fff; outline: none; }
+.modal-input-row input:focus { border-color: var(--accent); }
+
+#toast-zone { position: fixed; bottom: 105px; left: 50%; transform: translateX(-50%); z-index: 40000; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+.toast {
+    background: var(--accent); color: #000; font-weight: 700; font-size: 0.88rem; padding: 11px 22px;
+    border-radius: 50px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); animation: toastIn .25s ease;
+    max-width: 84vw; text-align: center;
+}
+.toast.gray { background: var(--elev-2); color: #fff; }
+@keyframes toastIn { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 820px) {
+    .shell { padding: 0; gap: 0; }
+    .sidebar { display: none; }
+    main { border-radius: 0; }
+    .main-inner { padding: 14px 16px 210px; gap: 28px; }
+    .main-topbar { padding: 12px 16px; margin: 0 -16px; top: -14px; padding-top: 16px; }
+    .mobile-only-logo { display: flex; }
+    .topbar-title { display: none; }
+    .music-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+    .track-card { padding: 9px; }
+    .hover-play { display: none; }
+    .icon-btn { opacity: 1; background: rgba(0,0,0,0.55); width: 29px; height: 29px; }
+    .collection-hero { flex-direction: column; align-items: center; text-align: center; gap: 18px; }
+    .collection-hero .hero-art { width: 175px; height: 175px; }
+    .hero-actions { justify-content: center; }
+    .player-bar { display: none; }
+
+    .mini-player {
+        display: flex; position: fixed; left: 8px; right: 8px; bottom: calc(64px + env(safe-area-inset-bottom) + 8px);
+        height: 58px; background: #3a2413; border-radius: 9px; z-index: 950; align-items: center;
+        padding: 0 10px; gap: 10px; box-shadow: 0 8px 26px rgba(0,0,0,0.55); overflow: hidden;
+    }
+    .mini-player img { width: 42px; height: 42px; border-radius: 5px; object-fit: cover; background: var(--elev); }
+    .mini-meta { flex: 1; min-width: 0; }
+    .mini-meta h5 { font-size: 0.85rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mini-meta p { font-size: 0.72rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mini-player .pb-action { font-size: 1.5rem; color: #fff; padding: 6px; }
+    .mini-progress { position: absolute; bottom: 0; left: 10px; right: 10px; height: 2px; background: rgba(255,255,255,0.22); border-radius: 2px; }
+    .mini-progress div { height: 100%; width: 0%; background: #fff; border-radius: 2px; }
+
+    .mobile-nav {
+        display: flex; position: fixed; bottom: 0; left: 0; width: 100%; z-index: 940;
+        height: calc(64px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom);
+        background: linear-gradient(to top, #000 65%, rgba(0,0,0,0.88)); backdrop-filter: blur(14px);
+        justify-content: space-around; align-items: center; list-style: none;
+    }
+    .mobile-nav li { display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--dim); font-size: 0.68rem; font-weight: 600; cursor: pointer; }
+    .mobile-nav li.active { color: #fff; }
+    .mobile-nav li i { font-size: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+    <div class="workspace">
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+            <div class="side-block">
+                <div class="logo"><i class="ri-pulse-fill"></i>MOUZIKETNA<span class="logo-signature">by habib</span></div>
+                <ul class="nav">
+                    <li onclick="switchPane('home')" id="btn-home" class="active"><i class="ri-home-5-fill"></i> Home</li>
+                    <li onclick="switchPane('search')" id="btn-search"><i class="ri-search-line"></i> Search</li>
+                    <li onclick="switchPane('account')" id="btn-account"><i class="ri-user-3-line"></i> Profile</li>
+                    <li onclick="switchPane('admin')" id="btn-admin" style="display:none; color: var(--danger);"><i class="ri-shield-star-line"></i> Admin</li>
+                </ul>
+            </div>
+            <div class="side-block side-lib">
+                <div class="side-lib-head">
+                    <span onclick="switchPane('library')" id="btn-library"><i class="ri-album-line" style="font-size:1.4rem;"></i> Your Library</span>
+                    <i class="ri-add-line" title="Create playlist" onclick="openCreatePlaylistModal()"></i>
+                </div>
+                <div class="side-lib-list" id="sidebar-lib-list"></div>
+            </div>
+        </aside>
+
+        <!-- MAIN -->
+        <main id="main-scroller">
+            <div class="main-inner">
+                <div class="main-topbar">
+                    <div class="logo mobile-only-logo"><i class="ri-pulse-fill"></i>MOUZIKETNA<span class="logo-signature">by habib</span></div>
+                    <span class="topbar-title" id="topbar-greeting">Good evening</span>
+                    <div class="user-chip" onclick="switchPane('account')" id="user-chip">
+                        <div class="avatar"><i class="ri-user-3-line"></i></div>
+                        <span id="user-chip-name">Log in</span>
+                    </div>
+                </div>
+
+                <!-- HOME -->
+                <div id="pane-home" class="view-pane active">
+                    <section id="shelf-recent" style="display:none;">
+                        <div class="shelf-head"><h3>Recently played</h3></div>
+                        <div class="music-grid" id="recent-grid"></div>
+                    </section>
+                    <section>
+                        <div class="shelf-head">
+                            <h3>Recommended for you</h3>
+                            <span class="shelf-action" onclick="loadHomeRecommendations(true)"><i class="ri-refresh-line"></i> Refresh</span>
+                        </div>
+                        <div class="music-grid" id="recommended-songs-grid"></div>
+                    </section>
+                    <section>
+                        <div class="shelf-head"><h3>Made for you</h3></div>
+                        <div class="music-grid" id="recommended-playlists-grid"></div>
+                    </section>
+                    <section>
+                        <div class="shelf-head"><h3>Browse all</h3></div>
+                        <div class="music-grid">
+                            <div class="genre-card" style="background:#7b2cbf;" onclick="triggerGenreSearch('Top 50 Arabic Hits')"><i class="ri-fire-fill"></i><h4>Arabic Hits</h4></div>
+                            <div class="genre-card" style="background:#1e3264;" onclick="triggerGenreSearch('Global Pop Hits')"><i class="ri-earth-fill"></i><h4>Global Pop</h4></div>
+                            <div class="genre-card" style="background:#4a919e;" onclick="triggerGenreSearch('Calm Chill Relax Lofi')"><i class="ri-cup-fill"></i><h4>Chill & Relax</h4></div>
+                            <div class="genre-card" style="background:#8c6216;" onclick="triggerGenreSearch('Tunisian Rap')"><i class="ri-mic-2-fill"></i><h4>Tunisian Rap</h4></div>
+                            <div class="genre-card" style="background:#27856a;" onclick="triggerGenreSearch('Deep Focus Study')"><i class="ri-book-read-fill"></i><h4>Deep Focus</h4></div>
+                            <div class="genre-card" style="background:#b02897;" onclick="triggerGenreSearch('Gym Workout Motivation')"><i class="ri-run-fill"></i><h4>Workout</h4></div>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- SEARCH -->
+                <div id="pane-search" class="view-pane">
+                    <div class="search-wrap">
+                        <i class="ri-search-line"></i>
+                        <input type="text" class="search-bar" id="search-box-field" placeholder="What do you want to listen to?" autocomplete="off">
+                        <i class="ri-close-line search-clear" id="search-clear" onclick="clearSearch()"></i>
+                        <div class="suggestions-box" id="suggestions-box"></div>
+                    </div>
+                    <div class="filter-row" id="search-filters" style="display:none;">
+                        <div class="filter-pill active" id="pill-all" onclick="setSearchFilter('all')">All</div>
+                        <div class="filter-pill" id="pill-song" onclick="setSearchFilter('song')">Songs</div>
+                        <div class="filter-pill" id="pill-playlist" onclick="setSearchFilter('playlist')">Playlists</div>
+                    </div>
+                    <div>
+                        <div class="artist-top-result" id="artist-top-result"></div>
+                        <div class="shelf-head" id="results-heading" style="display:none;"><h3>Top results</h3></div>
+                        <div class="music-grid" id="search-output-grid"></div>
+                    </div>
+                </div>
+
+                <!-- LIBRARY -->
+                <div id="pane-library" class="view-pane">
+                    <section>
+                        <div class="shelf-head">
+                            <h3>Playlists</h3>
+                            <div style="display:flex; gap:16px;">
+                                <span class="shelf-action" onclick="openImportPlaylistModal()"><i class="ri-download-2-line"></i> Import playlist</span>
+                                <span class="shelf-action" onclick="openCreatePlaylistModal()"><i class="ri-add-line"></i> New playlist</span>
+                            </div>
+                        </div>
+                        <div class="music-grid" id="library-playlists-grid"></div>
+                    </section>
+                    <section>
+                        <div class="shelf-head"><h3>Favorite artists</h3></div>
+                        <div class="music-grid" id="library-artists-grid"></div>
+                    </section>
+                </div>
+
+                <!-- COLLECTION -->
+                <div id="pane-collection" class="view-pane">
+                    <button class="back-btn" onclick="triggerPaneRollback()"><i class="ri-arrow-left-s-line"></i></button>
+                    <div class="collection-hero" id="collection-header"></div>
+                    <div class="music-grid" id="collection-tracks-grid" style="margin-top:8px;"></div>
+                </div>
+
+                <!-- ACCOUNT -->
+                <div id="pane-account" class="view-pane">
+                    <div class="login-card" id="auth-portal-form">
+                        <h3>Log in to MOUZIKA</h3>
+                        <input type="text" id="friend-username" placeholder="Username" autocomplete="username">
+                        <input type="password" id="friend-password" placeholder="Password" autocomplete="current-password">
+                        <button class="btn-solid" id="login-btn" style="width:100%; padding:15px; margin-top:6px;" onclick="authenticateFriend()">Log in</button>
+                        <p class="form-msg" id="login-msg"></p>
+                    </div>
+                    <div class="profile-hero" id="active-profile-details" style="display:none;">
+                        <div class="big-avatar" id="profile-avatar-letter">?</div>
+                        <h2 id="logged-in-name" style="font-size:2rem; font-weight:900;"></h2>
+                        <div class="stat-row">
+                            <div><b id="stat-liked">0</b><span>Liked songs</span></div>
+                            <div><b id="stat-playlists">0</b><span>Playlists</span></div>
+                            <div><b id="stat-artists">0</b><span>Artists</span></div>
+                        </div>
+                        <button class="btn-outline" style="margin-top:18px; padding:11px 34px;" onclick="logoutFriend()">Log out</button>
+                    </div>
+                </div>
+
+                <!-- ADMIN -->
+                <div id="pane-admin" class="view-pane">
+                    <div class="login-card" style="margin:10px 0 0;">
+                        <h3 style="color:var(--danger);"><i class="ri-shield-star-line"></i> Admin — Create user</h3>
+                        <input type="text" id="new-username" placeholder="New username" autocomplete="off">
+                        <input type="password" id="new-password" placeholder="New password" autocomplete="new-password">
+                        <label style="display:flex; align-items:center; gap:9px; font-size:0.88rem; font-weight:600; color:var(--dim); cursor:pointer;">
+                            <input type="checkbox" id="new-user-admin" style="width:16px; height:16px; accent-color:var(--accent);"> Make this user an admin
+                        </label>
+                        <button class="btn-solid" style="width:100%; margin-top:6px;" onclick="adminCreateUser()">Create user</button>
+                        <p class="form-msg" id="admin-msg"></p>
+                    </div>
+                    <section style="margin-top:8px;">
+                        <div class="shelf-head">
+                            <h3>All users</h3>
+                            <span class="shelf-action" onclick="loadUserList()"><i class="ri-refresh-line"></i> Refresh</span>
+                        </div>
+                        <div id="user-list-body"></div>
+                    </section>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- DESKTOP PLAYER BAR -->
+    <div class="player-bar">
+        <div class="pb-left">
+            <img id="pb-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
+            <div class="pb-meta">
+                <h5 id="pb-title">Nothing playing</h5>
+                <p id="pb-artist">Pick a song to start</p>
+            </div>
+            <button class="pb-action" id="pb-heart" title="Like" onclick="togglePlayerHeart(event)"><i class="ri-heart-line"></i></button>
+            <button class="pb-action" title="Lyrics" onclick="toggleLyricsOverlay()"><i class="ri-mic-2-line"></i></button>
+            <button class="pb-action" title="Add to playlist" onclick="openPlaylistModalFromPlayer()"><i class="ri-play-list-add-line"></i></button>
+        </div>
+        <div class="pb-center">
+            <div class="pb-buttons">
+                <button class="pb-btn" id="pb-shuffle" title="Shuffle" onclick="toggleShuffle()"><i class="ri-shuffle-line"></i></button>
+                <button class="pb-btn" title="Previous" onclick="playPrevTrack()"><i class="ri-skip-back-fill"></i></button>
+                <button class="pb-btn play-main" id="pb-play-main" title="Play/Pause" onclick="togglePlayback()"><i class="ri-play-fill" id="pb-play-icon"></i></button>
+                <button class="pb-btn" title="Next" onclick="playNextTrack()"><i class="ri-skip-forward-fill"></i></button>
+                <button class="pb-btn" id="pb-loop" title="Repeat" onclick="toggleAudioLoop()"><i class="ri-repeat-line" id="pb-loop-icon"></i></button>
+            </div>
+            <div class="timeline">
+                <span id="pb-current-time">0:00</span>
+                <input type="range" class="slider" id="pb-seek" min="0" max="100" value="0" step="0.1">
+                <span id="pb-total-duration">0:00</span>
+            </div>
+        </div>
+        <div class="pb-right">
+            <i class="ri-volume-up-line" id="vol-icon" style="cursor:pointer;" onclick="toggleMute()"></i>
+            <input type="range" class="slider" id="volume-slider" min="0" max="100" value="50">
+            <span class="vol-pct" id="vol-pct">50%</span>
+        </div>
+    </div>
+
+    <!-- MOBILE MINI PLAYER -->
+    <div class="mini-player" id="mini-player" onclick="toggleFullScreenPlayer()">
+        <img id="mini-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
+        <div class="mini-meta">
+            <h5 id="mini-title">Nothing playing</h5>
+            <p id="mini-artist">Pick a song to start</p>
+        </div>
+        <button class="pb-action" id="mini-heart" onclick="togglePlayerHeart(event)"><i class="ri-heart-line"></i></button>
+        <button class="pb-action" onclick="event.stopPropagation(); togglePlayback()"><i class="ri-play-fill" id="mini-play-icon"></i></button>
+        <div class="mini-progress"><div id="mini-progress-fill"></div></div>
+    </div>
+
+    <!-- MOBILE NAV -->
+    <ul class="mobile-nav">
+        <li onclick="switchPane('home')" id="btn-m-home" class="active"><i class="ri-home-5-fill"></i>Home</li>
+        <li onclick="switchPane('search')" id="btn-m-search"><i class="ri-search-line"></i>Search</li>
+        <li onclick="switchPane('library')" id="btn-m-library"><i class="ri-album-line"></i>Library</li>
+        <li onclick="switchPane('account')" id="btn-m-account"><i class="ri-user-3-line"></i>Profile</li>
+    </ul>
+
+    <!-- FULLSCREEN PLAYER -->
+    <div class="fs-overlay" id="full-player-overlay">
+        <div class="fs-head">
+            <i class="ri-arrow-down-s-line" onclick="toggleFullScreenPlayer()"></i>
+            <span>NOW PLAYING</span>
+            <div class="fs-head-actions">
+                <i class="ri-mic-2-line" title="Lyrics" onclick="toggleLyricsOverlay()"></i>
+                <div class="fs-vol-wrap">
+                    <i class="ri-volume-up-line" id="fs-vol-icon" title="Volume" onclick="toggleFsVolumePopup(event)"></i>
+                    <div class="fs-vol-popup" id="fs-vol-popup">
+                        <span class="vol-pct" id="fs-vol-pct">50%</span>
+                        <input type="range" class="slider vertical" id="fs-volume-slider" min="0" max="100" value="50" orient="vertical">
+                        <i class="ri-volume-up-line" onclick="toggleMute()"></i>
+                    </div>
+                </div>
+                <i class="ri-play-list-add-line" onclick="openPlaylistModalFromPlayer()"></i>
+            </div>
+        </div>
+        <img class="fs-art" id="fs-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
+        <div class="fs-bottom">
+            <div class="fs-title-row">
+                <div class="txt">
+                    <h2 id="fs-title">Nothing playing</h2>
+                    <p id="fs-artist">Pick a song to start</p>
+                </div>
+                <i class="ri-heart-line" id="fs-heart" onclick="togglePlayerHeart(event)"></i>
+            </div>
+            <div class="fs-timeline">
+                <input type="range" class="slider" id="fs-seek" min="0" max="100" value="0" step="0.1">
+                <div class="fs-times">
+                    <span id="fs-current-time">0:00</span>
+                    <span id="fs-total-duration">0:00</span>
+                </div>
+            </div>
+            <div class="fs-controls">
+                <i class="ri-shuffle-line side" id="fs-shuffle" onclick="toggleShuffle()"></i>
+                <i class="ri-skip-back-fill" onclick="playPrevTrack()"></i>
+                <i class="ri-play-circle-fill fs-play" id="fs-play-icon" onclick="togglePlayback()"></i>
+                <i class="ri-skip-forward-fill" onclick="playNextTrack()"></i>
+                <i class="ri-repeat-line side" id="fs-loop" onclick="toggleAudioLoop()"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- LYRICS OVERLAY -->
+    <div class="lyrics-overlay" id="lyrics-overlay">
+        <div class="lyrics-head">
+            <i class="ri-arrow-down-s-line" onclick="toggleLyricsOverlay()"></i>
+            <div class="lyrics-head-info">
+                <h5 id="lyrics-head-title">—</h5>
+                <p id="lyrics-head-artist">—</p>
+            </div>
+            <span style="width:28px;"></span>
+        </div>
+        <div class="lyrics-body" id="lyrics-body"></div>
+        <div class="lyrics-credit">Lyrics via <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a></div>
+    </div>
+
+    <!-- MODAL: Add to playlist -->
+    <div class="modal-overlay" id="add-playlist-modal">
+        <div class="modal-content">
+            <div class="modal-head"><span id="modal-top-title">Add to playlist</span><i class="ri-close-line" onclick="closeModals()"></i></div>
+            <div class="modal-list" id="modal-playlist-list"></div>
+            <div class="modal-input-row">
+                <input type="text" id="new-pl-input" placeholder="New playlist name">
+                <button class="btn-solid" style="padding:10px 18px;" onclick="createAndAddToPlaylist()">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Import playlist -->
+    <div class="modal-overlay" id="import-playlist-modal">
+        <div class="modal-content">
+            <div class="modal-head"><span>Import playlist</span><i class="ri-close-line" onclick="closeImportModal()"></i></div>
+            <p class="status-note" style="padding:0 0 14px; line-height:1.5;">
+                Paste a public YouTube Music playlist link and its tracks are copied in as a local playlist you can edit.
+                Spotify links only bring in the name and cover for now — use your own Spotify → YouTube Music converter first, then import the YouTube Music link here for the full track list.
+            </p>
+            <div class="modal-input-row">
+                <input type="text" id="import-url-input" placeholder="https://music.youtube.com/playlist?list=…">
+            </div>
+            <p class="form-msg" id="import-msg" style="margin-top:10px;"></p>
+            <button class="btn-solid" id="import-submit-btn" style="width:100%; margin-top:6px;" onclick="submitImportPlaylist()">Import</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Add song by link -->
+    <div class="modal-overlay" id="add-link-modal">
+        <div class="modal-content">
+            <div class="modal-head"><span>Add song by link</span><i class="ri-close-line" onclick="closeAddLinkModal()"></i></div>
+            <p class="status-note" style="padding:0 0 14px; line-height:1.5;">Paste a single YouTube or YouTube Music song link to add it to this playlist.</p>
+            <div class="modal-input-row">
+                <input type="text" id="add-link-input" placeholder="https://music.youtube.com/watch?v=…">
+            </div>
+            <p class="form-msg" id="add-link-msg" style="margin-top:10px;"></p>
+            <button class="btn-solid" id="add-link-submit-btn" style="width:100%; margin-top:6px;" onclick="submitAddSongByLink()">Add to playlist</button>
+        </div>
+    </div>
+
+    <!-- MODAL: Confirm -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal-content" style="text-align:center;">
+            <i class="ri-error-warning-line" style="font-size:3.4rem; color:var(--danger); display:block; margin-bottom:8px;"></i>
+            <h3 id="confirm-title" style="margin-bottom:8px; font-size:1.3rem;">Are you sure?</h3>
+            <p id="confirm-text" style="color:var(--dim); font-size:0.93rem; margin-bottom:24px;">This can't be undone.</p>
+            <div style="display:flex; gap:12px; justify-content:center;">
+                <button class="btn-outline" onclick="closeConfirmModal()">Cancel</button>
+                <button class="btn-solid" style="background:var(--danger); color:#fff;" id="confirm-action-btn">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-zone"></div>
+    <audio id="audio-engine" preload="auto" playsinline></audio>
+</div>
+<script>
+/* =====================================================================
+   MusicSpace — rebuilt client
+   Sources kept identical to the original:
+   - Own Cloudflare Worker proxies (search / suggestions / channel / similar)
+   - fast-saavn.vercel.app + aac.saavncdn.com for primary streams
+   - Invidious mirrors as stream fallback
+   - wsrv.nl / i.ytimg.com for artwork
+===================================================================== */
+const NEW_HUB_BACKEND = "https://new-music-space-api.urshabib.workers.dev";
+const STREAM_MIRRORS = [
+    "https://yt.omada.cafe/api/v1/videos/",
+    "https://invidious.schenkel.eti.br/api/v1/videos/",
+    "https://invidious.kemonomimi.nl/api/v1/videos/"
+];
+const FALLBACK_ART = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300';
+const PLAYLIST_ART = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300';
+
+/* ---------- State ---------- */
+let globalUser = localStorage.getItem("hub_active_user") || null;
+let globalPass = localStorage.getItem("hub_active_pass") || null;
+let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [] };
+
+let activeTrackData = null;
+let isLoopingActive = false;
+let isShuffleActive = false;
+let playbackQueue = [];
+let currentQueueIndex = -1;
+let navigationOriginPane = "home";
+let currentSearchQuery = "";
+let currentSearchFilter = "all";
+let playToken = 0;               // guards against stale stream resolutions
+let pendingModalTrack = null;    // track being added to a playlist
+let pendingResume = null;        // { track, resumeAt } restored from a previous session, loaded lazily on first Play
+let lastVolumeBeforeMute = 50;
+
+let hasPrefetchedNext = false;
+let prefetchedNextTrack = null;
+
+const audioEngine = document.getElementById('audio-engine');
+const $ = id => document.getElementById(id);
+
+/* ---------- Small utils ---------- */
+function escapeHtml(s) {
+    return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function formatTime(secs) {
+    if (isNaN(secs) || !isFinite(secs)) return "0:00";
+    const m = Math.floor(secs / 60), s = Math.floor(secs % 60);
+    return m + ":" + (s < 10 ? "0" : "") + s;
+}
+function showToast(msg, gray = false) {
+    const t = document.createElement('div');
+    t.className = 'toast' + (gray ? ' gray' : '');
+    t.textContent = msg;
+    $('toast-zone').appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 320); }, 2400);
+}
+function timeGreeting() {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 18) return "Good afternoon";
+    return "Good evening";
+}
+function shuffleArray(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+}
+function fetchWithTimeout(url, ms, options = {}) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+/* Retry wrapper with exponential backoff — enough attempts to ride out a flaky
+   mirror without the multi-second stalls of the old 8x1.5s loop. */
+async function fetchJsonRetry(url, tries = 4, delay = 600) {
+    let lastErr = null;
+    for (let i = 1; i <= tries; i++) {
+        try {
+            const res = await fetchWithTimeout(url, 9000);
+            if (res.ok) {
+                const data = await res.json();
+                const arr = Array.isArray(data) ? data : (data.items || data.contents || null);
+                if ((arr && arr.length > 0) || (!arr && data)) return data;
+                lastErr = new Error("Empty payload");
+            } else {
+                lastErr = new Error("HTTP " + res.status);
+            }
+        } catch (e) { lastErr = e; }
+        if (i < tries) await new Promise(r => setTimeout(r, delay * i)); // 600, 1200, 1800…
+    }
+    throw lastErr || new Error("Endpoint gave no usable data: " + url);
+}
+
+/* ---------- Metadata normalizers (same behavior as before) ---------- */
+function cleanTitle(item) {
+    if (!item) return "Unknown Title";
+    if (typeof item === 'string') return item;
+    if (item.title) return item.title;
+    if (item.name) return item.name;
+    if (item.runs && item.runs.length > 0) return item.runs[0].text;
+    return "Unknown Title";
+}
+function cleanArtistName(item) {
+    if (!item) return "Various Artists";
+    if (typeof item === 'string') return item.replace(' - Topic', '').trim();
+    let runs = item.artists || item.author || item.artist;
+    if (!runs) return "Various Artists";
+    if (typeof runs === 'string') return runs.replace(' - Topic', '').trim();
+    if (Array.isArray(runs)) return runs.map(a => typeof a === 'string' ? a : (a.name || a.text || "")).join(", ").replace(' - Topic', '').trim();
+    if (runs.runs && Array.isArray(runs.runs)) return runs.runs.map(r => r.text).join(", ").replace(' - Topic', '').trim();
+    if (runs.name) return runs.name.replace(' - Topic', '').trim();
+    return "Various Artists";
+}
+function getTrackThumbnail(item) {
+    if (!item) return FALLBACK_ART;
+    if (typeof item === 'string' && (item.startsWith('http') || item.includes('googleusercontent') || item.includes('ytimg'))) return item;
+    if (item.img && typeof item.img === 'string') return item.img.startsWith('/') ? `https://wsrv.nl?url=https://yt3.googleusercontent.com${item.img}` : item.img;
+    if (item.thumbnails && Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
+        return item.thumbnails[item.thumbnails.length - 1].url || item.thumbnails[0].url;
+    }
+    if (item.thumbnail && typeof item.thumbnail === 'string') return item.thumbnail;
+    const targetId = item.id || item.playlistId || item.videoId || item.browseId;
+    if (typeof targetId === 'string' && targetId.length > 0) {
+        if (targetId.startsWith('/')) return `https://wsrv.nl?url=https://yt3.googleusercontent.com${targetId}`;
+        if (targetId.startsWith('PL') || targetId.startsWith('OL') || targetId.startsWith('RD')) return PLAYLIST_ART;
+        return `https://wsrv.nl?url=https://i.ytimg.com/vi_webp/${targetId}/mqdefault.webp`;
+    }
+    return FALLBACK_ART;
+}
+function normalizeTrack(item, forcedType = null) {
+    let type = forcedType || item.type || item.resultType || 'song';
+    if (type === 'video') type = 'song';
+    if (type === 'channel') type = 'artist';
+    return {
+        id: item.id || item.videoId || item.playlistId || item.browseId,
+        title: cleanTitle(item),
+        artist: cleanArtistName(item),
+        thumb: getTrackThumbnail(item),
+        type
+    };
+}
+
+/* =====================================================================
+   TRACK REGISTRY + EVENT DELEGATION
+   The old build serialized track JSON into inline onclick attributes.
+   Any title containing a quote broke the handler — one reason some
+   songs never played. Cards now reference tracks by key.
+===================================================================== */
+const TRACK_REG = new Map();
+let regCounter = 0;
+function regTrack(track, meta = {}) {
+    const key = 'k' + (++regCounter);
+    TRACK_REG.set(key, { track, meta });
+    return key;
+}
+
+function createTrackCardHTML(track, opts = {}) {
+    // opts: { collectionId, queueIndex }
+    const key = regTrack(track, opts);
+    let liked = false;
+    if (track.type === 'artist') liked = userProfile.favouriteArtists?.some(a => a.id === track.id);
+    else if (track.type === 'playlist') liked = userProfile.favouriteAlbums?.some(a => a.id === track.id);
+    else liked = userProfile.likedSongs?.some(s => s.id === track.id);
+
+    const isPlaying = activeTrackData && activeTrackData.id === track.id && track.type === 'song';
+    const artClass = track.type === 'artist' ? 'round' : '';
+    const art = track.thumb && track.thumb !== PLAYLIST_ART
+        ? `<img class="${artClass}" src="${escapeHtml(track.thumb)}" loading="lazy" alt="" onerror="this.outerHTML='<div class=&quot;generic-cover ${artClass}&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+        : `<div class="generic-cover ${artClass}"><i class="ri-${track.type === 'playlist' ? 'play-list-2' : 'music-2'}-line"></i></div>`;
+
+    const trash = opts.collectionId && String(opts.collectionId).startsWith('pl_')
+        ? `<button class="icon-btn trash" data-act="removefrompl" data-key="${key}" title="Remove from playlist"><i class="ri-delete-bin-line"></i></button>`
+        : `<span></span>`;
+
+    const playBtn = track.type === 'song'
+        ? `<button class="hover-play" data-act="open" data-key="${key}" title="Play"><i class="ri-play-fill"></i></button>` : '';
+
+    return `
+    <div class="track-card ${isPlaying ? 'playing' : ''}" data-id="${escapeHtml(track.id || '')}" data-act="open" data-key="${key}">
+        <div class="card-art-wrap">
+            ${art}
+            ${playBtn}
+            ${isPlaying ? '<div class="eq-badge"><span></span><span></span><span></span></div>' : ''}
+            <div class="card-icons">
+                ${trash}
+                <button class="icon-btn ${liked ? 'liked' : ''}" data-act="fav" data-key="${key}" title="Save">
+                    <i class="ri-heart-${liked ? 'fill' : 'line'}"></i>
+                </button>
+            </div>
+        </div>
+        <h4>${escapeHtml(track.title)}</h4>
+        <p>${track.type === 'artist' ? 'Artist' : track.type === 'playlist' ? 'Playlist' : escapeHtml(track.artist)}</p>
+    </div>`;
+}
+
+function skeletonCards(n = 6) {
+    let out = '';
+    for (let i = 0; i < n; i++) out += `<div class="track-card skel-card"><div class="skel art"></div><div class="skel line"></div><div class="skel line short"></div></div>`;
+    return out;
+}
+
+/* One delegated click handler for every card action */
+document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-act]');
+    if (!el) return;
+    const entry = TRACK_REG.get(el.dataset.key);
+    if (!entry) return;
+    const { track, meta } = entry;
+    const act = el.dataset.act;
+
+    if (act === 'fav') {
+        e.stopPropagation();
+        toggleSaveItem(track, el);
+        return;
+    }
+    if (act === 'removefrompl') {
+        e.stopPropagation();
+        removeSongFromCustomPlaylist(meta.collectionId, track.id);
+        return;
+    }
+    if (act === 'open') {
+        e.stopPropagation();
+        if (track.type === 'artist') exploreArtistSongs(track.id, track.title, track.thumb);
+        else if (track.type === 'playlist') explorePlaylistOrAlbumSongs(track.id, track.title, track.thumb);
+        else if (typeof meta.queueIndex === 'number' && meta.queueIndex > -1) playFromQueueContext(meta.queueIndex);
+        else playSingleAndQueueSimilar(track);
+    }
+});
+
+/* =====================================================================
+   NAVIGATION
+===================================================================== */
+function switchPane(paneId) {
+    if (paneId !== 'collection') navigationOriginPane = paneId;
+    document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav li, .mobile-nav li').forEach(l => l.classList.remove('active'));
+    $(`pane-${paneId}`).classList.add('active');
+    const btn = $(`btn-${paneId}`); if (btn) btn.classList.add('active');
+    const mbtn = $(`btn-m-${paneId}`); if (mbtn) mbtn.classList.add('active');
+    $('main-scroller').scrollTop = 0;
+    if (paneId === 'search') setTimeout(() => $('search-box-field').focus(), 60);
+    if (paneId === 'admin') loadUserList();
+}
+function triggerPaneRollback() { switchPane(navigationOriginPane); }
+function triggerGenreSearch(query) {
+    switchPane('search');
+    $('search-box-field').value = query;
+    currentSearchQuery = query;
+    setSearchFilter('playlist');
+}
+
+/* =====================================================================
+   AUTH
+===================================================================== */
+async function authenticateFriend() {
+    const user = $('friend-username').value.trim();
+    const pass = $('friend-password').value.trim();
+    const msg = $('login-msg');
+    if (!user || !pass) { msg.className = 'form-msg err'; msg.textContent = "Enter a username and password."; return; }
+    $('login-btn').disabled = true;
+    msg.className = 'form-msg'; msg.textContent = "Signing in…";
+    await executeLogin(user, pass);
+    $('login-btn').disabled = false;
+}
+
+async function executeLogin(user, pass) {
+    const msg = $('login-msg');
+    try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 9000, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: user, password: pass })
+        });
+        const data = await res.json();
+        if (data.error) {
+            if (msg) { msg.className = 'form-msg err'; msg.textContent = data.error; }
+            logoutFriend(true);
+            return;
+        }
+        globalUser = user; globalPass = pass;
+        localStorage.setItem("hub_active_user", user);
+        localStorage.setItem("hub_active_pass", pass);
+        if (msg) msg.textContent = "";
+
+        if (data.isAdmin) {
+            $('btn-admin').style.display = "flex";
+            applyIdentityUI('admin');
+            switchPane('admin');
+            showToast("Welcome back, admin");
+        } else {
+            $('btn-admin').style.display = "none";
+            userProfile = {
+                username: data.profile.username,
+                likedSongs: data.profile.likedSongs || [],
+                customPlaylists: data.profile.customPlaylists || [],
+                favouriteArtists: data.profile.favouriteArtists || [],
+                favouriteAlbums: data.profile.favouriteAlbums || []
+            };
+            applyIdentityUI(userProfile.username);
+            populateLibraryUI();
+            loadHomeRecommendations();
+            switchPane('home');
+            showToast(`Welcome, ${userProfile.username}`);
+        }
+    } catch (e) {
+        if (msg) { msg.className = 'form-msg err'; msg.textContent = "Can't reach the server. Is the backend running?"; }
+    }
+}
+
+function applyIdentityUI(name) {
+    const loggedIn = !!name;
+    $('topbar-greeting').textContent = loggedIn ? `${timeGreeting()}, ${name}` : timeGreeting();
+    $('user-chip-name').textContent = loggedIn ? name : "Log in";
+    $('auth-portal-form').style.display = loggedIn ? "none" : "flex";
+    $('active-profile-details').style.display = loggedIn ? "flex" : "none";
+    if (loggedIn) {
+        $('logged-in-name').textContent = name;
+        $('profile-avatar-letter').textContent = name.charAt(0).toUpperCase();
+        $('stat-liked').textContent = userProfile.likedSongs?.length || 0;
+        $('stat-playlists').textContent = userProfile.customPlaylists?.length || 0;
+        $('stat-artists').textContent = userProfile.favouriteArtists?.length || 0;
+    }
+}
+
+function logoutFriend(silent = false) {
+    localStorage.removeItem("hub_active_user");
+    localStorage.removeItem("hub_active_pass");
+    globalUser = null; globalPass = null;
+    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [] };
+    $('btn-admin').style.display = "none";
+    $('friend-password').value = "";
+    applyIdentityUI(null);
+    populateLibraryUI();
+    if (!silent) { loadHomeRecommendations(); switchPane('account'); showToast("Logged out", true); }
+}
+
+async function adminCreateUser() {
+    const user = $('new-username').value.trim();
+    const pass = $('new-password').value.trim();
+    const asAdmin = $('new-user-admin').checked;
+    const msg = $('admin-msg');
+    if (!user || !pass) { msg.className = 'form-msg err'; msg.textContent = "Provide a username and password."; return; }
+    try {
+        const res = await fetch(`${NEW_HUB_BACKEND}/api/create-user`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: user, password: pass, isAdmin: asAdmin })
+        });
+        const data = await res.json();
+        if (data.error) { msg.className = 'form-msg err'; msg.textContent = data.error; }
+        else {
+            msg.className = 'form-msg ok'; msg.textContent = `User "${user}" created.`;
+            $('new-username').value = ""; $('new-password').value = ""; $('new-user-admin').checked = false;
+            loadUserList();
+        }
+    } catch (e) { msg.className = 'form-msg err'; msg.textContent = "Server error."; }
+}
+
+async function loadUserList() {
+    const body = $('user-list-body');
+    if (!body) return;
+    body.innerHTML = `<p class="status-note">Loading users…</p>`;
+    try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/list-users`, 10000);
+        const data = await res.json();
+        const users = Array.isArray(data.users) ? data.users : [];
+        if (!users.length) { body.innerHTML = `<p class="status-note">No users yet.</p>`; return; }
+        body.innerHTML = users.map(u => `
+            <div class="user-row">
+                <div class="user-row-avatar">${escapeHtml(u.username.charAt(0).toUpperCase())}</div>
+                <div class="user-row-meta">
+                    <h5>${escapeHtml(u.username)}</h5>
+                    <p>${u.likedCount} liked · ${u.playlistCount} playlist${u.playlistCount === 1 ? '' : 's'}</p>
+                </div>
+                <label class="admin-toggle">
+                    <input type="checkbox" ${u.isAdmin ? 'checked' : ''} onchange="toggleUserAdmin(${JSON.stringify(u.username)}, this.checked)">
+                    <span>Admin</span>
+                </label>
+            </div>`).join('');
+    } catch (e) {
+        body.innerHTML = `<p class="status-note err">Couldn't load the user list. <span style="text-decoration:underline; cursor:pointer;" onclick="loadUserList()">Try again</span></p>`;
+    }
+}
+
+async function toggleUserAdmin(username, isAdmin) {
+    try {
+        const res = await fetch(`${NEW_HUB_BACKEND}/api/set-admin`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, isAdmin })
+        });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        showToast(isAdmin ? `${username} is now an admin` : `${username} is no longer an admin`);
+    } catch (e) {
+        showToast("Couldn't update that user — try refreshing the list", true);
+        loadUserList();
+    }
+}
+
+let profileSyncTimer = null;
+function syncProfile() {
+    populateLibraryUI();
+    applyIdentityUI(globalUser === 'admin' ? 'admin' : (userProfile.username || null));
+    if (!globalUser || globalUser === 'admin') return;
+    // Debounced so rapid like/unlike doesn't spam the Worker (KV writes are slow)
+    clearTimeout(profileSyncTimer);
+    profileSyncTimer = setTimeout(() => {
+        fetch(`${NEW_HUB_BACKEND}/api/save-profile`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(userProfile)
+        }).catch(() => showToast("Couldn't save to your profile — check the server", true));
+    }, 600);
+}
+
+/* =====================================================================
+   SEARCH
+===================================================================== */
+const searchField = $('search-box-field');
+let typeaheadTimer = null;
+let suggestAbort = null;
+
+searchField.addEventListener('input', function () {
+    $('search-clear').style.display = this.value ? 'block' : 'none';
+    handleLiveTyping(this.value);
+});
+function isVideoLink(str) {
+    return /(?:music\.youtube\.com|youtube\.com|youtu\.be)\//i.test(str);
+}
+
+searchField.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        clearTimeout(typeaheadTimer);
+        $('suggestions-box').style.display = "none";
+        const q = this.value.trim();
+        if (!q) return;
+        currentSearchQuery = q;
+        if (isVideoLink(q)) {
+            resolveAndShowLinkResult(q);
+        } else {
+            rememberSearchTerm(q);
+            executeSearch(q);
+        }
+    }
+    if (e.key === 'Escape') $('suggestions-box').style.display = "none";
+});
+document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrap')) $('suggestions-box').style.display = "none";
+});
+
+/* Old-website-style behavior: pasting a song link opens it directly
+   instead of running a text search against it. */
+async function resolveAndShowLinkResult(link) {
+    const grid = $('search-output-grid');
+    $('search-filters').style.display = "none";
+    $('results-heading').style.display = "flex";
+    $('artist-top-result').innerHTML = "";
+    grid.innerHTML = skeletonCards(1);
+    try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/resolve-video-proxy?url=${encodeURIComponent(link)}`, 10000);
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || data.error) throw new Error(data?.error || "Couldn't open that link.");
+        grid.innerHTML = createTrackCardHTML({ id: data.id, title: data.title, artist: data.artist, thumb: data.thumb, type: 'song' });
+    } catch (e) {
+        grid.innerHTML = `<p class="status-note err" style="grid-column:1/-1;">${escapeHtml(e.message || "Couldn't open that link.")}</p>`;
+    }
+}
+
+function clearSearch() {
+    searchField.value = ""; searchField.focus();
+    $('search-clear').style.display = 'none';
+    $('suggestions-box').style.display = 'none';
+}
+
+function rememberSearchTerm(q) {
+    let hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
+    if (!hist.some(t => t === q || t.title === q)) {
+        hist.unshift(q);
+        localStorage.setItem('taste_profile_history', JSON.stringify(hist.slice(0, 15)));
+    }
+}
+
+function handleLiveTyping(val) {
+    clearTimeout(typeaheadTimer);
+    const box = $('suggestions-box');
+    if (val.trim().length < 2) { box.style.display = "none"; return; }
+    typeaheadTimer = setTimeout(async () => {
+        try {
+            if (suggestAbort) suggestAbort.abort();
+            suggestAbort = new AbortController();
+            const res = await fetch(`${NEW_HUB_BACKEND}/api/suggestions-proxy?q=${encodeURIComponent(val)}`, { signal: suggestAbort.signal });
+            const list = await res.json();
+            box.innerHTML = "";
+            if (list && list.length > 0) {
+                box.style.display = "block";
+                list.slice(0, 6).forEach(text => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    div.innerHTML = `<i class="ri-search-line"></i>${escapeHtml(text)}`;
+                    div.onclick = () => selectSuggestion(text);
+                    box.appendChild(div);
+                });
+            } else box.style.display = "none";
+        } catch (e) {}
+    }, 220);
+}
+
+function selectSuggestion(text) {
+    searchField.value = text;
+    $('suggestions-box').style.display = "none";
+    currentSearchQuery = text;
+    rememberSearchTerm(text);
+    executeSearch(text);
+}
+
+function setSearchFilter(filter) {
+    currentSearchFilter = filter;
+    document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    $(`pill-${filter}`).classList.add('active');
+    if (currentSearchQuery) executeSearch(currentSearchQuery);
+}
+
+let searchToken = 0;
+async function executeSearch(keyword, silentRound = 0) {
+    const grid = $('search-output-grid');
+    const myToken = silentRound === 0 ? ++searchToken : searchToken;
+    if (silentRound === 0) {
+        $('search-filters').style.display = "flex";
+        $('results-heading').style.display = "flex";
+        $('artist-top-result').innerHTML = "";
+        grid.innerHTML = skeletonCards(8);
+    }
+    try {
+        const apiFilter = currentSearchFilter === 'artist' ? 'artists' : 'all';
+        const results = await fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(keyword)}&f=${apiFilter}`);
+        if (myToken !== searchToken) return; // a newer search took over
+
+        let items = Array.isArray(results) ? results : (results.items || results.contents || []);
+
+        if (currentSearchFilter === 'playlist') {
+            items = items.filter(t => t.type === 'playlist' || t.resultType === 'playlist' || String(t.id || t.playlistId || '').startsWith('PL') || String(t.id || t.playlistId || '').startsWith('RD'));
+        }
+        if (currentSearchFilter === 'song') {
+            items = items.filter(t => (t.type || t.resultType || 'song') === 'song' || t.type === 'video' || t.videoId);
+        }
+        if (!items.length) throw new Error("empty");
+
+        // Artist banner (All / Artists views)
+        if (currentSearchFilter === 'all' || currentSearchFilter === 'artist') {
+            const channel = items.find(it => (it.type === 'channel' || it.resultType === 'artist') && (it.name || it.title || it.artist));
+            if (channel) {
+                const cName = cleanTitle(channel);
+                const cId = channel.id || channel.browseId;
+                const artistObj = { id: cId, title: cName, artist: cName, thumb: getTrackThumbnail(channel), type: 'artist' };
+                const openKey = regTrack(artistObj);
+                const isFollowed = userProfile.favouriteArtists?.some(a => a.id === cId);
+                const favKey = regTrack(artistObj);
+                $('artist-top-result').innerHTML = `
+                    <div class="collection-hero" style="align-items:center;">
+                        <img class="hero-art round" src="${escapeHtml(getTrackThumbnail(channel))}" alt="" style="cursor:pointer;" data-act="open" data-key="${openKey}" onerror="this.style.display='none'">
+                        <div class="hero-info">
+                            <span class="kicker">Artist</span>
+                            <h2 style="font-size:2.3rem; cursor:pointer;" data-act="open" data-key="${openKey}">${escapeHtml(cName)}</h2>
+                            <div class="hero-actions">
+                                <button class="btn-outline" data-act="fav" data-key="${favKey}">
+                                    <i class="ri-heart-${isFollowed ? 'fill' : 'line'}" style="${isFollowed ? 'color:var(--accent);' : ''}"></i> ${isFollowed ? 'Following' : 'Follow'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+        }
+
+        grid.innerHTML = "";
+        items.filter(it => it.type !== 'channel' && it.resultType !== 'artist')
+            .forEach(it => { grid.insertAdjacentHTML('beforeend', createTrackCardHTML(normalizeTrack(it))); });
+    } catch (e) {
+        if (myToken !== searchToken) return;
+        // Auto-retry a few rounds in the background before bothering the user with an error
+        if (silentRound < 3) {
+            grid.innerHTML = skeletonCards(8);
+            await new Promise(r => setTimeout(r, 1000 + silentRound * 600));
+            if (myToken !== searchToken) return;
+            return executeSearch(keyword, silentRound + 1);
+        }
+        grid.innerHTML = `<p class="status-note err" style="grid-column:1/-1;">Nothing came back for "${escapeHtml(keyword)}". <span style="text-decoration:underline; cursor:pointer;" onclick="executeSearch(${JSON.stringify(keyword)})">Search again</span></p>`;
+    }
+}
+
+/* =====================================================================
+   COLLECTIONS (artist / playlist / library)
+===================================================================== */
+async function exploreArtistSongs(channelId, artistName, thumb = null) {
+    switchPane('collection');
+    const header = $('collection-header');
+    const grid = $('collection-tracks-grid');
+    const cleanName = cleanArtistName(artistName) === "Various Artists" ? String(artistName) : cleanArtistName(artistName);
+    grid.innerHTML = skeletonCards(8);
+
+    const artistObj = { id: channelId, title: cleanName, artist: cleanName, thumb: thumb || FALLBACK_ART, type: 'artist' };
+    const favKey = regTrack(artistObj);
+    const isFollowed = userProfile.favouriteArtists?.some(a => a.id === channelId);
+    const avatar = thumb
+        ? `<img class="hero-art round" src="${escapeHtml(thumb)}" alt="" onerror="this.outerHTML='<div class=&quot;hero-art round&quot;><i class=&quot;ri-user-3-fill&quot;></i></div>'">`
+        : `<div class="hero-art round"><i class="ri-user-3-fill"></i></div>`;
+    header.innerHTML = `
+        ${avatar}
+        <div class="hero-info">
+            <span class="kicker">Artist</span>
+            <h2>${escapeHtml(cleanName)}</h2>
+            <div class="hero-actions">
+                <button class="btn-play-big" onclick="playWholeCollection()"><i class="ri-play-fill"></i> Play</button>
+                <button class="btn-outline" onclick="playShuffledCollection()"><i class="ri-shuffle-line"></i> Shuffle</button>
+                <button class="btn-outline" data-act="fav" data-key="${favKey}">
+                    <i class="ri-heart-${isFollowed ? 'fill' : 'line'}" style="${isFollowed ? 'color:var(--accent);' : ''}"></i> ${isFollowed ? 'Following' : 'Follow'}
+                </button>
+            </div>
+        </div>`;
+    try {
+        let tracks = [];
+        try {
+            const channelData = await fetchJsonRetry(`${NEW_HUB_BACKEND}/api/channel-proxy?id=${encodeURIComponent(channelId)}`, 2);
+            tracks = channelData.items || (Array.isArray(channelData) ? channelData : []);
+        } catch (e) {}
+        if (!tracks.length) {
+            const fb = await fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(cleanName)}&f=song`);
+            tracks = (Array.isArray(fb) ? fb : (fb.items || [])).slice(0, 15);
+        }
+        if (!tracks.length) { grid.innerHTML = `<p class="status-note" style="grid-column:1/-1;">No tracks found for this artist.</p>`; return; }
+        grid.innerHTML = ""; playbackQueue = [];
+        tracks.forEach((t, i) => {
+            const nt = { id: t.id || t.videoId, title: cleanTitle(t), artist: cleanName, thumb: getTrackThumbnail(t), type: 'song' };
+            playbackQueue.push(nt);
+            grid.insertAdjacentHTML('beforeend', createTrackCardHTML(nt, { queueIndex: i }));
+        });
+    } catch (e) { grid.innerHTML = `<p class="status-note err" style="grid-column:1/-1;">Couldn't load this artist right now. <span style="text-decoration:underline; cursor:pointer;" onclick="exploreArtistSongs('${channelId}', ${JSON.stringify(cleanName)}, ${JSON.stringify(thumb)})">Try again</span></p>`; }
+}
+
+async function explorePlaylistOrAlbumSongs(id, title, thumb = null, silentRound = 0) {
+    if (silentRound === 0) switchPane('collection');
+    const header = $('collection-header');
+    const grid = $('collection-tracks-grid');
+    const hasRealArt = thumb && thumb !== PLAYLIST_ART && thumb !== FALLBACK_ART;
+
+    if (silentRound === 0) {
+        grid.innerHTML = skeletonCards(8);
+        const isFav = userProfile.favouriteAlbums?.some(a => a.id === id);
+        const favKey = regTrack({ id, title, artist: title, thumb: thumb || PLAYLIST_ART, type: 'playlist' });
+        const art = hasRealArt
+            ? `<img class="hero-art" id="collection-hero-img" src="${escapeHtml(thumb)}" alt="" onerror="this.outerHTML='<div class=&quot;hero-art&quot; id=&quot;collection-hero-img&quot;><i class=&quot;ri-play-list-2-line&quot;></i></div>'">`
+            : `<div class="hero-art" id="collection-hero-img"><i class="ri-play-list-2-line"></i></div>`;
+        header.innerHTML = `
+            ${art}
+            <div class="hero-info">
+                <span class="kicker">Playlist</span>
+                <h2>${escapeHtml(title)}</h2>
+                <div class="hero-actions">
+                    <button class="btn-play-big" onclick="playWholeCollection()"><i class="ri-play-fill"></i> Play</button>
+                    <button class="btn-outline" data-act="fav" data-key="${favKey}">
+                        <i class="ri-heart-${isFav ? 'fill' : 'line'}" style="${isFav ? 'color:var(--accent);' : ''}"></i> ${isFav ? 'Saved' : 'Save'}
+                    </button>
+                </div>
+            </div>`;
+    }
+    try {
+        // Same resolution trick as the old build: resolve playlist contents through search
+        const res = await fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(title + " playlist songs")}&f=song`);
+        const items = (Array.isArray(res) ? res : (res.items || res.contents || [])).slice(0, 18);
+        if (!items.length) throw new Error("empty");
+        grid.innerHTML = ""; playbackQueue = [];
+        items.forEach((t, i) => {
+            const nt = normalizeTrack(t, 'song');
+            playbackQueue.push(nt);
+            grid.insertAdjacentHTML('beforeend', createTrackCardHTML(nt, { queueIndex: i }));
+        });
+        // No real cover art was available up front — borrow the first track's artwork instead of a bare icon
+        if (!hasRealArt && playbackQueue[0]?.thumb) {
+            const heroImg = $('collection-hero-img');
+            if (heroImg) heroImg.outerHTML = `<img class="hero-art" id="collection-hero-img" src="${escapeHtml(playbackQueue[0].thumb)}" alt="" onerror="this.outerHTML='<div class=&quot;hero-art&quot;><i class=&quot;ri-play-list-2-line&quot;></i></div>'">`;
+        }
+    } catch (e) {
+        if (silentRound < 3) {
+            await new Promise(r => setTimeout(r, 1000 + silentRound * 600));
+            return explorePlaylistOrAlbumSongs(id, title, thumb, silentRound + 1);
+        }
+        grid.innerHTML = `<p class="status-note err" style="grid-column:1/-1;">This playlist wouldn't resolve. <span style="text-decoration:underline; cursor:pointer;" onclick="explorePlaylistOrAlbumSongs(${JSON.stringify(id)}, ${JSON.stringify(title)}, ${JSON.stringify(thumb)})">Try again</span></p>`;
+    }
+}
+
+function openCollection(type, id = null) {
+    switchPane('collection');
+    const header = $('collection-header');
+    const grid = $('collection-tracks-grid');
+    grid.innerHTML = ""; playbackQueue = [];
+
+    if (type === 'liked') {
+        const n = userProfile.likedSongs.length;
+        header.innerHTML = `
+            <div class="hero-art liked-grad"><i class="ri-heart-fill"></i></div>
+            <div class="hero-info">
+                <span class="kicker">Playlist</span><h2>Liked Songs</h2>
+                <span class="sub">${n} track${n === 1 ? '' : 's'}</span>
+                <div class="hero-actions"><button class="btn-play-big" onclick="playWholeCollection()"><i class="ri-play-fill"></i> Play</button>
+                <button class="btn-outline" onclick="playShuffledCollection()"><i class="ri-shuffle-line"></i> Shuffle</button></div>
+            </div>`;
+        if (!n) { grid.innerHTML = `<p class="status-note" style="grid-column:1/-1;">Songs you like will show up here. Tap the heart on any track.</p>`; return; }
+        userProfile.likedSongs.forEach((t, i) => {
+            playbackQueue.push(t);
+            grid.insertAdjacentHTML('beforeend', createTrackCardHTML(t, { queueIndex: i }));
+        });
+    } else if (type === 'custom-playlist') {
+        const pl = userProfile.customPlaylists.find(p => p.id === id);
+        if (!pl) return;
+        const coverSrc = pl.thumb || pl.tracks?.[0]?.thumb || null;
+        const art = coverSrc
+            ? `<img class="hero-art" src="${escapeHtml(coverSrc)}" alt="" onerror="this.outerHTML='<div class=&quot;hero-art&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+            : `<div class="hero-art"><i class="ri-music-2-line"></i></div>`;
+        header.innerHTML = `
+            ${art}
+            <div class="hero-info">
+                <span class="kicker">Playlist${pl.source ? ' · ' + escapeHtml(pl.source) : ''}</span><h2>${escapeHtml(pl.name)}</h2>
+                <span class="sub">${pl.tracks.length} track${pl.tracks.length === 1 ? '' : 's'}</span>
+                <div class="hero-actions">
+                    <button class="btn-play-big" onclick="playWholeCollection()"><i class="ri-play-fill"></i> Play</button>
+                    <button class="btn-outline" onclick="openAddLinkModal('${pl.id}')"><i class="ri-link"></i> Add by link</button>
+                    <button class="btn-outline" onclick="removeCustomPlaylist('${pl.id}')"><i class="ri-delete-bin-line"></i> Delete</button>
+                </div>
+            </div>`;
+        if (!pl.tracks.length) { grid.innerHTML = `<p class="status-note" style="grid-column:1/-1;">This playlist is empty. Add songs from the player, any card, or by pasting a link above.</p>`; return; }
+        pl.tracks.forEach((t, i) => {
+            playbackQueue.push(t);
+            grid.insertAdjacentHTML('beforeend', createTrackCardHTML(t, { collectionId: id, queueIndex: i }));
+        });
+    }
+}
+
+/* =====================================================================
+   LIBRARY RENDERING (main pane + sidebar)
+===================================================================== */
+function populateLibraryUI() {
+    const libPls = $('library-playlists-grid');
+    const libArtists = $('library-artists-grid');
+    const sideList = $('sidebar-lib-list');
+
+    const likedCount = userProfile.likedSongs?.length || 0;
+
+    libPls.innerHTML = `
+        <div class="track-card" onclick="openCollection('liked')">
+            <div class="card-art-wrap"><div class="generic-cover" style="background:linear-gradient(135deg,var(--accent),#6b2600); color:#fff;"><i class="ri-heart-fill"></i></div></div>
+            <h4>Liked Songs</h4><p>${likedCount} track${likedCount === 1 ? '' : 's'}</p>
+        </div>`;
+
+    sideList.innerHTML = `
+        <div class="side-lib-item" onclick="openCollection('liked')">
+            <div class="thumb liked-grad"><i class="ri-heart-fill"></i></div>
+            <div class="meta"><h5>Liked Songs</h5><p>Playlist · ${likedCount} tracks</p></div>
+        </div>`;
+
+    (userProfile.customPlaylists || []).forEach(pl => {
+        const coverSrc = pl.thumb || pl.tracks?.[0]?.thumb || null;
+        const art = coverSrc
+            ? `<img src="${escapeHtml(coverSrc)}" loading="lazy" alt="" onerror="this.outerHTML='<div class=&quot;generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+            : `<div class="generic-cover"><i class="ri-music-2-line"></i></div>`;
+        const sourceBadge = pl.source ? `<span class="type-tag">${escapeHtml(pl.source)}</span>` : '';
+        libPls.insertAdjacentHTML('beforeend', `
+            <div class="track-card" onclick="openCollection('custom-playlist', '${pl.id}')">
+                <div class="card-art-wrap">
+                    ${art}
+                    <div class="card-icons"><button class="icon-btn trash" onclick="event.stopPropagation(); removeCustomPlaylist('${pl.id}')" title="Delete playlist"><i class="ri-delete-bin-line"></i></button><span></span></div>
+                </div>
+                <h4>${escapeHtml(pl.name)}</h4><p>${sourceBadge}${pl.tracks.length} track${pl.tracks.length === 1 ? '' : 's'}</p>
+            </div>`);
+        sideList.insertAdjacentHTML('beforeend', `
+            <div class="side-lib-item" onclick="openCollection('custom-playlist', '${pl.id}')">
+                ${coverSrc ? `<img class="thumb" src="${escapeHtml(coverSrc)}" onerror="this.outerHTML='<div class=&quot;thumb&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">` : `<div class="thumb"><i class="ri-music-2-line"></i></div>`}
+                <div class="meta"><h5>${escapeHtml(pl.name)}</h5><p>Playlist · ${pl.tracks.length} tracks</p></div>
+            </div>`);
+    });
+
+    // External playlists/albums the user saved from search now live in the same shelf as custom ones
+    (userProfile.favouriteAlbums || []).forEach(al => {
+        libPls.insertAdjacentHTML('beforeend', createTrackCardHTML(al));
+    });
+
+    (userProfile.favouriteArtists || []).forEach(a => {
+        sideList.insertAdjacentHTML('beforeend', `
+            <div class="side-lib-item" data-act="open" data-key="${regTrack(a)}">
+                <img class="thumb" src="${escapeHtml(a.thumb || '')}" style="border-radius:50%;" onerror="this.outerHTML='<div class=&quot;thumb&quot; style=&quot;border-radius:50%;&quot;><i class=&quot;ri-user-3-line&quot;></i></div>'">
+                <div class="meta"><h5>${escapeHtml(a.title)}</h5><p>Artist</p></div>
+            </div>`);
+    });
+
+    libArtists.innerHTML = (userProfile.favouriteArtists?.length)
+        ? userProfile.favouriteArtists.map(a => createTrackCardHTML(a)).join('')
+        : `<p class="status-note" style="grid-column:1/-1;">Artists you follow will show up here. Open any artist and tap follow.</p>`;
+}
+
+/* =====================================================================
+   LIKES / SAVES
+===================================================================== */
+function toggleSaveItem(item, el = null) {
+    if (!globalUser || globalUser === 'admin') { switchPane('account'); showToast("Log in to save music", true); return; }
+    let list, label;
+    if (item.type === 'artist') { list = userProfile.favouriteArtists; label = "artists"; }
+    else if (item.type === 'playlist') { list = userProfile.favouriteAlbums; label = "playlists"; }
+    else { list = userProfile.likedSongs; label = "Liked Songs"; }
+
+    const idx = list.findIndex(x => x.id === item.id);
+    const added = idx === -1;
+    if (added) list.push(item); else list.splice(idx, 1);
+
+    if (el) {
+        const icon = el.querySelector('i') || el;
+        icon.className = `ri-heart-${added ? 'fill' : 'line'}`;
+        icon.style.color = added ? 'var(--accent)' : '';
+        el.classList.toggle('liked', added);
+        // Buttons with a trailing label ("Follow"/"Save") get their text swapped too
+        if (el.classList.contains('btn-outline')) {
+            const words = item.type === 'artist' ? ['Follow', 'Following'] : ['Save', 'Saved'];
+            const label = el.querySelector('i').nextSibling;
+            const newText = ' ' + (added ? words[1] : words[0]);
+            if (label && label.nodeType === Node.TEXT_NODE) label.textContent = newText;
+            else el.appendChild(document.createTextNode(newText));
+        }
+    }
+    if (activeTrackData && activeTrackData.id === item.id) refreshHeartIcons();
+    showToast(added ? `Added to ${label}` : `Removed from ${label}`, !added);
+    syncProfile();
+}
+
+function togglePlayerHeart(event) {
+    if (event) event.stopPropagation();
+    if (!activeTrackData) return;
+    toggleSaveItem(activeTrackData);
+}
+
+function refreshHeartIcons() {
+    const liked = activeTrackData && userProfile.likedSongs?.some(s => s.id === activeTrackData.id);
+    ['pb-heart', 'mini-heart'].forEach(id => {
+        const b = $(id); if (!b) return;
+        b.classList.toggle('active', !!liked);
+        b.innerHTML = `<i class="ri-heart-${liked ? 'fill' : 'line'}"></i>`;
+    });
+    const fs = $('fs-heart');
+    fs.className = `ri-heart-${liked ? 'fill' : 'line'}${liked ? ' active' : ''}`;
+}
+
+/* =====================================================================
+   PLAYER ENGINE
+   Streams resolve exactly like the old build: fast-saavn first
+   (aac.saavncdn.com 320kbps), then the Invidious mirrors in parallel.
+   Fix: the mirror race now starts at the same time as the saavn lookup
+   instead of after it fails, so fallback playback starts seconds sooner.
+===================================================================== */
+function setPlayIcons(state) { // 'play' | 'pause' | 'loading'
+    const map = { play: 'ri-play-fill', pause: 'ri-pause-fill', loading: 'ri-loader-4-line animate-spin' };
+    $('pb-play-icon').className = map[state];
+    $('mini-play-icon').className = map[state];
+    $('fs-play-icon').className = (state === 'play' ? 'ri-play-circle-fill' : state === 'pause' ? 'ri-pause-circle-fill' : 'ri-loader-4-line animate-spin') + ' fs-play';
+}
+
+function updateNowPlayingUI() {
+    if (!activeTrackData) return;
+    const t = activeTrackData;
+    $('pb-title').textContent = t.title;   $('pb-artist').textContent = t.artist;
+    $('mini-title').textContent = t.title; $('mini-artist').textContent = t.artist;
+    $('fs-title').textContent = t.title;   $('fs-artist').textContent = t.artist;
+    $('lyrics-head-title').textContent = t.title; $('lyrics-head-artist').textContent = t.artist;
+    ['pb-image', 'mini-image', 'fs-image'].forEach(id => $(id).src = t.thumb || FALLBACK_ART);
+    refreshHeartIcons();
+    highlightActiveTrackCard();
+    document.title = `${t.title} · ${t.artist} — MusicSpace`;
+}
+
+function highlightActiveTrackCard() {
+    document.querySelectorAll('.track-card.playing').forEach(c => { c.classList.remove('playing'); c.querySelector('.eq-badge')?.remove(); });
+    if (activeTrackData?.id) {
+        document.querySelectorAll(`.track-card[data-id="${CSS.escape(activeTrackData.id)}"]`).forEach(c => {
+            c.classList.add('playing');
+            if (!audioEngine.paused) c.querySelector('.card-art-wrap')?.insertAdjacentHTML('beforeend', '<div class="eq-badge"><span></span><span></span><span></span></div>');
+        });
+    }
+}
+
+function updateMediaSession(t) {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+        title: t.title, artist: t.artist,
+        artwork: [{ src: t.thumb, sizes: '512x512', type: 'image/png' }, { src: t.thumb, sizes: '128x128', type: 'image/png' }]
+    });
+    navigator.mediaSession.setActionHandler('play', togglePlayback);
+    navigator.mediaSession.setActionHandler('pause', togglePlayback);
+    navigator.mediaSession.setActionHandler('nexttrack', playNextTrack);
+    navigator.mediaSession.setActionHandler('previoustrack', playPrevTrack);
+    try { navigator.mediaSession.setActionHandler('seekto', d => { if (d.seekTime != null) audioEngine.currentTime = d.seekTime; }); } catch (e) {}
+}
+
+function rememberListen(t) {
+    let hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
+    hist = hist.filter(x => x.id !== t.id);
+    hist.unshift({ ...t, type: 'song' });
+    localStorage.setItem('taste_profile_history', JSON.stringify(hist.slice(0, 15)));
+    renderRecentlyPlayed();
+}
+
+/* =====================================================================
+   LYRICS — synced lyrics via LRCLIB (through the /api/lyrics-proxy Worker
+   route), rendered in a dedicated overlay with line-by-line highlighting
+   and click-to-seek. Falls back to plain (unsynced) text, then to a
+   friendly "not found" message. Cached per title+artist for the session.
+===================================================================== */
+let lyricsCache = new Map();
+let lyricsToken = 0;
+let currentLyricsLines = null;   // array of {time, text} for synced, or a string for plain
+let currentLyricsMode = 'none';  // 'loading' | 'synced' | 'plain' | 'none' | 'error'
+let lastHighlightedLyricIndex = -1;
+
+function parseLRC(lrcText) {
+    const timeTag = /\[(\d{1,2}):(\d{2}(?:\.\d{1,3})?)\]/g;
+    const out = [];
+    lrcText.split(/\r?\n/).forEach(line => {
+        const tags = [...line.matchAll(timeTag)];
+        if (!tags.length) return;
+        const text = line.replace(timeTag, '').trim();
+        tags.forEach(m => out.push({ time: parseInt(m[1], 10) * 60 + parseFloat(m[2]), text }));
+    });
+    return out.sort((a, b) => a.time - b.time);
+}
+
+/* YouTube titles carry a lot of noise ("(Official Video)", "(Lyrics)",
+   "[4K]", "- Official Audio"...) that a lyrics database won't recognize
+   as part of the song name. Stripping it before querying meaningfully
+   improves match rate. */
+function cleanTitleForLyrics(title) {
+    return title.replace(/\s*(?:\[[^\]]*\]|\([^)]*\))\s*/g, ' ')
+                .replace(/official|video|audio|lyric|remix|ft\.|feat\.?/gi, '')
+                .replace(/\s*-\s*$/, '')
+                .trim();
+}
+
+async function loadLyricsForTrack(track) {
+    if (!track || !track.title) return;
+    const cleanTitle = cleanTitleForLyrics(track.title) || track.title;
+    const cleanArtist = cleanArtistName(track.artist);
+    const key = `${cleanTitle}|${cleanArtist}`.toLowerCase();
+    const myToken = ++lyricsToken;
+
+    if (lyricsCache.has(key)) {
+        const cached = lyricsCache.get(key);
+        currentLyricsMode = cached.mode;
+        currentLyricsLines = cached.lines;
+        renderLyricsOverlay();
+        return;
+    }
+
+    currentLyricsMode = 'loading';
+    currentLyricsLines = null;
+    renderLyricsOverlay();
+
+    try {
+        const durationParam = (audioEngine.duration && isFinite(audioEngine.duration)) ? `&duration=${Math.round(audioEngine.duration)}` : '';
+
+        // Try with duration first (more precise match)
+        let res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/lyrics-proxy?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}${durationParam}`, 9000);
+        let data = await res.json();
+
+        // If that came up empty, retry without duration as a broader fallback —
+        // a slightly-off reported duration can make the exact-match lookup miss
+        if ((!data.found || (!data.synced && !data.plain)) && durationParam) {
+            res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/lyrics-proxy?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}`, 9000);
+            data = await res.json();
+        }
+
+        if (myToken !== lyricsToken) return; // a newer track already took over
+
+        let mode = 'none', lines = null;
+        if (data.found && data.synced) {
+            const parsed = parseLRC(data.synced);
+            if (parsed.length) { mode = 'synced'; lines = parsed; }
+            else if (data.plain) { mode = 'plain'; lines = data.plain; }
+        } else if (data.found && data.plain) {
+            mode = 'plain'; lines = data.plain;
+        }
+        lyricsCache.set(key, { mode, lines });
+        currentLyricsMode = mode;
+        currentLyricsLines = lines;
+        renderLyricsOverlay();
+    } catch (e) {
+        if (myToken !== lyricsToken) return;
+        currentLyricsMode = 'error';
+        currentLyricsLines = null;
+        renderLyricsOverlay();
+    }
+}
+
+function renderLyricsOverlay() {
+    const body = $('lyrics-body');
+    if (!body) return;
+    lastHighlightedLyricIndex = -1;
+    if (currentLyricsMode === 'loading') {
+        body.innerHTML = `<p class="status-note" style="text-align:center; margin-top:60px;">Finding lyrics…</p>`;
+    } else if (currentLyricsMode === 'error') {
+        body.innerHTML = `<p class="status-note err" style="text-align:center; margin-top:60px;">Couldn't load lyrics right now.</p>`;
+    } else if (currentLyricsMode === 'plain' && currentLyricsLines) {
+        body.innerHTML = `<pre class="lyrics-plain">${escapeHtml(currentLyricsLines)}</pre>`;
+    } else if (currentLyricsMode === 'synced' && currentLyricsLines) {
+        body.innerHTML = currentLyricsLines.map((l, i) =>
+            `<p class="lyric-line" data-idx="${i}" onclick="seekToLyric(${i})">${escapeHtml(l.text || '♪')}</p>`
+        ).join('');
+    } else {
+        body.innerHTML = `<p class="status-note" style="text-align:center; margin-top:60px;">No lyrics found for this song.</p>`;
+    }
+}
+
+function seekToLyric(i) {
+    if (!Array.isArray(currentLyricsLines) || !currentLyricsLines[i]) return;
+    if (!audioEngine.src && pendingResume) togglePlayback(); // resuming a restored session first
+    audioEngine.currentTime = currentLyricsLines[i].time;
+}
+
+function updateLyricsHighlight() {
+    if (currentLyricsMode !== 'synced' || !Array.isArray(currentLyricsLines)) return;
+    if (!$('lyrics-overlay').classList.contains('open')) return;
+    const t = audioEngine.currentTime;
+    let idx = -1;
+    for (let i = 0; i < currentLyricsLines.length; i++) {
+        if (currentLyricsLines[i].time <= t) idx = i; else break;
+    }
+    if (idx === lastHighlightedLyricIndex) return;
+    lastHighlightedLyricIndex = idx;
+    const body = $('lyrics-body');
+    body.querySelectorAll('.lyric-line.active').forEach(el => el.classList.remove('active'));
+    if (idx >= 0) {
+        const el = body.querySelector(`.lyric-line[data-idx="${idx}"]`);
+        if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    }
+}
+
+function toggleLyricsOverlay() {
+    if (!activeTrackData) { showToast("Play a song first", true); return; }
+    const overlay = $('lyrics-overlay');
+    overlay.classList.toggle('open');
+    if (overlay.classList.contains('open')) { lastHighlightedLyricIndex = -1; updateLyricsHighlight(); }
+}
+audioEngine.addEventListener('timeupdate', updateLyricsHighlight);
+
+/* ---- "keep my place" session persistence ----
+   Saves just enough to restore the player bar and progress position after a
+   refresh: the track, its queue, loop/shuffle state, and playhead position.
+   Restoring does NOT start network requests or audio — browsers block
+   autoplay on load anyway — it just paints the UI so the song is sitting
+   there ready, and the actual stream is resolved on the next Play tap. */
+let lastSessionSaveAt = 0;
+function saveSessionState(force = false) {
+    if (!activeTrackData) return;
+    const now = Date.now();
+    if (!force && now - lastSessionSaveAt < 4000) return;
+    lastSessionSaveAt = now;
+    try {
+        localStorage.setItem('hub_session_state', JSON.stringify({
+            track: activeTrackData,
+            queue: playbackQueue,
+            queueIndex: currentQueueIndex,
+            currentTime: audioEngine.currentTime || 0,
+            isLooping: isLoopingActive,
+            isShuffle: isShuffleActive
+        }));
+    } catch (e) {}
+}
+
+function restoreSessionState() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem('hub_session_state') || 'null'); } catch (e) {}
+    if (!saved || !saved.track || !saved.track.id) return;
+
+    activeTrackData = saved.track;
+    playbackQueue = Array.isArray(saved.queue) ? saved.queue : [];
+    currentQueueIndex = typeof saved.queueIndex === 'number' ? saved.queueIndex : -1;
+    isLoopingActive = !!saved.isLooping;
+    isShuffleActive = !!saved.isShuffle;
+    pendingResume = { track: activeTrackData, resumeAt: saved.currentTime || 0 };
+
+    updateNowPlayingUI();
+    setPlayIcons('play');
+    loadLyricsForTrack(activeTrackData);
+
+    $('pb-loop').classList.toggle('on', isLoopingActive);
+    $('pb-loop-icon').className = isLoopingActive ? 'ri-repeat-one-line' : 'ri-repeat-line';
+    $('fs-loop').classList.toggle('on', isLoopingActive);
+    $('fs-loop').classList.toggle('ri-repeat-one-line', isLoopingActive);
+    $('fs-loop').classList.toggle('ri-repeat-line', !isLoopingActive);
+    $('pb-shuffle').classList.toggle('on', isShuffleActive);
+    $('fs-shuffle').classList.toggle('on', isShuffleActive);
+
+    if (saved.currentTime > 0) {
+        const t = formatTime(saved.currentTime);
+        $('pb-current-time').textContent = t;
+        $('fs-current-time').textContent = t;
+    }
+}
+window.addEventListener('beforeunload', () => saveSessionState(true));
+
+/* ---- stream resolvers ---- */
+async function resolveSaavnStream(title, artist) {
+    const res = await fetchWithTimeout(`https://fast-saavn.vercel.app/api?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`, 9500);
+    const txt = (await res.text()).trim();
+    if (txt && !txt.includes("error") && !txt.includes("not found") && !txt.includes("results")) {
+        return `https://aac.saavncdn.com/${txt}_320.mp4`;
+    }
+    throw new Error("saavn miss");
+}
+
+async function resolveMirrorStreams(id) {
+    const settled = await Promise.allSettled(STREAM_MIRRORS.map(base =>
+        fetchWithTimeout(base + id, 8500).then(async r => {
+            if (!r.ok) throw new Error("bad");
+            const j = await r.json();
+            if (!j || !j.adaptiveFormats) throw new Error("no formats");
+            const audio = j.adaptiveFormats.filter(f => f.type && f.type.startsWith('audio'));
+            if (!audio.length) throw new Error("no audio");
+            audio.sort((a, b) => parseInt(b.bitrate) - parseInt(a.bitrate));
+            
+            let streamUrl = audio[0].url;
+            
+            try {
+                const mirrorUrl = new URL(base);
+                const parsedStream = new URL(streamUrl);
+                if (parsedStream.hostname.includes('googlevideo.com')) {
+                    streamUrl = mirrorUrl.origin + parsedStream.pathname + parsedStream.search;
+                }
+            } catch(e) {}
+            
+            return streamUrl;
+        })
+    ));
+    return settled.filter(r => r.status === 'fulfilled').map(r => r.value);
+}
+
+function tryPlayCandidates(candidates, myToken, resumeAt) {
+    return new Promise(resolve => {
+        let i = 0;
+        function attemptNext() {
+            if (myToken !== playToken) { resolve(false); return; }
+            if (i >= candidates.length) { resolve(false); return; }
+            const url = candidates[i++];
+            let settled = false;
+
+            const finish = (ok) => {
+                if (settled) return;
+                settled = true;
+                audioEngine.removeEventListener('playing', onPlaying);
+                audioEngine.removeEventListener('error', onError);
+                audioEngine.removeEventListener('stalled', onError);
+                clearTimeout(watchdog);
+                if (ok) resolve(true); else attemptNext();
+            };
+            const onPlaying = () => finish(true);
+            const onError = () => finish(false);
+            const watchdog = setTimeout(() => finish(false), 9000);
+
+            audioEngine.addEventListener('playing', onPlaying, { once: true });
+            audioEngine.addEventListener('error', onError, { once: true });
+            audioEngine.addEventListener('stalled', onError, { once: true });
+
+            audioEngine.pause();
+            audioEngine.removeAttribute('src'); 
+            audioEngine.load(); 
+            audioEngine.src = url;
+
+            if (resumeAt > 0) {
+                const onMeta = () => { audioEngine.currentTime = resumeAt; audioEngine.removeEventListener('loadedmetadata', onMeta); };
+                audioEngine.addEventListener('loadedmetadata', onMeta);
+            }
+            const p = audioEngine.play();
+            if (p) p.catch(() => finish(false));
+        }
+        attemptNext();
+    });
+}
+
+async function initializeTrackStream(track, opts = {}) {
+    if (!track || !track.id || !track.title) return;
+    const { autoplay = true, resumeAt = 0 } = opts;
+    pendingResume = null; 
+    
+    // Reset prefetched track state
+    hasPrefetchedNext = false;
+    prefetchedNextTrack = null;
+
+    const myToken = ++playToken;
+    activeTrackData = { id: track.id, title: track.title, artist: track.artist, thumb: track.thumb };
+
+    updateNowPlayingUI();
+    updateMediaSession(activeTrackData);
+    rememberListen(activeTrackData);
+    saveSessionState(true);
+    loadLyricsForTrack(activeTrackData); 
+    setPlayIcons('loading');
+
+    audioEngine.pause();
+    audioEngine.loop = isLoopingActive;
+
+    const cleanedArtist = cleanArtistName(track.artist);
+    const mirrorPromise = resolveMirrorStreams(track.id); 
+    mirrorPromise.catch(() => {});
+
+    const candidates = [];
+    
+    if (myToken !== playToken) return;
+
+    try { candidates.push(await resolveSaavnStream(track.title, cleanedArtist)); } catch (e) {}
+    if (myToken !== playToken) return;
+
+    try { candidates.push(...(await mirrorPromise)); } catch (e) {}
+    if (myToken !== playToken) return;
+
+    if (!candidates.length) {
+        setPlayIcons('play');
+        showToast("Couldn't stream this track — sources are down, try another", true);
+        return false;
+    }
+
+    if (!autoplay) {
+        audioEngine.src = candidates[0];
+        if (resumeAt > 0) {
+            const onMeta = () => { audioEngine.currentTime = resumeAt; audioEngine.removeEventListener('loadedmetadata', onMeta); };
+            audioEngine.addEventListener('loadedmetadata', onMeta);
+        }
+        setPlayIcons('play');
+        return true;
+    }
+
+    const ok = await tryPlayCandidates(candidates, myToken, resumeAt);
+    if (myToken !== playToken) return false;
+    if (!ok) {
+        setPlayIcons('play');
+        showToast(`Couldn't play this track — tried ${candidates.length} source${candidates.length === 1 ? '' : 's'}, all failed`, true);
+    }
+    return ok;
+}
+
+/* ---- queue logic ---- */
+function playFromQueueContext(index) {
+    if (index >= 0 && index < playbackQueue.length) {
+        currentQueueIndex = index;
+        initializeTrackStream(playbackQueue[index]);
+    }
+}
+function playSingleAndQueueSimilar(track) {
+    playbackQueue = []; currentQueueIndex = -1;
+    initializeTrackStream(track);
+}
+function playWholeCollection() {
+    if (!playbackQueue.length) return;
+    currentQueueIndex = 0;
+    initializeTrackStream(playbackQueue[0]);
+}
+function playShuffledCollection() {
+    if (!playbackQueue.length) return;
+    if (!isShuffleActive) toggleShuffle();
+    currentQueueIndex = Math.floor(Math.random() * playbackQueue.length);
+    initializeTrackStream(playbackQueue[currentQueueIndex]);
+}
+function playNextTrack(shuffleRetries = 0) {
+    if (playbackQueue.length > 0) {
+        if (isShuffleActive) {
+            if (shuffleRetries >= playbackQueue.length) { playNextAlgorithmSong(); return; }
+            currentQueueIndex = Math.floor(Math.random() * playbackQueue.length);
+            initializeTrackStream(playbackQueue[currentQueueIndex]).then(ok => { if (!ok) playNextTrack(shuffleRetries + 1); });
+        } else if (currentQueueIndex < playbackQueue.length - 1) {
+            currentQueueIndex++;
+            initializeTrackStream(playbackQueue[currentQueueIndex]).then(ok => { if (!ok) playNextTrack(); });
+        } else playNextAlgorithmSong();
+    } else playNextAlgorithmSong();
+}
+function playPrevTrack() {
+    if (playbackQueue.length > 0 && currentQueueIndex > 0 && audioEngine.currentTime < 3) {
+        currentQueueIndex--;
+        initializeTrackStream(playbackQueue[currentQueueIndex]);
+    } else audioEngine.currentTime = 0;
+}
+
+/* When a song ends (or Next is pressed with nothing queued) the app picks
+   something to keep playing. */
+let autoPlayHistory = []; 
+
+async function gatherAlgorithmicCandidates(seedTrack) {
+    const jobs = [
+        fetchJsonRetry(`${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(seedTrack.title)}&artist=${encodeURIComponent(seedTrack.artist)}`, 2, 500).catch(() => [])
+    ];
+    const tastePool = shuffleArray([
+        ...(userProfile.likedSongs || []),
+        ...JSON.parse(localStorage.getItem('taste_profile_history') || '[]')
+    ]).filter(t => t && t.id && t.title && t.id !== seedTrack.id);
+    const altSeed = tastePool[0];
+    if (altSeed) {
+        jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(altSeed.title)}&artist=${encodeURIComponent(altSeed.artist)}`, 2, 500).catch(() => []));
+    }
+    jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(seedTrack.artist)}&f=song`, 2, 500).catch(() => []));
+
+    const responses = await Promise.all(jobs);
+    const seen = new Set();
+    const out = [];
+    responses.forEach(r => {
+        const arr = Array.isArray(r) ? r : (r.items || r.contents || []);
+        arr.forEach(raw => {
+            const t = normalizeTrack(raw, 'song');
+            if (!t.id || !t.title) return;
+            if (t.id === seedTrack.id || seen.has(t.id) || autoPlayHistory.includes(t.id)) return;
+            seen.add(t.id);
+            out.push(t);
+        });
+    });
+    return out;
+}
+
+function pickDiverseCandidate(candidates, seedTrack) {
+    const seedArtist = (seedTrack.artist || '').toLowerCase();
+    const different = candidates.filter(c => (c.artist || '').toLowerCase() !== seedArtist);
+    const pool = different.length ? different : candidates; 
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
+async function prefetchNextAlgorithmSong() {
+    if (!activeTrackData || prefetchedNextTrack) return;
+    try {
+        let pool = await gatherAlgorithmicCandidates(activeTrackData);
+        if (pool.length) {
+            prefetchedNextTrack = pickDiverseCandidate(pool, activeTrackData);
+        }
+    } catch(e) {}
+}
+
+async function playNextAlgorithmSong() {
+    if (!activeTrackData) return;
+    const seed = activeTrackData; 
+    setPlayIcons('loading');
+    try {
+        let pool = [];
+        let chosen = prefetchedNextTrack;
+        
+        // Reset prefetch states immediately for the new sequence
+        prefetchedNextTrack = null;
+        hasPrefetchedNext = false;
+
+        if (!chosen) {
+            pool = await gatherAlgorithmicCandidates(seed);
+            if (!pool.length) { setPlayIcons('play'); showToast("Couldn't find a suggestion right now", true); return; }
+        }
+
+        let attempts = 0;
+        while ((chosen || pool.length) && attempts < 4) {
+            if (!chosen) {
+                chosen = pickDiverseCandidate(pool, seed);
+                pool = pool.filter(c => c.id !== chosen.id);
+            }
+            attempts++;
+
+            autoPlayHistory.unshift(chosen.id);
+            autoPlayHistory = autoPlayHistory.slice(0, 8);
+            playbackQueue = []; currentQueueIndex = -1;
+
+            const ok = await initializeTrackStream(chosen);
+            if (ok) return;
+            
+            // if failed, prepare to loop again without current selection
+            chosen = null;
+        }
+        setPlayIcons('play');
+        showToast("Couldn't find a track that would actually play — try skipping again", true);
+    } catch (e) { setPlayIcons('play'); }
+}
+
+function togglePlayback() {
+    if (!audioEngine.src) {
+        if (pendingResume) {
+            const { track, resumeAt } = pendingResume;
+            pendingResume = null;
+            initializeTrackStream(track, { autoplay: true, resumeAt });
+        }
+        return;
+    }
+    if (audioEngine.paused) audioEngine.play().catch(() => {});
+    else audioEngine.pause();
+}
+function toggleAudioLoop() {
+    isLoopingActive = !isLoopingActive;
+    audioEngine.loop = isLoopingActive;
+    $('pb-loop').classList.toggle('on', isLoopingActive);
+    $('pb-loop-icon').className = isLoopingActive ? 'ri-repeat-one-line' : 'ri-repeat-line';
+    $('fs-loop').classList.toggle('on', isLoopingActive);
+    $('fs-loop').classList.toggle('ri-repeat-one-line', isLoopingActive);
+    $('fs-loop').classList.toggle('ri-repeat-line', !isLoopingActive);
+    saveSessionState(true);
+}
+function toggleShuffle() {
+    isShuffleActive = !isShuffleActive;
+    $('pb-shuffle').classList.toggle('on', isShuffleActive);
+    $('fs-shuffle').classList.toggle('on', isShuffleActive);
+    saveSessionState(true);
+}
+function toggleFullScreenPlayer() {
+    $('full-player-overlay').classList.toggle('active');
+}
+
+function paintSlider(slider, pct) {
+    slider.value = pct;
+    if (slider.classList.contains('vertical')) {
+        slider.style.background = `linear-gradient(to top, var(--accent) ${pct}%, #4d4d4d ${pct}%)`;
+    } else {
+        slider.style.background = `linear-gradient(to right, var(--accent) ${pct}%, #4d4d4d ${pct}%)`;
+    }
+}
+let userIsScrubbing = false;
+
+function updateProgressUI() {
+    const dur = audioEngine.duration;
+    const cur = audioEngine.currentTime;
+    const curTxt = formatTime(cur);
+    $('pb-current-time').textContent = curTxt;
+    $('fs-current-time').textContent = curTxt;
+    if (isNaN(dur) || !isFinite(dur)) {
+        $('pb-total-duration').textContent = "–:––";
+        $('fs-total-duration').textContent = "–:––";
+        return;
+    }
+    $('pb-total-duration').textContent = formatTime(dur);
+    $('fs-total-duration').textContent = formatTime(dur);
+    if (!userIsScrubbing) {
+        const pct = (cur / dur) * 100;
+        paintSlider($('pb-seek'), pct);
+        paintSlider($('fs-seek'), pct);
+        $('mini-progress-fill').style.width = pct + "%";
+
+        // Pre-fetch suggestion algorithm at 90% completion
+        if (pct >= 90 && !hasPrefetchedNext && !isLoopingActive) {
+            // Only prefetch if we are essentially at the end of the manual queue
+            if (playbackQueue.length === 0 || currentQueueIndex >= playbackQueue.length - 1) {
+                if (!isShuffleActive) { 
+                    hasPrefetchedNext = true;
+                    prefetchNextAlgorithmSong();
+                }
+            }
+        }
+    }
+}
+audioEngine.addEventListener('timeupdate', updateProgressUI);
+audioEngine.addEventListener('timeupdate', () => saveSessionState(false));
+audioEngine.addEventListener('loadedmetadata', updateProgressUI);
+audioEngine.addEventListener('play', () => setPlayIcons('pause'));
+audioEngine.addEventListener('pause', () => { setPlayIcons('play'); saveSessionState(true); });
+audioEngine.addEventListener('waiting', () => setPlayIcons('loading'));
+audioEngine.addEventListener('playing', () => setPlayIcons('pause'));
+audioEngine.addEventListener('ended', () => {
+    if (isLoopingActive) { audioEngine.currentTime = 0; audioEngine.play(); }
+    else playNextTrack();
+});
+
+['pb-seek', 'fs-seek'].forEach(id => {
+    const s = $(id);
+    s.addEventListener('input', () => {
+        userIsScrubbing = true;
+        paintSlider(s, s.value);
+        if (!isNaN(audioEngine.duration) && isFinite(audioEngine.duration)) {
+            $('pb-current-time').textContent = formatTime((s.value / 100) * audioEngine.duration);
+            $('fs-current-time').textContent = formatTime((s.value / 100) * audioEngine.duration);
+        }
+    });
+    s.addEventListener('change', () => {
+        userIsScrubbing = false;
+        if (!audioEngine.src || isNaN(audioEngine.duration) || !isFinite(audioEngine.duration)) return;
+        audioEngine.currentTime = (s.value / 100) * audioEngine.duration;
+    });
+});
+
+const volSlider = $('volume-slider');
+const fsVolSlider = $('fs-volume-slider');
+function applyVolume(val, save = true) {
+    val = Math.max(0, Math.min(100, Number(val)));
+    audioEngine.volume = val / 100;
+    paintSlider(volSlider, val);
+    paintSlider(fsVolSlider, val);
+    $('vol-pct').textContent = val + "%";
+    $('fs-vol-pct').textContent = val + "%";
+    const iconClass = val === 0 ? 'ri-volume-mute-line' : val < 50 ? 'ri-volume-down-line' : 'ri-volume-up-line';
+    $('vol-icon').className = iconClass;
+    $('fs-vol-icon').className = iconClass;
+    if (save) localStorage.setItem('hub_volume', String(val));
+}
+volSlider.addEventListener('input', () => applyVolume(volSlider.value));
+fsVolSlider.addEventListener('input', () => applyVolume(fsVolSlider.value));
+function toggleMute() {
+    const cur = Math.round(audioEngine.volume * 100);
+    if (cur > 0) { lastVolumeBeforeMute = cur; applyVolume(0); }
+    else applyVolume(lastVolumeBeforeMute || 50);
+}
+
+function toggleFsVolumePopup(event) {
+    if (event) event.stopPropagation();
+    $('fs-vol-popup').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('.fs-vol-wrap')) $('fs-vol-popup').classList.remove('open');
+});
+
+document.addEventListener('keydown', e => {
+    if (e.target.matches('input, textarea')) return;
+    if (e.code === 'Space') { e.preventDefault(); togglePlayback(); }
+    if (e.code === 'ArrowRight' && audioEngine.src) audioEngine.currentTime = Math.min(audioEngine.currentTime + 5, audioEngine.duration || 0);
+    if (e.code === 'ArrowLeft' && audioEngine.src) audioEngine.currentTime = Math.max(audioEngine.currentTime - 5, 0);
+});
+
+/* =====================================================================
+   PLAYLIST MODALS
+   (These functions were referenced in the old HTML but never defined,
+   so playlist creation from the UI silently did nothing.)
+===================================================================== */
+function openCreatePlaylistModal() {
+    if (!globalUser || globalUser === 'admin') { switchPane('account'); showToast("Log in to create playlists", true); return; }
+    pendingModalTrack = null;
+    $('modal-top-title').textContent = "Create playlist";
+    renderModalPlaylistList(false);
+    $('add-playlist-modal').classList.add('open');
+    setTimeout(() => $('new-pl-input').focus(), 80);
+}
+function openPlaylistModalFromPlayer() {
+    if (event) event.stopPropagation();
+    if (!globalUser || globalUser === 'admin') { switchPane('account'); showToast("Log in to use playlists", true); return; }
+    if (!activeTrackData) { showToast("Play a song first", true); return; }
+    pendingModalTrack = { ...activeTrackData, type: 'song' };
+    $('modal-top-title').textContent = "Add to playlist";
+    renderModalPlaylistList(true);
+    $('add-playlist-modal').classList.add('open');
+}
+function renderModalPlaylistList(clickable) {
+    const list = $('modal-playlist-list');
+    const pls = userProfile.customPlaylists || [];
+    if (!pls.length) {
+        list.innerHTML = `<p class="status-note">No playlists yet — create one below.</p>`;
+        return;
+    }
+    list.innerHTML = "";
+    pls.forEach(pl => {
+        const div = document.createElement('div');
+        div.className = 'modal-item';
+        div.innerHTML = `<i class="ri-music-2-line"></i>${escapeHtml(pl.name)} <span style="margin-left:auto; color:var(--dim); font-size:0.8rem;">${pl.tracks.length}</span>`;
+        if (clickable) div.onclick = () => addPendingTrackToPlaylist(pl.id);
+        else div.style.cursor = 'default';
+        list.appendChild(div);
+    });
+}
+function addPendingTrackToPlaylist(plId) {
+    const pl = userProfile.customPlaylists.find(p => p.id === plId);
+    if (!pl || !pendingModalTrack) return;
+    if (pl.tracks.some(t => t.id === pendingModalTrack.id)) { showToast("Already in that playlist", true); return; }
+    pl.tracks.push(pendingModalTrack);
+    syncProfile();
+    closeModals();
+    showToast(`Added to "${pl.name}"`);
+}
+function createAndAddToPlaylist() {
+    const name = $('new-pl-input').value.trim();
+    if (!name) { showToast("Give the playlist a name", true); return; }
+    const pl = { id: 'pl_' + Date.now(), name, tracks: [] };
+    if (pendingModalTrack) pl.tracks.push(pendingModalTrack);
+    userProfile.customPlaylists.push(pl);
+    $('new-pl-input').value = "";
+    syncProfile();
+    closeModals();
+    showToast(`Playlist "${name}" created`);
+}
+function removeCustomPlaylist(plId) {
+    const pl = userProfile.customPlaylists.find(p => p.id === plId);
+    if (!pl) return;
+    openConfirmModal(`Delete "${pl.name}"?`, "The playlist and its track list will be removed from your profile.", () => {
+        userProfile.customPlaylists = userProfile.customPlaylists.filter(p => p.id !== plId);
+        syncProfile();
+        if ($('pane-collection').classList.contains('active')) switchPane('library');
+        showToast("Playlist deleted", true);
+    });
+}
+function removeSongFromCustomPlaylist(plId, trackId) {
+    const pl = userProfile.customPlaylists.find(p => p.id === plId);
+    if (!pl) return;
+    pl.tracks = pl.tracks.filter(t => t.id !== trackId);
+    syncProfile();
+    openCollection('custom-playlist', plId);
+    showToast("Removed from playlist", true);
+}
+function closeModals() { $('add-playlist-modal').classList.remove('open'); pendingModalTrack = null; }
+
+/* =====================================================================
+   IMPORT PLAYLIST
+   YouTube Music: full track list via a new backend endpoint (see index.js).
+   Spotify: no public track-list API without server credentials, so this
+   only pulls the playlist's name + cover via Spotify's open oEmbed
+   endpoint and creates an empty playlist shell — the user's own
+   Spotify → YouTube Music converter (copy_playlists.py) produces a YTM
+   link that can then be imported here for the real tracks.
+===================================================================== */
+function openImportPlaylistModal() {
+    if (!globalUser || globalUser === 'admin') { switchPane('account'); showToast("Log in to import playlists", true); return; }
+    $('import-url-input').value = "";
+    $('import-msg').className = 'form-msg';
+    $('import-msg').textContent = "";
+    $('import-playlist-modal').classList.add('open');
+    setTimeout(() => $('import-url-input').focus(), 80);
+}
+function closeImportModal() { $('import-playlist-modal').classList.remove('open'); }
+
+function extractYtmPlaylistId(url) {
+    const m = url.match(/[?&]list=([\w-]+)/);
+    return m ? m[1] : null;
+}
+function extractSpotifyPlaylistUrl(url) {
+    return /open\.spotify\.com\/playlist\//.test(url) ? url.split('?')[0] : null;
+}
+
+async function submitImportPlaylist() {
+    const url = $('import-url-input').value.trim();
+    const msg = $('import-msg');
+    if (!url) { msg.className = 'form-msg err'; msg.textContent = "Paste a playlist link first."; return; }
+
+    const ytmId = extractYtmPlaylistId(url);
+    const spotifyUrl = extractSpotifyPlaylistUrl(url);
+    if (!ytmId && !spotifyUrl) {
+        msg.className = 'form-msg err';
+        msg.textContent = "That doesn't look like a YouTube Music or Spotify playlist link.";
+        return;
+    }
+
+    const btn = $('import-submit-btn');
+    btn.disabled = true;
+    msg.className = 'form-msg'; msg.textContent = "Importing…";
+
+    try {
+        if (ytmId) await importFromYoutubeMusic(ytmId);
+        else await importFromSpotify(spotifyUrl);
+    } catch (e) {
+        msg.className = 'form-msg err';
+        msg.textContent = e.message || "Couldn't import that playlist.";
+        btn.disabled = false;
+        return;
+    }
+    btn.disabled = false;
+}
+
+async function importFromYoutubeMusic(listId) {
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/playlist-import-proxy?id=${encodeURIComponent(listId)}`, 18000);
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data) throw new Error(data?.error || "Couldn't reach the playlist importer.");
+    if (data.error) throw new Error(data.error);
+
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) throw new Error("This playlist looks empty, private, or couldn't be read.");
+
+    const plName = data.title || "Imported playlist";
+    const tracks = items.filter(t => t.id && t.title).map(t => ({
+        id: t.id, title: t.title, artist: t.artist || "Unknown Artist",
+        thumb: t.thumb || `https://wsrv.nl?url=https://i.ytimg.com/vi_webp/${t.id}/mqdefault.webp`,
+        type: 'song'
+    }));
+    const pl = { id: 'pl_' + Date.now(), name: plName, tracks, source: 'YouTube Music', thumb: tracks[0]?.thumb || null };
+    userProfile.customPlaylists.push(pl);
+    syncProfile();
+    closeImportModal();
+    showToast(`Imported "${plName}" — ${tracks.length} track${tracks.length === 1 ? '' : 's'}`);
+}
+
+async function importFromSpotify(playlistUrl) {
+    let meta = null;
+    try {
+        const res = await fetchWithTimeout(`https://open.spotify.com/oembed?url=${encodeURIComponent(playlistUrl)}`, 8000);
+        if (res.ok) meta = await res.json();
+    } catch (e) {}
+
+    const plName = meta?.title || "Imported Spotify playlist";
+    const pl = { id: 'pl_' + Date.now(), name: plName, tracks: [], source: 'Spotify', thumb: meta?.thumbnail_url || null };
+    userProfile.customPlaylists.push(pl);
+    syncProfile();
+    closeImportModal();
+    showToast(`Added "${plName}" — convert it to YouTube Music and import that link to fill in tracks`, true);
+}
+
+/* Add a single song to a specific playlist by pasting its link — the
+   one-by-one alternative to full playlist import, using the same
+   oEmbed-backed resolver as pasting a link into search. */
+let addLinkTargetPlaylistId = null;
+function openAddLinkModal(plId) {
+    addLinkTargetPlaylistId = plId;
+    $('add-link-input').value = "";
+    $('add-link-msg').className = 'form-msg';
+    $('add-link-msg').textContent = "";
+    $('add-link-modal').classList.add('open');
+    setTimeout(() => $('add-link-input').focus(), 80);
+}
+function closeAddLinkModal() { $('add-link-modal').classList.remove('open'); addLinkTargetPlaylistId = null; }
+
+async function submitAddSongByLink() {
+    const link = $('add-link-input').value.trim();
+    const msg = $('add-link-msg');
+    if (!link) { msg.className = 'form-msg err'; msg.textContent = "Paste a song link first."; return; }
+
+    const btn = $('add-link-submit-btn');
+    btn.disabled = true;
+    msg.className = 'form-msg'; msg.textContent = "Resolving…";
+    try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/resolve-video-proxy?url=${encodeURIComponent(link)}`, 10000);
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data || data.error) throw new Error(data?.error || "Couldn't resolve that link.");
+
+        const pl = userProfile.customPlaylists.find(p => p.id === addLinkTargetPlaylistId);
+        if (!pl) throw new Error("That playlist no longer exists.");
+        const track = { id: data.id, title: data.title, artist: data.artist, thumb: data.thumb, type: 'song' };
+        if (pl.tracks.some(t => t.id === track.id)) { msg.className = 'form-msg err'; msg.textContent = "Already in this playlist."; btn.disabled = false; return; }
+
+        pl.tracks.push(track);
+        syncProfile();
+        closeAddLinkModal();
+        if ($('pane-collection').classList.contains('active')) openCollection('custom-playlist', pl.id);
+        showToast(`Added "${track.title}"`);
+    } catch (e) {
+        msg.className = 'form-msg err';
+        msg.textContent = e.message || "Couldn't add that song.";
+    }
+    btn.disabled = false;
+}
+
+let confirmCb = null;
+function openConfirmModal(title, text, cb) {
+    $('confirm-title').textContent = title;
+    $('confirm-text').textContent = text;
+    confirmCb = cb;
+    $('confirm-modal').classList.add('open');
+    $('confirm-action-btn').onclick = () => { if (confirmCb) confirmCb(); closeConfirmModal(); };
+}
+function closeConfirmModal() { $('confirm-modal').classList.remove('open'); confirmCb = null; }
+document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if (e.target === m) { closeModals(); closeConfirmModal(); closeImportModal(); closeAddLinkModal(); } }));
+$('import-url-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitImportPlaylist(); });
+$('add-link-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitAddSongByLink(); });
+$('new-pl-input').addEventListener('keydown', e => { if (e.key === 'Enter') createAndAddToPlaylist(); });
+
+/* =====================================================================
+   HOME: RECENTLY PLAYED + RECOMMENDATIONS
+   Fixes for "only works after refresh":
+   1. The init crash (see player section) meant login — and therefore
+      your liked-songs seeds — never loaded on page open.
+   2. Recommendations now render instantly from a cached copy of the
+      last result, then refresh silently in the background.
+   3. All seed lookups run in parallel instead of sequentially.
+===================================================================== */
+function renderRecentlyPlayed() {
+    const hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]').filter(t => t && t.id && t.title);
+    const shelf = $('shelf-recent');
+    if (!hist.length) { shelf.style.display = 'none'; return; }
+    shelf.style.display = 'block';
+    $('recent-grid').innerHTML = hist.slice(0, 6).map(t => createTrackCardHTML({ ...t, type: 'song' })).join('');
+}
+
+function renderRecGrids(songs, playlists) {
+    $('recommended-songs-grid').innerHTML = songs.slice(0, 10).map(t => createTrackCardHTML(t)).join('');
+    $('recommended-playlists-grid').innerHTML = playlists.slice(0, 6).map(t => createTrackCardHTML(t)).join('');
+    highlightActiveTrackCard();
+}
+
+let recsToken = 0;
+async function loadHomeRecommendations(manual = false) {
+    const myToken = ++recsToken;
+
+    // 1) Instant paint from cache (or skeletons on first ever visit)
+    const cached = JSON.parse(localStorage.getItem('home_recs_cache') || 'null');
+    if (cached && cached.songs?.length && !manual) {
+        renderRecGrids(cached.songs, cached.playlists || []);
+    } else {
+        $('recommended-songs-grid').innerHTML = skeletonCards(8);
+        $('recommended-playlists-grid').innerHTML = skeletonCards(4);
+    }
+
+    // 2) Fresh fetch in the background
+    try {
+        const { songs, playlists } = await buildRecommendations();
+        if (myToken !== recsToken) return;
+        renderRecGrids(songs, playlists);
+        localStorage.setItem('home_recs_cache', JSON.stringify({ songs: songs.slice(0, 12), playlists: playlists.slice(0, 8), at: Date.now() }));
+        if (manual) showToast("Recommendations refreshed");
+    } catch (e) {
+        if (myToken !== recsToken) return;
+        if (!cached) {
+            $('recommended-songs-grid').innerHTML = `<p class="status-note err" style="grid-column:1/-1;">Couldn't reach the music mirrors. Hit Refresh to retry.</p>`;
+            $('recommended-playlists-grid').innerHTML = "";
+        }
+    }
+}
+
+async function buildRecommendations() {
+    // Seeds: liked songs + local listen/search history
+    const hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
+    let seeds = [...(userProfile.likedSongs || []), ...hist.filter(t => t && t.id && t.title)];
+    seeds = shuffleArray(seeds).slice(0, 3);
+
+    const jobs = [];
+    seeds.forEach(s => {
+        jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(s.title)}&artist=${encodeURIComponent(s.artist)}`, 2, 500).catch(() => []));
+        jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(s.artist + " playlist mix")}&f=playlists`, 2, 500).catch(() => []));
+    });
+    // Global fallbacks run in the SAME parallel batch (old code awaited them serially)
+    jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=Tunisian+Rap+Arabic+Pop&f=song`, 2, 500).catch(() => []));
+    jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=Top+Arabic+Hits&f=playlists`, 2, 500).catch(() => []));
+
+    const responses = await Promise.all(jobs);
+    let songPool = [], plPool = [];
+    responses.forEach((res, idx) => {
+        const arr = Array.isArray(res) ? res : (res.items || res.contents || []);
+        const isSongJob = (idx < seeds.length * 2) ? (idx % 2 === 0) : (idx === responses.length - 2);
+        if (isSongJob) songPool = songPool.concat(arr.filter(t => (t.id || t.videoId) && (t.title || t.name)));
+        else plPool = plPool.concat(arr.filter(t => t.type !== 'channel' && t.resultType !== 'artist'));
+    });
+
+    songPool = shuffleArray(songPool); plPool = shuffleArray(plPool);
+
+    const songs = [], seenS = new Set();
+    songPool.forEach(t => {
+        const id = t.id || t.videoId;
+        if (id && !seenS.has(id)) { seenS.add(id); songs.push(normalizeTrack(t, 'song')); }
+    });
+    const playlists = [], seenP = new Set();
+    plPool.forEach(t => {
+        const id = t.id || t.playlistId || t.browseId;
+        if (id && !seenP.has(id) && String(id).length > 5) { seenP.add(id); playlists.push(normalizeTrack(t, 'playlist')); }
+    });
+
+    if (!songs.length && !playlists.length) throw new Error("No recommendation data");
+    return { songs, playlists };
+}
+
+/* =====================================================================
+   INIT — order matters; everything is defined above this point.
+===================================================================== */
+(function init() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+    }
+    $('topbar-greeting').textContent = timeGreeting();
+    applyVolume(Number(localStorage.getItem('hub_volume') ?? 50), false);
+    paintSlider($('pb-seek'), 0);
+    paintSlider($('fs-seek'), 0);
+    populateLibraryUI();
+    renderRecentlyPlayed();
+    restoreSessionState();                // bring back the last song + position, ready to resume on Play
+    loadHomeRecommendations();            // paints instantly from cache, refreshes in background
+    if (globalUser && globalPass) {
+        executeLogin(globalUser, globalPass); // re-renders recs with your liked-song seeds once profile arrives
+    } else {
+        applyIdentityUI(null);
+    }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+name = "new-music-space-api"
+main = "index.js"
+compatibility_date = "2026-03-05"
+
+[[kv_namespaces]]
+binding = "NEW_USER_STORE"
+id = "83d63e77649b4cd89449ce0630a8820a"
