@@ -292,6 +292,10 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
 .user-row-meta p { font-size: 0.78rem; color: var(--dim); }
 .admin-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; font-weight: 700; color: var(--dim); cursor: pointer; flex-shrink: 0; }
 .admin-toggle input { width: 17px; height: 17px; accent-color: var(--danger); cursor: pointer; }
+.surprise-toggle input { accent-color: #ff5fa2; }
+.surprise-toggle span i { color: #ff5fa2; }
+.user-row-delete { flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%; border: none; background: transparent; color: var(--dim); font-size: 1.15rem; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .18s, color .18s; }
+.user-row-delete:hover { background: rgba(241,94,108,0.15); color: var(--danger); }
 
 /* ===== PLAYER BAR (desktop) ===== */
 .player-bar {
@@ -476,6 +480,1033 @@ input[type=range].slider.vertical {
     .mobile-nav li.active { color: #fff; }
     .mobile-nav li i { font-size: 1.5rem; }
 }
+/* ============ SURPRISE OVERLAY ============ */
+#surprise-overlay {
+    position: fixed; inset: 0; z-index: 60000; display: none;
+    background: #000; overflow: hidden; opacity: 0; transition: opacity .8s ease;
+}
+#surprise-overlay.show { display: block; opacity: 1; }
+#surprise-sparkles { position: absolute; inset: 0; pointer-events: none; z-index: 40; }
+.spark {
+    position: absolute; color: #ffe08a; font-size: 1rem; opacity: 0;
+    animation: sparkPop 1.5s ease-out forwards; text-shadow: 0 0 8px rgba(255,210,120,0.8);
+}
+@keyframes sparkPop {
+    0% { opacity: 0; transform: scale(0) rotate(0deg); }
+    40% { opacity: 1; transform: scale(1.15) rotate(60deg); }
+    100% { opacity: 0; transform: scale(0.5) rotate(140deg); }
+}
+/* stage holds the flower garden, pinned to the bottom like the original */
+#surprise-stage {
+    position: absolute; inset: 0; z-index: 2;
+    display: flex; align-items: flex-end; justify-content: center;
+    perspective: 1000px; overflow: hidden;
+}
+/* message + button sit in their own centered layer above the garden */
+#surprise-message-layer {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center;
+    padding: max(8vh, env(safe-area-inset-top)) 22px 0;
+    pointer-events: none;
+}
+#surprise-text {
+    width: 100%; max-width: min(92vw, 400px); margin: 0 auto; text-align: center;
+    font-family: 'Caveat', cursive; font-weight: 700; line-height: 1.35;
+    font-size: clamp(1.4rem, 6.5vw, 2.2rem); color: #fff;
+    text-shadow: 0 2px 18px rgba(0,0,0,0.9), 0 0 22px rgba(255,120,180,0.4);
+    min-height: 3em;
+    white-space: normal; overflow-wrap: break-word; word-break: normal; hyphens: none;
+}
+#surprise-text .word { display: inline-block; white-space: nowrap; }
+#surprise-text .ch { opacity: 0; }
+#surprise-text .ch.space { display: inline; }
+#surprise-text .ch.on { opacity: 1; animation: chIn .28s ease forwards; }
+@keyframes chIn { from { opacity: 0; filter: blur(3px); } to { opacity: 1; filter: blur(0); } }
+#surprise-text .sig { display: block; margin-top: 12px; color: #ff9ec4; font-size: 0.82em; }
+#surprise-close {
+    margin-top: 26px; opacity: 0; pointer-events: none;
+    background: #ff6fa5; color: #fff; border: none; border-radius: 50px;
+    padding: 13px 30px; font-size: 0.95rem; font-weight: 800; cursor: pointer;
+    box-shadow: 0 8px 26px rgba(255,111,165,0.45);
+    transition: opacity .6s ease, transform .18s ease;
+}
+#surprise-close.show { opacity: 1; pointer-events: auto; }
+#surprise-close:active { transform: scale(0.94); }
+@media (prefers-reduced-motion: reduce) { .spark { animation-duration: .01s; } }
+
+@charset "UTF-8";
+/* Adapted from mdusmanansari's "CSS Blossoming Flowers" (CodePen BamepLe).
+   Recolored to pink tulips with green stems/leaves, and fully scoped under
+   #surprise-overlay so nothing leaks into the rest of the app. */
+#surprise-overlay {
+  --dark-color: #000;
+  --petal-1: #ffd3e6;
+  --petal-2: #ff6fa5;
+  --petal-3: #ff4f93;
+  --petal-glow: #ff9ec7;
+  --green-1: #2ea043;
+  --green-2: #7bd88f;
+  --green-dark: #1a7a2e;
+}
+#surprise-overlay .night {
+  position: fixed;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  height: 100%;
+  filter: blur(0.1vmin);
+  background-image: radial-gradient(ellipse at top, transparent 0%, var(--dark-color)), radial-gradient(ellipse at bottom, var(--dark-color), rgba(255, 145, 200, 0.2)), repeating-linear-gradient(220deg, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 19px, transparent 19px, transparent 22px), repeating-linear-gradient(189deg, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 19px, transparent 19px, transparent 22px), repeating-linear-gradient(148deg, rgb(0, 0, 0) 0px, rgb(0, 0, 0) 19px, transparent 19px, transparent 22px), linear-gradient(90deg, #ff8fc4, #ffe0ee);
+}
+#surprise-overlay .flowers {
+  position: relative;
+  transform: scale(0.9);
+}
+#surprise-overlay .flower {
+  position: absolute;
+  bottom: 10vmin;
+  transform-origin: bottom center;
+  z-index: 10;
+  --fl-speed: 0.4s;
+}
+#surprise-overlay .flower--1 {
+  animation: moving-flower-1 4s linear infinite;
+}
+#surprise-overlay .flower--1 .flower__line {
+  height: 70vmin;
+  animation-delay: 0.15s;
+}
+#surprise-overlay .flower--1 .flower__line__leaf--1 {
+  animation: blooming-leaf-right var(--fl-speed) 0.8s backwards;
+}
+#surprise-overlay .flower--1 .flower__line__leaf--2 {
+  animation: blooming-leaf-right var(--fl-speed) 0.7s backwards;
+}
+#surprise-overlay .flower--1 .flower__line__leaf--3 {
+  animation: blooming-leaf-left var(--fl-speed) 0.6s backwards;
+}
+#surprise-overlay .flower--1 .flower__line__leaf--4 {
+  animation: blooming-leaf-left var(--fl-speed) 0.5s backwards;
+}
+#surprise-overlay .flower--1 .flower__line__leaf--5 {
+  animation: blooming-leaf-right var(--fl-speed) 0.9s backwards;
+}
+#surprise-overlay .flower--1 .flower__line__leaf--6 {
+  animation: blooming-leaf-left var(--fl-speed) 1s backwards;
+}
+#surprise-overlay .flower--2 {
+  left: 50%;
+  transform: rotate(20deg);
+  animation: moving-flower-2 4s linear infinite;
+}
+#surprise-overlay .flower--2 .flower__line {
+  height: 60vmin;
+  animation-delay: 0.3s;
+}
+#surprise-overlay .flower--2 .flower__line__leaf--1 {
+  animation: blooming-leaf-right var(--fl-speed) 0.95s backwards;
+}
+#surprise-overlay .flower--2 .flower__line__leaf--2 {
+  animation: blooming-leaf-right var(--fl-speed) 0.85s backwards;
+}
+#surprise-overlay .flower--2 .flower__line__leaf--3 {
+  animation: blooming-leaf-left var(--fl-speed) 0.75s backwards;
+}
+#surprise-overlay .flower--2 .flower__line__leaf--4 {
+  animation: blooming-leaf-left var(--fl-speed) 0.65s backwards;
+}
+#surprise-overlay .flower--3 {
+  left: 50%;
+  transform: rotate(-15deg);
+  animation: moving-flower-3 4s linear infinite;
+}
+#surprise-overlay .flower--3 .flower__line {
+  animation-delay: 0.45s;
+}
+#surprise-overlay .flower--3 .flower__line__leaf--1 {
+  animation: blooming-leaf-right var(--fl-speed) 1.25s backwards;
+}
+#surprise-overlay .flower--3 .flower__line__leaf--2 {
+  animation: blooming-leaf-right var(--fl-speed) 1.15s backwards;
+}
+#surprise-overlay .flower--3 .flower__line__leaf--3 {
+  animation: blooming-leaf-left var(--fl-speed) 1.05s backwards;
+}
+#surprise-overlay .flower--3 .flower__line__leaf--4 {
+  animation: blooming-leaf-left var(--fl-speed) 0.95s backwards;
+}
+#surprise-overlay .flower__leafs {
+  position: relative;
+  animation: blooming-flower 1s backwards;
+}
+#surprise-overlay .flower__leafs--1 {
+  animation-delay: 0.55s;
+}
+#surprise-overlay .flower__leafs--2 {
+  animation-delay: 0.7s;
+}
+#surprise-overlay .flower__leafs--3 {
+  animation-delay: 0.85s;
+}
+#surprise-overlay .flower__leafs::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-50%, -100%);
+  width: 8vmin;
+  height: 8vmin;
+  background-color: var(--petal-glow);
+  filter: blur(10vmin);
+}
+#surprise-overlay .flower {
+  /* TULIP BLOOM — cupped petals instead of the original flat daisy */
+}
+#surprise-overlay .flower__leaf {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 8vmin;
+  height: 13vmin;
+  border-radius: 50% 50% 45% 45%/70% 70% 30% 30%;
+  background-color: var(--petal-2);
+  background-image: linear-gradient(to top, var(--petal-3), var(--petal-1));
+  transform-origin: bottom center;
+  opacity: 0.95;
+  box-shadow: inset 0 0 2vmin rgba(255, 255, 255, 0.45);
+}
+#surprise-overlay .flower__leaf--1 {
+  transform: translate(-10%, 1%) rotateY(40deg) rotateX(-46deg);
+}
+#surprise-overlay .flower__leaf--2 {
+  transform: translate(-50%, -6%) rotateX(34deg);
+}
+#surprise-overlay .flower__leaf--3 {
+  transform: translate(-90%, 0%) rotateY(45deg) rotateX(46deg);
+}
+#surprise-overlay .flower__leaf--4 {
+  width: 8vmin;
+  height: 9vmin;
+  transform-origin: bottom left;
+  border-radius: 50% 50% 45% 45%/68% 68% 32% 32%;
+  transform: translate(-50%, 6%) rotateX(18deg);
+  background-image: linear-gradient(to top, var(--petal-3), var(--petal-2));
+  z-index: 1;
+  opacity: 0.92;
+}
+#surprise-overlay .flower {
+  /* center of the tulip */
+}
+#surprise-overlay .flower__white-circle {
+  position: absolute;
+  left: -3.5vmin;
+  top: -1.5vmin;
+  width: 9vmin;
+  height: 3vmin;
+  border-radius: 50%;
+  background-color: var(--petal-1);
+  opacity: 0.55;
+  filter: blur(0.4vmin);
+}
+#surprise-overlay .flower__white-circle::after {
+  content: none;
+}
+#surprise-overlay .flower__line {
+  height: 55vmin;
+  width: 1.5vmin;
+  background-image: linear-gradient(to left, rgba(0, 0, 0, 0.2), transparent, rgba(255, 255, 255, 0.2)), linear-gradient(to top, transparent 10%, var(--green-dark), var(--green-1));
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.5);
+  animation: grow-flower-tree 2s backwards;
+}
+#surprise-overlay .flower__line__leaf {
+  --w: 7vmin;
+  --h: calc(var(--w) + 2vmin);
+  position: absolute;
+  top: 20%;
+  left: 90%;
+  width: var(--w);
+  height: var(--h);
+  border-top-right-radius: var(--h);
+  border-bottom-left-radius: var(--h);
+  background-image: linear-gradient(to top, rgba(26, 122, 46, 0.5), var(--green-2));
+}
+#surprise-overlay .flower__line__leaf--1 {
+  transform: rotate(70deg) rotateY(30deg);
+}
+#surprise-overlay .flower__line__leaf--2 {
+  top: 45%;
+  transform: rotate(70deg) rotateY(30deg);
+}
+#surprise-overlay .flower__line__leaf--3, #surprise-overlay .flower__line__leaf--4, #surprise-overlay .flower__line__leaf--6 {
+  border-top-right-radius: 0;
+  border-bottom-left-radius: 0;
+  border-top-left-radius: var(--h);
+  border-bottom-right-radius: var(--h);
+  left: -460%;
+  top: 12%;
+  transform: rotate(-70deg) rotateY(30deg);
+}
+#surprise-overlay .flower__line__leaf--4 {
+  top: 40%;
+}
+#surprise-overlay .flower__line__leaf--5 {
+  top: 0;
+  transform-origin: left;
+  transform: rotate(70deg) rotateY(30deg) scale(0.6);
+}
+#surprise-overlay .flower__line__leaf--6 {
+  top: -2%;
+  left: -450%;
+  transform-origin: right;
+  transform: rotate(-70deg) rotateY(30deg) scale(0.6);
+}
+#surprise-overlay .flower__light {
+  position: absolute;
+  bottom: 0vmin;
+  width: 1vmin;
+  height: 1vmin;
+  background-color: #ffd84f;
+  border-radius: 50%;
+  filter: blur(0.2vmin);
+  animation: light-ans 4s linear infinite backwards;
+}
+#surprise-overlay .flower__light:nth-child(odd) {
+  background-color: var(--petal-glow);
+}
+#surprise-overlay .flower__light--1 {
+  left: -2vmin;
+  animation-delay: 1s;
+}
+#surprise-overlay .flower__light--2 {
+  left: 3vmin;
+  animation-delay: 0.5s;
+}
+#surprise-overlay .flower__light--3 {
+  left: -6vmin;
+  animation-delay: 0.3s;
+}
+#surprise-overlay .flower__light--4 {
+  left: 6vmin;
+  animation-delay: 0.9s;
+}
+#surprise-overlay .flower__light--5 {
+  left: -1vmin;
+  animation-delay: 1.5s;
+}
+#surprise-overlay .flower__light--6 {
+  left: -4vmin;
+  animation-delay: 3s;
+}
+#surprise-overlay .flower__light--7 {
+  left: 3vmin;
+  animation-delay: 2s;
+}
+#surprise-overlay .flower__light--8 {
+  left: -6vmin;
+  animation-delay: 3.5s;
+}
+#surprise-overlay .flower__grass {
+  --c: var(--green-1);
+  --line-w: 1.5vmin;
+  position: absolute;
+  bottom: 12vmin;
+  left: -7vmin;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  z-index: 20;
+  transform-origin: bottom center;
+  transform: rotate(-48deg) rotateY(40deg);
+}
+#surprise-overlay .flower__grass--1 {
+  animation: moving-grass 2s linear infinite;
+}
+#surprise-overlay .flower__grass--2 {
+  left: 2vmin;
+  bottom: 10vmin;
+  transform: scale(0.5) rotate(75deg) rotateX(10deg) rotateY(-200deg);
+  opacity: 0.8;
+  z-index: 0;
+  animation: moving-grass--2 1.5s linear infinite;
+}
+#surprise-overlay .flower__grass--top {
+  width: 7vmin;
+  height: 10vmin;
+  border-top-right-radius: 100%;
+  border-right: var(--line-w) solid var(--c);
+  transform-origin: bottom center;
+  transform: rotate(-2deg);
+}
+#surprise-overlay .flower__grass--bottom {
+  margin-top: -2px;
+  width: var(--line-w);
+  height: 25vmin;
+  background-image: linear-gradient(to top, transparent, var(--c));
+}
+#surprise-overlay .flower__grass__leaf {
+  --size: 10vmin;
+  position: absolute;
+  width: calc(var(--size) * 2.1);
+  height: var(--size);
+  border-top-left-radius: var(--size);
+  border-top-right-radius: var(--size);
+  background-image: linear-gradient(to top, transparent, transparent 30%, var(--c));
+  z-index: 100;
+}
+#surprise-overlay .flower__grass__leaf--1 {
+  top: -6%;
+  left: 30%;
+  --size: 6vmin;
+  transform: rotate(-20deg);
+  animation: growing-grass-ans--1 1s 1.3s backwards;
+}
+@keyframes growing-grass-ans--1 {
+  0% {
+    transform-origin: bottom left;
+    transform: rotate(-20deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__leaf--2 {
+  top: -5%;
+  left: -110%;
+  --size: 6vmin;
+  transform: rotate(10deg);
+  animation: growing-grass-ans--2 1s 1.2s linear backwards;
+}
+@keyframes growing-grass-ans--2 {
+  0% {
+    transform-origin: bottom right;
+    transform: rotate(10deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__leaf--3 {
+  top: 5%;
+  left: 60%;
+  --size: 8vmin;
+  transform: rotate(-18deg) rotateX(-20deg);
+  animation: growing-grass-ans--3 1s 1.1s linear backwards;
+}
+@keyframes growing-grass-ans--3 {
+  0% {
+    transform-origin: bottom left;
+    transform: rotate(-18deg) rotateX(-20deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__leaf--4 {
+  top: 6%;
+  left: -135%;
+  --size: 8vmin;
+  transform: rotate(2deg);
+  animation: growing-grass-ans--4 1s 1s linear backwards;
+}
+@keyframes growing-grass-ans--4 {
+  0% {
+    transform-origin: bottom right;
+    transform: rotate(2deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__leaf--5 {
+  top: 20%;
+  left: 60%;
+  --size: 10vmin;
+  transform: rotate(-24deg) rotateX(-20deg);
+  animation: growing-grass-ans--5 1s 0.9s linear backwards;
+}
+@keyframes growing-grass-ans--5 {
+  0% {
+    transform-origin: bottom left;
+    transform: rotate(-24deg) rotateX(-20deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__leaf--6 {
+  top: 22%;
+  left: -180%;
+  --size: 10vmin;
+  transform: rotate(10deg);
+  animation: growing-grass-ans--6 1s 0.8s linear backwards;
+}
+@keyframes growing-grass-ans--6 {
+  0% {
+    transform-origin: bottom right;
+    transform: rotate(10deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__leaf--7 {
+  top: 39%;
+  left: 70%;
+  --size: 10vmin;
+  transform: rotate(-10deg);
+  animation: growing-grass-ans--7 1s 0.7s linear backwards;
+}
+@keyframes growing-grass-ans--7 {
+  0% {
+    transform-origin: bottom left;
+    transform: rotate(-10deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__leaf--8 {
+  top: 40%;
+  left: -215%;
+  --size: 11vmin;
+  transform: rotate(10deg);
+  animation: growing-grass-ans--8 1s 0.6s linear backwards;
+}
+@keyframes growing-grass-ans--8 {
+  0% {
+    transform-origin: bottom right;
+    transform: rotate(10deg) scale(0);
+  }
+}
+#surprise-overlay .flower__grass__overlay {
+  position: absolute;
+  top: -10%;
+  right: 0%;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6);
+  filter: blur(1.5vmin);
+  z-index: 100;
+}
+#surprise-overlay .flower__g-long {
+  --w: 2vmin;
+  --h: 6vmin;
+  --c: var(--green-1);
+  position: absolute;
+  bottom: 10vmin;
+  left: -3vmin;
+  transform-origin: bottom center;
+  transform: rotate(-30deg) rotateY(-20deg);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  animation: flower-g-long-ans 3s linear infinite;
+}
+@keyframes flower-g-long-ans {
+  0%, 100% {
+    transform: rotate(-30deg) rotateY(-20deg);
+  }
+  50% {
+    transform: rotate(-32deg) rotateY(-20deg);
+  }
+}
+#surprise-overlay .flower__g-long__top {
+  top: calc(var(--h) * -1);
+  width: calc(var(--w) + 1vmin);
+  height: var(--h);
+  border-top-right-radius: 100%;
+  border-right: 0.7vmin solid var(--c);
+  transform: translate(-0.7vmin, 1vmin);
+}
+#surprise-overlay .flower__g-long__bottom {
+  width: var(--w);
+  height: 50vmin;
+  transform-origin: bottom center;
+  background-image: linear-gradient(to top, transparent 30%, var(--c));
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.5);
+  clip-path: polygon(35% 0, 65% 1%, 100% 100%, 0% 100%);
+}
+#surprise-overlay .flower__g-right {
+  position: absolute;
+  bottom: 6vmin;
+  left: -2vmin;
+  transform-origin: bottom left;
+  transform: rotate(20deg);
+}
+#surprise-overlay .flower__g-right .leaf {
+  width: 30vmin;
+  height: 50vmin;
+  border-top-left-radius: 100%;
+  border-left: 2vmin solid var(--green-dark);
+  background-image: linear-gradient(to bottom, transparent, var(--dark-color) 60%);
+  -webkit-mask-image: linear-gradient(to top, transparent 30%, var(--green-dark) 60%);
+}
+#surprise-overlay .flower__g-right--1 {
+  animation: flower-g-right-ans 2.5s linear infinite;
+}
+#surprise-overlay .flower__g-right--2 {
+  left: 5vmin;
+  transform: rotateY(-180deg);
+  animation: flower-g-right-ans--2 3s linear infinite;
+}
+#surprise-overlay .flower__g-right--2 .leaf {
+  height: 75vmin;
+  filter: blur(0.3vmin);
+  opacity: 0.8;
+}
+@keyframes flower-g-right-ans {
+  0%, 100% {
+    transform: rotate(20deg);
+  }
+  50% {
+    transform: rotate(24deg) rotateX(-20deg);
+  }
+}
+@keyframes flower-g-right-ans--2 {
+  0%, 100% {
+    transform: rotateY(-180deg) rotate(0deg) rotateX(-20deg);
+  }
+  50% {
+    transform: rotateY(-180deg) rotate(6deg) rotateX(-20deg);
+  }
+}
+#surprise-overlay .flower__g-front {
+  position: absolute;
+  bottom: 6vmin;
+  left: 2.5vmin;
+  z-index: 100;
+  transform-origin: bottom center;
+  transform: rotate(-28deg) rotateY(30deg) scale(1.04);
+  animation: flower__g-front-ans 2s linear infinite;
+}
+@keyframes flower__g-front-ans {
+  0%, 100% {
+    transform: rotate(-28deg) rotateY(30deg) scale(1.04);
+  }
+  50% {
+    transform: rotate(-35deg) rotateY(40deg) scale(1.04);
+  }
+}
+#surprise-overlay .flower__g-front__line {
+  width: 0.3vmin;
+  height: 20vmin;
+  background-image: linear-gradient(to top, transparent, var(--green-dark), transparent 100%);
+  position: relative;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: bottom left;
+  transform: rotate(10deg);
+}
+#surprise-overlay .flower__g-front__leaf-wrapper:nth-child(even) {
+  left: 0vmin;
+  transform: rotateY(-180deg) rotate(5deg);
+  animation: flower__g-front__leaf-left-ans 0.5s ease-in backwards;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper:nth-child(odd) {
+  animation: flower__g-front__leaf-ans 0.5s ease-in backwards;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--1 {
+  top: -8vmin;
+  transform: scale(0.7);
+  animation: flower__g-front__leaf-ans 0.5s 2.7s ease-in backwards !important;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--2 {
+  top: -8vmin;
+  transform: rotateY(-180deg) scale(0.7) !important;
+  animation: flower__g-front__leaf-left-ans-2 0.5s 2.3s ease-in backwards !important;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--3 {
+  top: -3vmin;
+  animation: flower__g-front__leaf-ans 0.5s 2.3s ease-in backwards;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--4 {
+  top: -3vmin;
+  transform: rotateY(-180deg) scale(0.9) !important;
+  animation: flower__g-front__leaf-left-ans-2 0.5s 2.3s ease-in backwards !important;
+}
+@keyframes flower__g-front__leaf-left-ans-2 {
+  0% {
+    transform: rotateY(-180deg) scale(0);
+  }
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--5, #surprise-overlay .flower__g-front__leaf-wrapper--6 {
+  top: 2vmin;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--7, #surprise-overlay .flower__g-front__leaf-wrapper--8 {
+  top: 6.5vmin;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--2 {
+  animation-delay: 2.6s !important;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--3 {
+  animation-delay: 2.45s !important;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--5 {
+  animation-delay: 2.15s !important;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--6 {
+  animation-delay: 2.05s !important;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--7 {
+  animation-delay: 1.9s !important;
+}
+#surprise-overlay .flower__g-front__leaf-wrapper--8 {
+  animation-delay: 1.75s !important;
+}
+@keyframes flower__g-front__leaf-ans {
+  0% {
+    transform: rotate(10deg) scale(0);
+  }
+}
+@keyframes flower__g-front__leaf-left-ans {
+  0% {
+    transform: rotateY(-180deg) rotate(5deg) scale(0);
+  }
+}
+#surprise-overlay .flower__g-front__leaf {
+  width: 10vmin;
+  height: 10vmin;
+  border-radius: 100% 0% 0% 100%/100% 100% 0% 0%;
+  box-shadow: inset 0 2px 1vmin rgba(123, 216, 143, 0.3);
+  background-image: linear-gradient(to bottom left, transparent, var(--dark-color)), linear-gradient(to bottom right, var(--green-1) 50%, transparent 50%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom right, var(--green-1) 50%, transparent 50%, transparent);
+  mask-image: linear-gradient(to bottom right, var(--green-1) 50%, transparent 50%, transparent);
+}
+#surprise-overlay .flower__g-fr {
+  position: absolute;
+  bottom: -4vmin;
+  left: 1vmin;
+  transform-origin: bottom left;
+  z-index: 10;
+  animation: flower__g-fr-ans 2s linear infinite;
+}
+@keyframes flower__g-fr-ans {
+  0%, 100% {
+    transform: rotate(2deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+#surprise-overlay .flower__g-fr .leaf {
+  width: 30vmin;
+  height: 50vmin;
+  border-top-left-radius: 100%;
+  border-left: 2vmin solid var(--green-dark);
+  -webkit-mask-image: linear-gradient(to top, transparent 25%, var(--green-dark) 50%);
+  position: relative;
+  z-index: 1;
+}
+#surprise-overlay .flower__g-fr__leaf {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 10vmin;
+  height: 10vmin;
+  border-radius: 100% 0% 0% 100%/100% 100% 0% 0%;
+  box-shadow: inset 0 2px 1vmin rgba(123, 216, 143, 0.3);
+  background-image: linear-gradient(to bottom left, transparent, var(--dark-color) 98%), linear-gradient(to bottom right, var(--green-2) 45%, transparent 50%, transparent);
+  -webkit-mask-image: linear-gradient(135deg, var(--green-1) 40%, transparent 50%, transparent);
+}
+#surprise-overlay .flower__g-fr__leaf--1 {
+  left: 20vmin;
+  transform: rotate(45deg);
+  animation: flower__g-fr-leaft-ans-1 0.5s 2.6s linear backwards;
+}
+@keyframes flower__g-fr-leaft-ans-1 {
+  0% {
+    transform-origin: left;
+    transform: rotate(45deg) scale(0);
+  }
+}
+#surprise-overlay .flower__g-fr__leaf--2 {
+  left: 12vmin;
+  top: -7vmin;
+  transform: rotate(25deg) rotateY(-180deg);
+  animation: flower__g-fr-leaft-ans-6 0.5s 2.5s linear backwards;
+}
+#surprise-overlay .flower__g-fr__leaf--3 {
+  left: 15vmin;
+  top: 6vmin;
+  transform: rotate(55deg);
+  animation: flower__g-fr-leaft-ans-5 0.5s 2.4s linear backwards;
+}
+#surprise-overlay .flower__g-fr__leaf--4 {
+  left: 6vmin;
+  top: -2vmin;
+  transform: rotate(25deg) rotateY(-180deg);
+  animation: flower__g-fr-leaft-ans-6 0.5s 2.3s linear backwards;
+}
+#surprise-overlay .flower__g-fr__leaf--5 {
+  left: 10vmin;
+  top: 14vmin;
+  transform: rotate(55deg);
+  animation: flower__g-fr-leaft-ans-5 0.5s 2.2s linear backwards;
+}
+@keyframes flower__g-fr-leaft-ans-5 {
+  0% {
+    transform-origin: left;
+    transform: rotate(55deg) scale(0);
+  }
+}
+#surprise-overlay .flower__g-fr__leaf--6 {
+  left: 0vmin;
+  top: 6vmin;
+  transform: rotate(25deg) rotateY(-180deg);
+  animation: flower__g-fr-leaft-ans-6 0.5s 2.1s linear backwards;
+}
+@keyframes flower__g-fr-leaft-ans-6 {
+  0% {
+    transform-origin: right;
+    transform: rotate(25deg) rotateY(-180deg) scale(0);
+  }
+}
+#surprise-overlay .flower__g-fr__leaf--7 {
+  left: 5vmin;
+  top: 22vmin;
+  transform: rotate(45deg);
+  animation: flower__g-fr-leaft-ans-7 0.5s 2s linear backwards;
+}
+@keyframes flower__g-fr-leaft-ans-7 {
+  0% {
+    transform-origin: left;
+    transform: rotate(45deg) scale(0);
+  }
+}
+#surprise-overlay .flower__g-fr__leaf--8 {
+  left: -4vmin;
+  top: 15vmin;
+  transform: rotate(15deg) rotateY(-180deg);
+  animation: flower__g-fr-leaft-ans-8 0.5s 1.9s linear backwards;
+}
+@keyframes flower__g-fr-leaft-ans-8 {
+  0% {
+    transform-origin: right;
+    transform: rotate(15deg) rotateY(-180deg) scale(0);
+  }
+}
+#surprise-overlay .long-g {
+  position: absolute;
+  bottom: 25vmin;
+  left: -42vmin;
+  transform-origin: bottom left;
+}
+#surprise-overlay .long-g--1 {
+  bottom: 0vmin;
+  transform: scale(0.8) rotate(-5deg);
+}
+#surprise-overlay .long-g--1 .leaf {
+  -webkit-mask-image: linear-gradient(to top, transparent 40%, var(--green-dark) 80%) !important;
+}
+#surprise-overlay .long-g--1 .leaf--1 {
+  --w: 5vmin;
+  --h: 60vmin;
+  left: -2vmin;
+  transform: rotate(3deg) rotateY(-180deg);
+}
+#surprise-overlay .long-g--2, #surprise-overlay .long-g--3 {
+  bottom: -3vmin;
+  left: -35vmin;
+  transform-origin: center;
+  transform: scale(0.6) rotateX(60deg);
+}
+#surprise-overlay .long-g--2 .leaf, #surprise-overlay .long-g--3 .leaf {
+  -webkit-mask-image: linear-gradient(to top, transparent 50%, var(--green-dark) 80%) !important;
+}
+#surprise-overlay .long-g--2 .leaf--1, #surprise-overlay .long-g--3 .leaf--1 {
+  left: -1vmin;
+  transform: rotateY(-180deg);
+}
+#surprise-overlay .long-g--3 {
+  left: -17vmin;
+  bottom: 0vmin;
+}
+#surprise-overlay .long-g--3 .leaf {
+  -webkit-mask-image: linear-gradient(to top, transparent 40%, var(--green-dark) 80%) !important;
+}
+#surprise-overlay .long-g--4 {
+  left: 25vmin;
+  bottom: -3vmin;
+  transform-origin: center;
+  transform: scale(0.6) rotateX(60deg);
+}
+#surprise-overlay .long-g--4 .leaf {
+  -webkit-mask-image: linear-gradient(to top, transparent 50%, var(--green-dark) 80%) !important;
+}
+#surprise-overlay .long-g--5 {
+  left: 42vmin;
+  bottom: 0vmin;
+  transform: scale(0.8) rotate(2deg);
+}
+#surprise-overlay .long-g--6 {
+  left: 0vmin;
+  bottom: -20vmin;
+  z-index: 100;
+  filter: blur(0.3vmin);
+  transform: scale(0.8) rotate(2deg);
+}
+#surprise-overlay .long-g--7 {
+  left: 35vmin;
+  bottom: 20vmin;
+  z-index: -1;
+  filter: blur(0.3vmin);
+  transform: scale(0.6) rotate(2deg);
+  opacity: 0.7;
+}
+#surprise-overlay .long-g .leaf {
+  --w: 15vmin;
+  --h: 40vmin;
+  --c: var(--green-1);
+  position: absolute;
+  bottom: 0;
+  width: var(--w);
+  height: var(--h);
+  border-top-left-radius: 100%;
+  border-left: 2vmin solid var(--c);
+  -webkit-mask-image: linear-gradient(to top, transparent 20%, var(--dark-color));
+  transform-origin: bottom center;
+}
+#surprise-overlay .long-g .leaf--0 {
+  left: 2vmin;
+  animation: leaf-ans-1 4s linear infinite;
+}
+#surprise-overlay .long-g .leaf--1 {
+  --w: 5vmin;
+  --h: 60vmin;
+  animation: leaf-ans-1 4s linear infinite;
+}
+#surprise-overlay .long-g .leaf--2 {
+  --w: 10vmin;
+  --h: 40vmin;
+  left: -0.5vmin;
+  bottom: 5vmin;
+  transform-origin: bottom left;
+  transform: rotateY(-180deg);
+  animation: leaf-ans-2 3s linear infinite;
+}
+#surprise-overlay .long-g .leaf--3 {
+  --w: 5vmin;
+  --h: 30vmin;
+  left: -1vmin;
+  bottom: 3.2vmin;
+  transform-origin: bottom left;
+  transform: rotate(-10deg) rotateY(-180deg);
+  animation: leaf-ans-3 3s linear infinite;
+}
+@keyframes leaf-ans-1 {
+  0%, 100% {
+    transform: rotate(-5deg) scale(1);
+  }
+  50% {
+    transform: rotate(5deg) scale(1.1);
+  }
+}
+@keyframes leaf-ans-2 {
+  0%, 100% {
+    transform: rotateY(-180deg) rotate(5deg);
+  }
+  50% {
+    transform: rotateY(-180deg) rotate(0deg) scale(1.1);
+  }
+}
+@keyframes leaf-ans-3 {
+  0%, 100% {
+    transform: rotate(-10deg) rotateY(-180deg);
+  }
+  50% {
+    transform: rotate(-20deg) rotateY(-180deg);
+  }
+}
+#surprise-overlay .grow-ans {
+  animation: grow-ans 1s var(--d) backwards;
+}
+@keyframes grow-ans {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+@keyframes light-ans {
+  0% {
+    opacity: 0;
+    transform: translateY(0vmin);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(-5vmin) translateX(-2vmin);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-15vmin) translateX(2vmin);
+    filter: blur(0.2vmin);
+  }
+  75% {
+    transform: translateY(-20vmin) translateX(-2vmin);
+    filter: blur(0.2vmin);
+  }
+  100% {
+    transform: translateY(-30vmin);
+    opacity: 0;
+    filter: blur(1vmin);
+  }
+}
+@keyframes moving-flower-1 {
+  0%, 100% {
+    transform: rotate(2deg);
+  }
+  50% {
+    transform: rotate(-2deg);
+  }
+}
+@keyframes moving-flower-2 {
+  0%, 100% {
+    transform: rotate(18deg);
+  }
+  50% {
+    transform: rotate(14deg);
+  }
+}
+@keyframes moving-flower-3 {
+  0%, 100% {
+    transform: rotate(-18deg);
+  }
+  50% {
+    transform: rotate(-20deg) rotateY(-10deg);
+  }
+}
+@keyframes blooming-leaf-right {
+  0% {
+    transform-origin: left;
+    transform: rotate(70deg) rotateY(30deg) scale(0);
+  }
+}
+@keyframes blooming-leaf-left {
+  0% {
+    transform-origin: right;
+    transform: rotate(-70deg) rotateY(30deg) scale(0);
+  }
+}
+@keyframes grow-flower-tree {
+  0% {
+    height: 0;
+    border-radius: 1vmin;
+  }
+}
+@keyframes blooming-flower {
+  0% {
+    transform: scale(0);
+  }
+}
+@keyframes moving-grass {
+  0%, 100% {
+    transform: rotate(-48deg) rotateY(40deg);
+  }
+  50% {
+    transform: rotate(-50deg) rotateY(40deg);
+  }
+}
+@keyframes moving-grass--2 {
+  0%, 100% {
+    transform: scale(0.5) rotate(75deg) rotateX(10deg) rotateY(-200deg);
+  }
+  50% {
+    transform: scale(0.5) rotate(79deg) rotateX(10deg) rotateY(-200deg);
+  }
+}
+#surprise-overlay .growing-grass {
+  animation: growing-grass-ans 0.5s 1s backwards;
+}
+@keyframes growing-grass-ans {
+  0% {
+    transform: scale(0);
+  }
+}
+#surprise-overlay.not-ready * {
+  animation-play-state: paused !important;
+}
+
 </style>
 </head>
 <body>
@@ -619,6 +1650,9 @@ input[type=range].slider.vertical {
                         <input type="password" id="new-password" placeholder="New password" autocomplete="new-password">
                         <label style="display:flex; align-items:center; gap:9px; font-size:0.88rem; font-weight:600; color:var(--dim); cursor:pointer;">
                             <input type="checkbox" id="new-user-admin" style="width:16px; height:16px; accent-color:var(--accent);"> Make this user an admin
+                        </label>
+                        <label style="display:flex; align-items:center; gap:9px; font-size:0.88rem; font-weight:600; color:var(--dim); cursor:pointer;">
+                            <input type="checkbox" id="new-user-surprise" style="width:16px; height:16px; accent-color:#ff5fa2;"> <i class="ri-gift-line"></i> Surprise on first login
                         </label>
                         <button class="btn-solid" style="width:100%; margin-top:6px;" onclick="adminCreateUser()">Create user</button>
                         <p class="form-msg" id="admin-msg"></p>
@@ -801,6 +1835,107 @@ input[type=range].slider.vertical {
     </div>
 
     <div id="toast-zone"></div>
+
+    <!-- ============ SURPRISE OVERLAY (one-time welcome) ============ -->
+    <div id="surprise-overlay">
+        <div class="night"></div>
+        <div id="surprise-sparkles"></div>
+        <div id="surprise-stage">
+            <div class="flowers">
+              <div class="flower flower--1">
+                <div class="flower__leafs flower__leafs--1">
+                  <div class="flower__leaf flower__leaf--1"></div>
+                  <div class="flower__leaf flower__leaf--2"></div>
+                  <div class="flower__leaf flower__leaf--3"></div>
+                  <div class="flower__leaf flower__leaf--4"></div>
+                  <div class="flower__white-circle"></div>
+                  <div class="flower__light flower__light--1"></div>
+                  <div class="flower__light flower__light--2"></div>
+                  <div class="flower__light flower__light--3"></div>
+                  <div class="flower__light flower__light--4"></div>
+                  <div class="flower__light flower__light--5"></div>
+                  <div class="flower__light flower__light--6"></div>
+                  <div class="flower__light flower__light--7"></div>
+                  <div class="flower__light flower__light--8"></div>
+                </div>
+                <div class="flower__line">
+                  <div class="flower__line__leaf flower__line__leaf--1"></div>
+                  <div class="flower__line__leaf flower__line__leaf--2"></div>
+                  <div class="flower__line__leaf flower__line__leaf--3"></div>
+                  <div class="flower__line__leaf flower__line__leaf--4"></div>
+                  <div class="flower__line__leaf flower__line__leaf--5"></div>
+                  <div class="flower__line__leaf flower__line__leaf--6"></div>
+                </div>
+              </div>
+              <div class="flower flower--2">
+                <div class="flower__leafs flower__leafs--2">
+                  <div class="flower__leaf flower__leaf--1"></div>
+                  <div class="flower__leaf flower__leaf--2"></div>
+                  <div class="flower__leaf flower__leaf--3"></div>
+                  <div class="flower__leaf flower__leaf--4"></div>
+                  <div class="flower__white-circle"></div>
+                  <div class="flower__light flower__light--1"></div>
+                  <div class="flower__light flower__light--2"></div>
+                  <div class="flower__light flower__light--3"></div>
+                  <div class="flower__light flower__light--4"></div>
+                  <div class="flower__light flower__light--5"></div>
+                  <div class="flower__light flower__light--6"></div>
+                  <div class="flower__light flower__light--7"></div>
+                  <div class="flower__light flower__light--8"></div>
+                </div>
+                <div class="flower__line">
+                  <div class="flower__line__leaf flower__line__leaf--1"></div>
+                  <div class="flower__line__leaf flower__line__leaf--2"></div>
+                  <div class="flower__line__leaf flower__line__leaf--3"></div>
+                  <div class="flower__line__leaf flower__line__leaf--4"></div>
+                </div>
+              </div>
+              <div class="flower flower--3">
+                <div class="flower__leafs flower__leafs--3">
+                  <div class="flower__leaf flower__leaf--1"></div>
+                  <div class="flower__leaf flower__leaf--2"></div>
+                  <div class="flower__leaf flower__leaf--3"></div>
+                  <div class="flower__leaf flower__leaf--4"></div>
+                  <div class="flower__white-circle"></div>
+                  <div class="flower__light flower__light--1"></div>
+                  <div class="flower__light flower__light--2"></div>
+                  <div class="flower__light flower__light--3"></div>
+                  <div class="flower__light flower__light--4"></div>
+                  <div class="flower__light flower__light--5"></div>
+                  <div class="flower__light flower__light--6"></div>
+                  <div class="flower__light flower__light--7"></div>
+                  <div class="flower__light flower__light--8"></div>
+                </div>
+                <div class="flower__line">
+                  <div class="flower__line__leaf flower__line__leaf--1"></div>
+                  <div class="flower__line__leaf flower__line__leaf--2"></div>
+                  <div class="flower__line__leaf flower__line__leaf--3"></div>
+                  <div class="flower__line__leaf flower__line__leaf--4"></div>
+                </div>
+              </div>
+              <div class="grow-ans" style="--d:0.6s"><div class="flower__g-long"><div class="flower__g-long__top"></div><div class="flower__g-long__bottom"></div></div></div>
+              <div class="growing-grass"><div class="flower__grass flower__grass--1"><div class="flower__grass--top"></div><div class="flower__grass--bottom"></div><div class="flower__grass__leaf flower__grass__leaf--1"></div><div class="flower__grass__leaf flower__grass__leaf--2"></div><div class="flower__grass__leaf flower__grass__leaf--3"></div><div class="flower__grass__leaf flower__grass__leaf--4"></div><div class="flower__grass__leaf flower__grass__leaf--5"></div><div class="flower__grass__leaf flower__grass__leaf--6"></div><div class="flower__grass__leaf flower__grass__leaf--7"></div><div class="flower__grass__leaf flower__grass__leaf--8"></div><div class="flower__grass__overlay"></div></div></div>
+              <div class="growing-grass"><div class="flower__grass flower__grass--2"><div class="flower__grass--top"></div><div class="flower__grass--bottom"></div><div class="flower__grass__leaf flower__grass__leaf--1"></div><div class="flower__grass__leaf flower__grass__leaf--2"></div><div class="flower__grass__leaf flower__grass__leaf--3"></div><div class="flower__grass__leaf flower__grass__leaf--4"></div><div class="flower__grass__leaf flower__grass__leaf--5"></div><div class="flower__grass__leaf flower__grass__leaf--6"></div><div class="flower__grass__leaf flower__grass__leaf--7"></div><div class="flower__grass__leaf flower__grass__leaf--8"></div><div class="flower__grass__overlay"></div></div></div>
+              <div class="grow-ans" style="--d:1.2s"><div class="flower__g-right flower__g-right--1"><div class="leaf"></div></div></div>
+              <div class="grow-ans" style="--d:1.4s"><div class="flower__g-right flower__g-right--2"><div class="leaf"></div></div></div>
+              <div class="grow-ans" style="--d:1.4s"><div class="flower__g-front"><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--1"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--2"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--3"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--4"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--5"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--6"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--7"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__leaf-wrapper flower__g-front__leaf-wrapper--8"><div class="flower__g-front__leaf"></div></div><div class="flower__g-front__line"></div></div></div>
+              <div class="grow-ans" style="--d:1.6s"><div class="flower__g-fr"><div class="leaf"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--1"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--2"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--3"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--4"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--5"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--6"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--7"></div><div class="flower__g-fr__leaf flower__g-fr__leaf--8"></div></div></div>
+              <div class="long-g long-g--0"><div class="grow-ans" style="--d:1.5s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:1.1s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:1.7s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:1.8s"><div class="leaf leaf--3"></div></div></div>
+              <div class="long-g long-g--1"><div class="grow-ans" style="--d:1.8s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:1.9s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:2s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:2.1s"><div class="leaf leaf--3"></div></div></div>
+              <div class="long-g long-g--2"><div class="grow-ans" style="--d:2s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:2.1s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:2.2s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:2.3s"><div class="leaf leaf--3"></div></div></div>
+              <div class="long-g long-g--3"><div class="grow-ans" style="--d:2s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:2.1s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:1.5s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:1.8s"><div class="leaf leaf--3"></div></div></div>
+              <div class="long-g long-g--4"><div class="grow-ans" style="--d:2s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:2.1s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:1.5s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:1.8s"><div class="leaf leaf--3"></div></div></div>
+              <div class="long-g long-g--5"><div class="grow-ans" style="--d:2s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:2.1s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:1.5s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:1.8s"><div class="leaf leaf--3"></div></div></div>
+              <div class="long-g long-g--6"><div class="grow-ans" style="--d:2.1s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:2.2s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:2.3s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:2.4s"><div class="leaf leaf--3"></div></div></div>
+              <div class="long-g long-g--7"><div class="grow-ans" style="--d:1.5s"><div class="leaf leaf--0"></div></div><div class="grow-ans" style="--d:1.6s"><div class="leaf leaf--1"></div></div><div class="grow-ans" style="--d:1.75s"><div class="leaf leaf--2"></div></div><div class="grow-ans" style="--d:1.8s"><div class="leaf leaf--3"></div></div></div>
+            </div>
+        </div>
+        <div id="surprise-message-layer">
+            <div id="surprise-text"></div>
+            <button id="surprise-close" onclick="dismissSurprise()">Tfadhalii hayatii</button>
+        </div>
+    </div>
+
     <audio id="audio-engine" preload="auto" playsinline></audio>
 </div>
 <script>
@@ -1039,32 +2174,6 @@ document.addEventListener('click', (e) => {
 /* =====================================================================
    NAVIGATION
 ===================================================================== */
-/* =====================================================================
-   MOBILE BACK BUTTON / HISTORY INTEGRATION
-   Every pane switch and every overlay (fullscreen player, lyrics) push a
-   history entry. Closing an overlay goes through history.back() instead
-   of directly hiding it, so hardware back, iOS edge-swipe-back, and the
-   in-app close controls all funnel through the same popstate handler —
-   guaranteeing they behave identically and never fall out of sync.
-===================================================================== */
-let isHandlingPopstate = false;
-let overlayStack = []; // topmost = last element; 'player' | 'lyrics'
-
-window.addEventListener('popstate', (e) => {
-    if (overlayStack.length) {
-        const top = overlayStack.pop();
-        if (top === 'player') $('full-player-overlay').classList.remove('active');
-        else if (top === 'lyrics') $('lyrics-overlay').classList.remove('open');
-        return;
-    }
-    const state = e.state;
-    if (state && state.appView === 'pane') {
-        isHandlingPopstate = true;
-        switchPane(state.pane);
-        isHandlingPopstate = false;
-    }
-});
-
 function switchPane(paneId) {
     if (paneId !== 'collection') navigationOriginPane = paneId;
     document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
@@ -1075,9 +2184,6 @@ function switchPane(paneId) {
     $('main-scroller').scrollTop = 0;
     if (paneId === 'search') setTimeout(() => $('search-box-field').focus(), 60);
     if (paneId === 'admin') loadUserList();
-    if (!isHandlingPopstate) {
-        history.pushState({ appView: 'pane', pane: paneId }, '');
-    }
 }
 function triggerPaneRollback() { switchPane(navigationOriginPane); }
 function triggerGenreSearch(query) {
@@ -1137,7 +2243,11 @@ async function executeLogin(user, pass) {
             populateLibraryUI();
             loadHomeRecommendations();
             switchPane('home');
-            showToast(`Welcome, ${userProfile.username}`);
+            if (data.surprise) {
+                playSurprise(userProfile.username);
+            } else {
+                showToast(`Welcome, ${userProfile.username}`);
+            }
         }
     } catch (e) {
         if (msg) { msg.className = 'form-msg err'; msg.textContent = "Can't reach the server. Is the backend running?"; }
@@ -1175,18 +2285,19 @@ async function adminCreateUser() {
     const user = $('new-username').value.trim();
     const pass = $('new-password').value.trim();
     const asAdmin = $('new-user-admin').checked;
+    const withSurprise = $('new-user-surprise').checked;
     const msg = $('admin-msg');
     if (!user || !pass) { msg.className = 'form-msg err'; msg.textContent = "Provide a username and password."; return; }
     try {
         const res = await fetch(`${NEW_HUB_BACKEND}/api/create-user`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: user, password: pass, isAdmin: asAdmin })
+            body: JSON.stringify({ username: user, password: pass, isAdmin: asAdmin, surprise: withSurprise })
         });
         const data = await res.json();
         if (data.error) { msg.className = 'form-msg err'; msg.textContent = data.error; }
         else {
             msg.className = 'form-msg ok'; msg.textContent = `User "${user}" created.`;
-            $('new-username').value = ""; $('new-password').value = ""; $('new-user-admin').checked = false;
+            $('new-username').value = ""; $('new-password').value = ""; $('new-user-admin').checked = false; $('new-user-surprise').checked = false;
             loadUserList();
         }
     } catch (e) { msg.className = 'form-msg err'; msg.textContent = "Server error."; }
@@ -1201,22 +2312,54 @@ async function loadUserList() {
         const data = await res.json();
         const users = Array.isArray(data.users) ? data.users : [];
         if (!users.length) { body.innerHTML = `<p class="status-note">No users yet.</p>`; return; }
-        body.innerHTML = users.map(u => `
+        // NOTE: handlers are attached via event delegation below (see the
+        // one-time #user-list-body listener), NOT inline onchange/onclick.
+        // The username is carried in data-user; escaping it for an HTML
+        // attribute is safe, whereas embedding JSON.stringify(username) inside
+        // an onchange="" attribute broke the attribute quoting and silently
+        // killed the click — which is why nothing hit the network before.
+        body.innerHTML = users.map(u => {
+            const nameAttr = escapeHtml(u.username);
+            return `
             <div class="user-row">
                 <div class="user-row-avatar">${escapeHtml(u.username.charAt(0).toUpperCase())}</div>
                 <div class="user-row-meta">
                     <h5>${escapeHtml(u.username)}</h5>
                     <p>${u.likedCount} liked · ${u.playlistCount} playlist${u.playlistCount === 1 ? '' : 's'}</p>
                 </div>
+                <label class="admin-toggle surprise-toggle" title="Show a one-time surprise welcome next time this user logs in">
+                    <input type="checkbox" data-action="surprise" data-user="${nameAttr}" ${u.surprise ? 'checked' : ''}>
+                    <span><i class="ri-gift-line"></i> Surprise</span>
+                </label>
                 <label class="admin-toggle">
-                    <input type="checkbox" ${u.isAdmin ? 'checked' : ''} onchange="toggleUserAdmin(${JSON.stringify(u.username)}, this.checked)">
+                    <input type="checkbox" data-action="admin" data-user="${nameAttr}" ${u.isAdmin ? 'checked' : ''}>
                     <span>Admin</span>
                 </label>
-            </div>`).join('');
+                <button class="user-row-delete" data-action="delete" data-user="${nameAttr}" title="Delete user">
+                    <i class="ri-delete-bin-line"></i>
+                </button>
+            </div>`;
+        }).join('');
     } catch (e) {
         body.innerHTML = `<p class="status-note err">Couldn't load the user list. <span style="text-decoration:underline; cursor:pointer;" onclick="loadUserList()">Try again</span></p>`;
     }
 }
+
+/* One delegated listener for the whole user list — survives re-renders and
+   avoids any inline-attribute quoting pitfalls. Attached once. */
+(function wireUserListDelegation() {
+    const body = document.getElementById('user-list-body');
+    if (!body) return;
+    body.addEventListener('change', (e) => {
+        const el = e.target;
+        if (el.dataset.action === 'surprise') toggleUserSurprise(el.dataset.user, el.checked);
+        else if (el.dataset.action === 'admin') toggleUserAdmin(el.dataset.user, el.checked);
+    });
+    body.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-action="delete"]');
+        if (btn) confirmDeleteUser(btn.dataset.user);
+    });
+})();
 
 async function toggleUserAdmin(username, isAdmin) {
     try {
@@ -1224,11 +2367,70 @@ async function toggleUserAdmin(username, isAdmin) {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, isAdmin })
         });
+        if (res.status === 404) {
+            showToast("Server needs redeploy: run 'wrangler deploy' in the worker folder", true);
+            loadUserList();
+            return;
+        }
         const data = await res.json();
         if (data.error) throw new Error(data.error);
         showToast(isAdmin ? `${username} is now an admin` : `${username} is no longer an admin`);
+        loadUserList();
     } catch (e) {
         showToast("Couldn't update that user — try refreshing the list", true);
+        loadUserList();
+    }
+}
+
+async function toggleUserSurprise(username, surprise) {
+    try {
+        const res = await fetch(`${NEW_HUB_BACKEND}/api/set-surprise`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, surprise })
+        });
+        if (res.status === 404) {
+            // The deployed Worker doesn't have this endpoint yet — almost always
+            // means it hasn't been redeployed since the surprise feature was added.
+            showToast("Server needs redeploy: run 'wrangler deploy' in the worker folder", true);
+            loadUserList();
+            return;
+        }
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        showToast(surprise ? `Surprise armed for ${username} 🎁` : `Surprise turned off for ${username}`);
+        // Re-read from the server so the checkbox always reflects what truly persisted
+        loadUserList();
+    } catch (e) {
+        showToast("Couldn't update that user — try refreshing the list", true);
+        loadUserList();
+    }
+}
+
+function confirmDeleteUser(username) {
+    openConfirmModal(
+        `Delete "${username}"?`,
+        "This permanently removes the user account and everything saved to it — liked songs, playlists, all of it. This can't be undone.",
+        () => deleteUser(username)
+    );
+}
+
+async function deleteUser(username) {
+    try {
+        const res = await fetch(`${NEW_HUB_BACKEND}/api/delete-user`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        });
+        if (res.status === 404) {
+            showToast("Server needs redeploy: run 'wrangler deploy' in the worker folder", true);
+            loadUserList();
+            return;
+        }
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        showToast(`Deleted ${username}`, true);
+        loadUserList();
+    } catch (e) {
+        showToast("Couldn't delete that user — try again", true);
         loadUserList();
     }
 }
@@ -1873,17 +3075,10 @@ function updateLyricsHighlight() {
 }
 
 function toggleLyricsOverlay() {
-    const overlay = $('lyrics-overlay');
-    if (overlay.classList.contains('open')) {
-        history.back(); // popstate handler does the actual closing
-        return;
-    }
     if (!activeTrackData) { showToast("Play a song first", true); return; }
-    overlay.classList.add('open');
-    overlayStack.push('lyrics');
-    history.pushState({ appOverlay: 'lyrics' }, '');
-    lastHighlightedLyricIndex = -1;
-    updateLyricsHighlight();
+    const overlay = $('lyrics-overlay');
+    overlay.classList.toggle('open');
+    if (overlay.classList.contains('open')) { lastHighlightedLyricIndex = -1; updateLyricsHighlight(); }
 }
 audioEngine.addEventListener('timeupdate', updateLyricsHighlight);
 
@@ -2243,14 +3438,7 @@ function toggleShuffle() {
     saveSessionState(true);
 }
 function toggleFullScreenPlayer() {
-    const overlay = $('full-player-overlay');
-    if (overlay.classList.contains('active')) {
-        history.back(); // popstate handler does the actual closing
-        return;
-    }
-    overlay.classList.add('active');
-    overlayStack.push('player');
-    history.pushState({ appOverlay: 'player' }, '');
+    $('full-player-overlay').classList.toggle('active');
 }
 
 function paintSlider(slider, pct) {
@@ -2359,125 +3547,6 @@ document.addEventListener('keydown', e => {
     if (e.code === 'ArrowRight' && audioEngine.src) audioEngine.currentTime = Math.min(audioEngine.currentTime + 5, audioEngine.duration || 0);
     if (e.code === 'ArrowLeft' && audioEngine.src) audioEngine.currentTime = Math.max(audioEngine.currentTime - 5, 0);
 });
-
-/* =====================================================================
-   MOBILE GESTURES
-   - Fullscreen player: swipe down anywhere except the controls/slider to
-     dismiss it, same as tapping the down-arrow. Also supports an iOS-style
-     edge swipe (start near the left edge, drag right) as an extra way out,
-     on top of whatever the OS's native edge-back gesture already does now
-     that real history entries exist for it to act on.
-   - Mini-player: swipe left for next track, swipe right for previous —
-     matches the familiar mobile music-app convention.
-===================================================================== */
-(function initFsSwipeToClose() {
-    const overlay = $('full-player-overlay');
-    let startX = 0, startY = 0, dy = 0, dragging = false, intent = null; // intent: 'vertical' | 'horizontal' | null
-
-    overlay.addEventListener('touchstart', (e) => {
-        if (e.touches.length !== 1) return;
-        if (e.target.closest('input, .fs-controls, .fs-vol-wrap, .fs-timeline')) return; // don't hijack the seek/volume sliders or buttons
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        dy = 0; dragging = true; intent = null;
-        overlay.style.transition = 'none';
-    }, { passive: true });
-
-    overlay.addEventListener('touchmove', (e) => {
-        if (!dragging) return;
-        const curX = e.touches[0].clientX;
-        const curY = e.touches[0].clientY;
-        const dx = curX - startX;
-        dy = curY - startY;
-
-        if (intent === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-            const edgeSwipe = startX < 28 && dx > 0;
-            intent = (Math.abs(dy) > Math.abs(dx) && dy > 0) ? 'vertical' : (edgeSwipe ? 'edge' : 'other');
-        }
-        if (intent === 'vertical') {
-            overlay.style.transform = `translateY(${dy}px)`;
-            overlay.style.opacity = Math.max(1 - dy / 400, 0.4);
-            e.preventDefault();
-        } else if (intent === 'edge') {
-            overlay.style.transform = `translateX(${dx}px)`;
-            overlay.style.opacity = Math.max(1 - dx / 350, 0.4);
-            e.preventDefault();
-        }
-    }, { passive: false });
-
-    overlay.addEventListener('touchend', () => {
-        if (!dragging) return;
-        dragging = false;
-        overlay.style.transition = '';
-        const shouldClose = (intent === 'vertical' && dy > 110) || intent === 'edge' && overlay.style.transform && parseFloat(overlay.style.transform.replace(/[^\d.-]/g, '')) > 90;
-        overlay.style.transform = '';
-        overlay.style.opacity = '';
-        if (shouldClose) toggleFullScreenPlayer();
-        intent = null;
-    });
-    overlay.addEventListener('touchcancel', () => {
-        dragging = false; intent = null;
-        overlay.style.transition = ''; overlay.style.transform = ''; overlay.style.opacity = '';
-    });
-})();
-
-(function initMiniPlayerSwipe() {
-    const mini = $('mini-player');
-    let startX = 0, startY = 0, dx = 0, dragging = false, wasSwipe = false;
-
-    mini.addEventListener('touchstart', (e) => {
-        if (e.touches.length !== 1) return;
-        startX = e.touches[0].clientX;
-        startY = e.touches[0].clientY;
-        dx = 0; dragging = true; wasSwipe = false;
-        mini.style.transition = 'none';
-    }, { passive: true });
-
-    mini.addEventListener('touchmove', (e) => {
-        if (!dragging) return;
-        const curX = e.touches[0].clientX;
-        const curY = e.touches[0].clientY;
-        dx = curX - startX;
-        const dyAbs = Math.abs(curY - startY);
-        if (Math.abs(dx) > dyAbs && Math.abs(dx) > 10) {
-            wasSwipe = true;
-            mini.style.transform = `translateX(${dx}px)`;
-            mini.style.opacity = Math.max(1 - Math.abs(dx) / 250, 0.3);
-        }
-    }, { passive: true });
-
-    mini.addEventListener('touchend', () => {
-        if (!dragging) return;
-        dragging = false;
-        const threshold = 70;
-        if (wasSwipe && Math.abs(dx) > threshold) {
-            const goingNext = dx < 0; // swipe left = next, swipe right = previous
-            mini.style.transition = 'transform .18s ease, opacity .18s ease';
-            mini.style.transform = `translateX(${goingNext ? '-120%' : '120%'})`;
-            mini.style.opacity = '0';
-            setTimeout(() => {
-                mini.style.transition = 'none';
-                mini.style.transform = '';
-                mini.style.opacity = '';
-                if (goingNext) playNextTrack(); else playPrevTrack();
-                requestAnimationFrame(() => { mini.style.transition = ''; });
-            }, 180);
-        } else {
-            mini.style.transition = 'transform .18s ease, opacity .18s ease';
-            mini.style.transform = '';
-            mini.style.opacity = '';
-        }
-    });
-    mini.addEventListener('touchcancel', () => {
-        dragging = false;
-        mini.style.transition = ''; mini.style.transform = ''; mini.style.opacity = '';
-    });
-
-    // A swipe shouldn't also register as a tap-to-open-fullscreen
-    mini.addEventListener('click', (e) => {
-        if (wasSwipe) { e.stopImmediatePropagation(); e.preventDefault(); wasSwipe = false; }
-    }, true);
-})();
 
 /* =====================================================================
    PLAYLIST MODALS
@@ -2803,6 +3872,120 @@ async function buildRecommendations() {
 }
 
 /* =====================================================================
+   SURPRISE ANIMATION
+   A one-time welcome: watercolor tulip draws itself, petals rain down,
+   sparkles pop, and a handwritten message types out with a soft synth
+   chime per word. Entirely self-contained — no external audio/image
+   assets. The server-side flag is cleared as soon as it starts so it
+   never plays twice unless an admin re-arms it.
+===================================================================== */
+const SURPRISE_MESSAGE = "Thought these flowers were pretty, but then I remembered you  rahmouchtyyy";
+const SURPRISE_SIGN = "habib";
+
+function playSurprise(username) {
+    // Clear the flag immediately (fire-and-forget) so it's genuinely one-time
+    if (username) {
+        fetch(`${NEW_HUB_BACKEND}/api/clear-surprise`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username })
+        }).catch(() => {});
+    }
+
+    const overlay = $('surprise-overlay');
+    // Freeze the flower animations until the overlay is actually visible, then
+    // release them so the whole garden blooms from zero in front of the user.
+    overlay.classList.add('not-ready');
+    overlay.style.display = 'block';
+    requestAnimationFrame(() => {
+        overlay.classList.add('show');
+        // next frame: let the bloom begin
+        requestAnimationFrame(() => overlay.classList.remove('not-ready'));
+    });
+
+    sprinkleSparkles();
+
+    // The garden finishes blooming around ~3s; type the message just after so
+    // it lands once the flowers are open, then reveal the button.
+    setTimeout(() => typeSurpriseMessage(), 3200);
+}
+
+function typeSurpriseMessage() {
+    const el = $('surprise-text');
+    const full = SURPRISE_MESSAGE;
+
+    // Build word-by-word: each word's letters live in a .word span
+    // (inline-block, never splits), words separated by real breakable
+    // spaces — so lines can only wrap BETWEEN words, never mid-word.
+    const words = full.split(' ');
+    let html = '';
+    words.forEach((word, wi) => {
+        html += '<span class="word">';
+        for (const ch of word) html += `<span class="ch">${escapeHtml(ch)}</span>`;
+        html += '</span>';
+        if (wi < words.length - 1) html += '<span class="ch space"> </span>';
+    });
+    html += `<span class="sig">&mdash; <span class="ch">${escapeHtml(SURPRISE_SIGN)}</span></span>`;
+    el.innerHTML = html;
+
+    const chars = el.querySelectorAll('.ch');
+    let audioCtx = null;
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+
+    let i = 0;
+    const reveal = () => {
+        if (i >= chars.length) {
+            setTimeout(() => $('surprise-close').classList.add('show'), 500);
+            return;
+        }
+        chars[i].classList.add('on');
+        if (audioCtx && !chars[i].classList.contains('space') && i % 2 === 0) penTick(audioCtx);
+        i++;
+        const isSig = chars[i - 1] && chars[i - 1].closest('.sig');
+        setTimeout(reveal, isSig ? 400 : 55);
+    };
+    reveal();
+}
+
+/* short, soft synthesized "pen stroke" tick - no audio files needed */
+function penTick(ctx) {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = 'triangle';
+    o.frequency.value = 420 + Math.random() * 260;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + 0.1);
+}
+
+function sprinkleSparkles() {
+    const layer = $('surprise-sparkles');
+    layer.innerHTML = '';
+    let n = 0;
+    const timer = setInterval(() => {
+        if (n++ > 80 || !$('surprise-overlay').classList.contains('show')) { clearInterval(timer); return; }
+        const s = document.createElement('div');
+        s.className = 'spark';
+        s.textContent = Math.random() > 0.5 ? '\u2726' : '\u2727';
+        s.style.left = Math.random() * 100 + '%';
+        s.style.top = Math.random() * 100 + '%';
+        s.style.fontSize = (0.7 + Math.random() * 1.3) + 'rem';
+        layer.appendChild(s);
+        setTimeout(() => s.remove(), 1600);
+    }, 200);
+}
+
+function dismissSurprise() {
+    const overlay = $('surprise-overlay');
+    overlay.classList.remove('show');
+    setTimeout(() => {
+        overlay.style.display = 'none';
+        showToast(`Welcome, ${userProfile.username || ''}`.trim());
+    }, 800);
+}
+
+/* =====================================================================
    INIT — order matters; everything is defined above this point.
 ===================================================================== */
 (function init() {
@@ -2822,7 +4005,6 @@ async function buildRecommendations() {
     } else {
         applyIdentityUI(null);
     }
-    history.replaceState({ appView: 'pane', pane: 'home' }, '');
 })();
 </script>
 </body>
