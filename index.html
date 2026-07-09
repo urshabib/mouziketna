@@ -1507,9 +1507,48 @@ input[type=range].slider.vertical {
   animation-play-state: paused !important;
 }
 
+/* ============ LOGIN GATE ============ */
+#auth-gate {
+    position: fixed; inset: 0; z-index: 55000; display: flex;
+    align-items: center; justify-content: center; padding: 24px;
+    background: radial-gradient(circle at 50% 30%, #1c1420 0%, #0c0810 60%, #050307 100%);
+}
+#auth-gate.hidden { display: none; }
+.auth-gate-card {
+    width: 100%; max-width: 380px; background: var(--panel-2, #181818);
+    border: 1px solid #262626; border-radius: 16px; padding: 34px 28px;
+    display: flex; flex-direction: column; gap: 14px; text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+.auth-gate-logo {
+    font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px;
+    display: flex; align-items: baseline; justify-content: center; gap: 8px; margin-bottom: 6px;
+}
+.auth-gate-logo i { color: var(--accent, #ff6b1a); font-size: 1.7rem; align-self: center; }
+.auth-gate-card h3 { font-size: 1.35rem; font-weight: 800; }
+.auth-gate-sub { color: var(--dim, #b3b3b3); font-size: 0.9rem; margin-bottom: 4px; }
+.auth-gate-card input {
+    padding: 14px 16px; border-radius: 8px; border: 1px solid #333;
+    background: var(--elev, #1f1f1f); color: #fff; font-size: 0.95rem; outline: none;
+    transition: border-color .18s;
+}
+.auth-gate-card input:focus { border-color: var(--accent, #ff6b1a); }
 </style>
 </head>
 <body>
+
+<!-- ============ LOGIN GATE (must sign in before using the app) ============ -->
+<div id="auth-gate">
+    <div class="auth-gate-card">
+        <div class="auth-gate-logo"><i class="ri-pulse-fill"></i> MOUZIKA<span class="logo-signature">by habib</span></div>
+        <h3>Log in to continue</h3>
+        <p class="auth-gate-sub">Sign in to listen to music.</p>
+        <input type="text" id="gate-username" placeholder="Username" autocomplete="username">
+        <input type="password" id="gate-password" placeholder="Password" autocomplete="current-password">
+        <button class="btn-solid" id="gate-login-btn" style="width:100%; padding:15px; margin-top:6px;" onclick="gateLogin()">Log in</button>
+        <p class="form-msg" id="gate-msg"></p>
+    </div>
+</div>
 
 <div class="shell">
     <div class="workspace">
@@ -2196,6 +2235,32 @@ function triggerGenreSearch(query) {
 /* =====================================================================
    AUTH
 ===================================================================== */
+function showAuthGate() {
+    const g = $('auth-gate');
+    if (g) { g.classList.remove('hidden'); setTimeout(() => { const u = $('gate-username'); if (u) u.focus(); }, 60); }
+}
+function hideAuthGate() {
+    const g = $('auth-gate'); if (g) g.classList.add('hidden');
+}
+async function gateLogin() {
+    const user = $('gate-username').value.trim();
+    const pass = $('gate-password').value.trim();
+    const msg = $('gate-msg');
+    if (!user || !pass) { msg.className = 'form-msg err'; msg.textContent = "Enter a username and password."; return; }
+    const btn = $('gate-login-btn');
+    btn.disabled = true;
+    msg.className = 'form-msg'; msg.textContent = "Signing in…";
+    // Mirror into the existing account-pane inputs so executeLogin's error
+    // messages (which target #login-msg) and the rest of the flow work unchanged.
+    $('friend-username').value = user;
+    $('friend-password').value = pass;
+    await executeLogin(user, pass);
+    btn.disabled = false;
+    // executeLogin sets globalUser on success; if still null, login failed.
+    if (globalUser) { msg.textContent = ""; $('gate-password').value = ""; }
+    else { msg.className = 'form-msg err'; msg.textContent = ($('login-msg').textContent || "Login failed."); }
+}
+
 async function authenticateFriend() {
     const user = $('friend-username').value.trim();
     const pass = $('friend-password').value.trim();
@@ -2224,6 +2289,7 @@ async function executeLogin(user, pass) {
         localStorage.setItem("hub_active_user", user);
         localStorage.setItem("hub_active_pass", pass);
         if (msg) msg.textContent = "";
+        hideAuthGate();
 
         if (data.isAdmin) {
             $('btn-admin').style.display = "flex";
@@ -2278,6 +2344,7 @@ function logoutFriend(silent = false) {
     $('friend-password').value = "";
     applyIdentityUI(null);
     populateLibraryUI();
+    showAuthGate();
     if (!silent) { loadHomeRecommendations(); switchPane('account'); showToast("Logged out", true); }
 }
 
@@ -3880,7 +3947,7 @@ async function buildRecommendations() {
    never plays twice unless an admin re-arms it.
 ===================================================================== */
 const SURPRISE_MESSAGE = "Thought these flowers were pretty, but then I remembered you  rahmouchtyyy";
-const SURPRISE_SIGN = "habib";
+const SURPRISE_SIGN = "habibㅤ♡";
 
 function playSurprise(username) {
     // Clear the flag immediately (fire-and-forget) so it's genuinely one-time
@@ -4001,9 +4068,10 @@ function dismissSurprise() {
     restoreSessionState();                // bring back the last song + position, ready to resume on Play
     loadHomeRecommendations();            // paints instantly from cache, refreshes in background
     if (globalUser && globalPass) {
-        executeLogin(globalUser, globalPass); // re-renders recs with your liked-song seeds once profile arrives
+        executeLogin(globalUser, globalPass); // re-renders recs with your liked-song seeds once profile arrives; hides gate on success
     } else {
         applyIdentityUI(null);
+        showAuthGate();
     }
 })();
 </script>
