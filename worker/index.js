@@ -40,16 +40,16 @@ export default {
         const user = JSON.parse(userStr);
         if (user.password !== password) return new Response(JSON.stringify({ error: "Invalid password." }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         
-        return new Response(JSON.stringify({ success: true, isAdmin: !!user.isAdmin, profile: user }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ success: true, isAdmin: !!user.isAdmin, surprise: !!user.surprise, profile: user }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
       // 2. Admin: Create User
       if (path === "api/create-user" && request.method === "POST") {
-        const { username, password, isAdmin } = await request.json();
+        const { username, password, isAdmin, surprise } = await request.json();
         const existing = await env.NEW_USER_STORE.get(`user:${username.toLowerCase()}`);
         if (existing) throw new Error("Username already exists.");
 
-        const newUser = { username, password, isAdmin: !!isAdmin, likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [] };
+        const newUser = { username, password, isAdmin: !!isAdmin, surprise: !!surprise, likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [] };
         await env.NEW_USER_STORE.put(`user:${username.toLowerCase()}`, JSON.stringify(newUser));
         
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -66,6 +66,7 @@ export default {
             return {
               username: u.username,
               isAdmin: !!u.isAdmin,
+              surprise: !!u.surprise,
               likedCount: (u.likedSongs || []).length,
               playlistCount: (u.customPlaylists || []).length
             };
@@ -87,24 +88,68 @@ export default {
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
+      // Admin: Toggle a user's one-time "surprise" welcome flag
+      if (path === "api/set-surprise" && request.method === "POST") {
+        const { username, surprise } = await request.json();
+        if (!username) throw new Error("Missing username parameter");
+        const key = `user:${username.toLowerCase()}`;
+        const raw = await env.NEW_USER_STORE.get(key);
+        if (!raw) throw new Error("User not found.");
+        const user = JSON.parse(raw);
+        user.surprise = !!surprise;
+        await env.NEW_USER_STORE.put(key, JSON.stringify(user));
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Clear a user's surprise flag after the animation has been shown once.
+      // Called by the app itself (not the admin) right after playback, so the
+      // surprise is a genuine one-time event until an admin re-enables it.
+      if (path === "api/clear-surprise" && request.method === "POST") {
+        const { username } = await request.json();
+        if (!username) throw new Error("Missing username parameter");
+        const key = `user:${username.toLowerCase()}`;
+        const raw = await env.NEW_USER_STORE.get(key);
+        if (raw) {
+          const user = JSON.parse(raw);
+          user.surprise = false;
+          await env.NEW_USER_STORE.put(key, JSON.stringify(user));
+        }
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      // Admin: Delete a user account entirely.
+      if (path === "api/delete-user" && request.method === "POST") {
+        const { username } = await request.json();
+        if (!username) throw new Error("Missing username parameter");
+        await env.NEW_USER_STORE.delete(`user:${username.toLowerCase()}`);
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       // 3. Save Profile
+      // IMPORTANT: this only ever writes the library fields the client owns
+      // (liked songs, playlists, etc). Admin-controlled flags (isAdmin,
+      // surprise) are re-read from storage at the moment of writing and
+      // carried over untouched — so a surprise/admin toggle happening
+      // concurrently with a client autosave can never be wiped out.
       if (path === "api/save-profile" && request.method === "POST") {
         const body = await request.json();
         if (!body.username) throw new Error("Missing username parameter");
 
-        const existingStr = await env.NEW_USER_STORE.get(`user:${body.username.toLowerCase()}`);
+        const key = `user:${body.username.toLowerCase()}`;
+        const existingStr = await env.NEW_USER_STORE.get(key);
         const existingUser = existingStr ? JSON.parse(existingStr) : {};
 
         const profileData = { 
             username: body.username, 
             password: existingUser.password || "",
             isAdmin: !!existingUser.isAdmin,
+            surprise: !!existingUser.surprise,
             likedSongs: body.likedSongs || [], 
             customPlaylists: body.customPlaylists || [],
             favouriteArtists: body.favouriteArtists || [],
             favouriteAlbums: body.favouriteAlbums || []
         };
-        await env.NEW_USER_STORE.put(`user:${body.username.toLowerCase()}`, JSON.stringify(profileData));
+        await env.NEW_USER_STORE.put(key, JSON.stringify(profileData));
 
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
