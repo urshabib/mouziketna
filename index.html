@@ -24,6 +24,7 @@
 <meta name="twitter:title" content="MOUZIKA">
 <meta name="twitter:image" content="https://REPLACE-WITH-YOUR-DOMAIN/icon-512.png">
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
 <style>
 :root {
@@ -400,15 +401,53 @@ input[type=range].slider.vertical {
 .lyrics-head-info h5 { font-size: 0.92rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lyrics-head-info p { font-size: 0.78rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lyrics-body { flex: 1; overflow-y: auto; padding: 30px 28px 130px; max-width: 640px; margin: 0 auto; width: 100%; }
-.lyric-line { font-size: 1.5rem; font-weight: 800; color: rgba(255,255,255,0.32); line-height: 1.55; padding: 10px 0; cursor: pointer; transition: color .25s, transform .25s; }
-.lyric-line:hover { color: rgba(255,255,255,0.6); }
-.lyric-line.active { color: #fff; transform: scale(1.02); }
-.lyrics-plain { white-space: pre-wrap; font-size: 1.1rem; line-height: 1.9; color: rgba(255,255,255,0.85); font-family: inherit; padding: 10px 0; }
+
+/* Animatable custom property so the per-word gradient wipe (see .lyric-word)
+   transitions smoothly frame-to-frame instead of snapping — same trick the
+   Spicy Lyrics project uses for its --SL-* custom properties. */
+@property --w {
+    syntax: '<number>';
+    inherits: true;
+    initial-value: 0;
+}
+
+.lyric-line {
+    font-family: 'Poppins', 'Segoe UI', sans-serif;
+    font-size: 1.6rem; font-weight: 800; line-height: 1.5; padding: 11px 0;
+    cursor: pointer; letter-spacing: -.01em;
+    color: rgba(255,255,255,0.32);
+    filter: blur(3px); opacity: .3;
+    transform: scale(1); transform-origin: left center;
+    transition: filter .45s ease, opacity .45s ease, transform .45s cubic-bezier(.3,.8,.3,1);
+}
+.lyric-line:hover { filter: blur(0); opacity: .7; }
+.lyric-line[data-dist="1"] { filter: blur(1.5px); opacity: .55; }
+.lyric-line[data-dist="2"] { filter: blur(2.4px); opacity: .38; }
+.lyric-line.active {
+    color: #fff; filter: blur(0); opacity: 1; transform: scale(1.045);
+    text-shadow: rgba(255,255,255,0.4) 0 0 14px;
+}
+.lyric-line.sung { filter: blur(0); opacity: .5; }
+
+/* Word-by-word karaoke wipe: each word is its own gradient-filled span.
+   --w (0→1) is driven from JS in sync with playback and animates the fill
+   boundary smoothly via the @property above, instead of a hard on/off
+   per-word switch. */
+.lyric-word {
+    --w: 0;
+    background-image: linear-gradient(90deg, #fff calc(var(--w) * 100%), rgba(255,255,255,0.34) calc(var(--w) * 100%));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    transition: --w .12s linear;
+}
+.lyric-line.sung .lyric-word { --w: 1; transition: none; }
+.lyric-line:not(.active):not(.sung) .lyric-word { --w: 0; transition: none; }
+
+.lyrics-plain { white-space: pre-wrap; font-family: 'Poppins', 'Segoe UI', sans-serif; font-size: 1.1rem; font-weight: 600; line-height: 1.9; color: rgba(255,255,255,0.85); padding: 10px 0; }
 .lyrics-credit { text-align: center; padding: 14px; font-size: 0.72rem; color: var(--dimmer); }
 .lyrics-credit a { color: var(--dim); }
 @media (max-width: 820px) {
     .lyrics-body { padding: 22px 20px 200px; }
-    .lyric-line { font-size: 1.28rem; }
+    .lyric-line { font-size: 1.32rem; }
 }
 
 /* ===== MODALS / TOASTS ===== */
@@ -1533,6 +1572,61 @@ input[type=range].slider.vertical {
     transition: border-color .18s;
 }
 .auth-gate-card input:focus { border-color: var(--accent, #ff6b1a); }
+/* ===== UI POLISH (additive — new lyrics icon, ±10s, sleep timer, smoothness) ===== */
+.ico-lyrics, .ico-seek { width: 1em; height: 1em; display: block; fill: currentColor; }
+.ico-seek text { fill: currentColor; }
+/* Lyrics button reads as lyrics now, and gently accents on hover so it invites a tap. */
+.pb-action.lyrics-toggle:hover { color: var(--accent); transform: scale(1.12); }
+.fs-head-actions > i.lyrics-toggle { display: inline-flex; align-items: center; }
+.fs-head-actions > i.lyrics-toggle:hover { color: var(--accent); transform: scale(1.08); }
+.fs-head-actions > i { transition: transform .15s cubic-bezier(.22,.9,.32,1), color .18s; }
+
+/* ±10s quick-seek */
+.pb-btn.pb-seek .ico-seek { width: 1.02em; height: 1.02em; }
+.fs-seek-btn { color: #fff; cursor: pointer; font-size: 1.5rem; display: inline-flex; align-items: center; transition: transform .15s cubic-bezier(.22,.9,.32,1), color .18s; }
+.fs-seek-btn:hover { color: var(--accent); transform: scale(1.1); }
+.fs-seek-btn:active { transform: scale(0.88); }
+
+/* Smoother fullscreen transport */
+.fs-controls i { transition: transform .15s cubic-bezier(.22,.9,.32,1), color .18s; }
+.fs-controls i:active { transform: scale(0.9); }
+.fs-controls .fs-play { transition: transform .18s cubic-bezier(.22,.9,.32,1), color .18s, filter .2s; }
+.fs-controls .fs-play:hover { transform: scale(1.045); filter: brightness(1.06); }
+.fs-controls .fs-play:active { transform: scale(0.95); }
+
+/* Sleep timer control + menu (mirrors the volume popup) */
+.fs-timer-wrap { position: relative; display: inline-flex; align-items: center; }
+.fs-timer-wrap > i { font-size: 1.5rem; color: #fff; cursor: pointer; transition: transform .15s cubic-bezier(.22,.9,.32,1), color .18s; }
+.fs-timer-wrap > i:hover { transform: scale(1.08); }
+.fs-timer-wrap > i.on { color: var(--accent); }
+.fs-timer-badge {
+    position: absolute; top: -7px; right: -9px; background: var(--accent); color: #000;
+    font-size: 0.56rem; font-weight: 800; line-height: 1; min-width: 15px; height: 15px; border-radius: 8px;
+    display: none; align-items: center; justify-content: center; padding: 0 3px; letter-spacing: -.3px;
+}
+.fs-timer-badge.show { display: inline-flex; }
+.fs-sleep-popup {
+    position: absolute; top: calc(100% + 12px); right: -6px; background: var(--elev); border-radius: 16px;
+    padding: 8px; display: none; flex-direction: column; gap: 1px;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.6); z-index: 21000; min-width: 172px;
+    animation: sleepPopIn .16s cubic-bezier(.22,.9,.32,1);
+}
+.fs-sleep-popup.open { display: flex; }
+@keyframes sleepPopIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+.fs-sleep-popup .sleep-title { font-size: 0.62rem; font-weight: 800; letter-spacing: 1.2px; color: var(--dim); text-transform: uppercase; padding: 7px 12px 5px; }
+.fs-sleep-popup button { background: none; border: none; color: var(--text); text-align: left; padding: 10px 12px; border-radius: 10px; font-size: 0.9rem; cursor: pointer; width: 100%; transition: background .15s, color .15s; }
+.fs-sleep-popup button:hover { background: var(--elev-2); }
+.fs-sleep-popup button.active-choice { color: var(--accent); font-weight: 700; }
+.fs-sleep-popup .sleep-off { color: var(--dim); margin-top: 4px; border-top: 1px solid rgba(255,255,255,0.08); border-radius: 0 0 10px 10px; }
+
+/* Seek/volume rails feel a touch more alive on hover (Spotify-style). */
+.timeline .slider, .fs-timeline .slider, .pb-right .slider { transition: filter .18s; }
+.timeline:hover .slider, .fs-timeline:hover .slider { filter: brightness(1.12); }
+
+/* Respect users who prefer less motion. */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+}
 </style>
 </head>
 <body>
@@ -1717,14 +1811,16 @@ input[type=range].slider.vertical {
                 <p id="pb-artist">Pick a song to start</p>
             </div>
             <button class="pb-action" id="pb-heart" title="Like" onclick="togglePlayerHeart(event)"><i class="ri-heart-line"></i></button>
-            <button class="pb-action" title="Lyrics" onclick="toggleLyricsOverlay()"><i class="ri-mic-2-line"></i></button>
+            <button class="pb-action lyrics-toggle" title="Lyrics" onclick="toggleLyricsOverlay()"><svg class="ico-lyrics" viewBox="0 0 24 24" aria-hidden="true"><path style="fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round" d="M4.2 6.1A2.4 2.4 0 0 1 6.6 3.7h10.8a2.4 2.4 0 0 1 2.4 2.4v7.3a2.4 2.4 0 0 1-2.4 2.4H10l-4 3.15a.55.55 0 0 1-.89-.43v-2.72H6.6a2.4 2.4 0 0 1-2.4-2.4V6.1Z"/><rect x="7.1" y="7.35" width="9.8" height="1.55" rx=".78"/><rect x="7.1" y="10.6" width="6.4" height="1.55" rx=".78"/></svg></button>
             <button class="pb-action" title="Add to playlist" onclick="openPlaylistModalFromPlayer()"><i class="ri-play-list-add-line"></i></button>
         </div>
         <div class="pb-center">
             <div class="pb-buttons">
                 <button class="pb-btn" id="pb-shuffle" title="Shuffle" onclick="toggleShuffle()"><i class="ri-shuffle-line"></i></button>
                 <button class="pb-btn" title="Previous" onclick="playPrevTrack()"><i class="ri-skip-back-fill"></i></button>
+                <button class="pb-btn pb-seek" title="Back 10 seconds" onclick="seekBy(-10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></button>
                 <button class="pb-btn play-main" id="pb-play-main" title="Play/Pause" onclick="togglePlayback()"><i class="ri-play-fill" id="pb-play-icon"></i></button>
+                <button class="pb-btn pb-seek" title="Forward 10 seconds" onclick="seekBy(10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(24,0) scale(-1,1)"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/></g><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></button>
                 <button class="pb-btn" title="Next" onclick="playNextTrack()"><i class="ri-skip-forward-fill"></i></button>
                 <button class="pb-btn" id="pb-loop" title="Repeat" onclick="toggleAudioLoop()"><i class="ri-repeat-line" id="pb-loop-icon"></i></button>
             </div>
@@ -1767,13 +1863,28 @@ input[type=range].slider.vertical {
             <i class="ri-arrow-down-s-line" onclick="toggleFullScreenPlayer()"></i>
             <span>NOW PLAYING</span>
             <div class="fs-head-actions">
-                <i class="ri-mic-2-line" title="Lyrics" onclick="toggleLyricsOverlay()"></i>
+                <i class="lyrics-toggle" title="Lyrics" onclick="toggleLyricsOverlay()"><svg class="ico-lyrics" viewBox="0 0 24 24" aria-hidden="true"><path style="fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round" d="M4.2 6.1A2.4 2.4 0 0 1 6.6 3.7h10.8a2.4 2.4 0 0 1 2.4 2.4v7.3a2.4 2.4 0 0 1-2.4 2.4H10l-4 3.15a.55.55 0 0 1-.89-.43v-2.72H6.6a2.4 2.4 0 0 1-2.4-2.4V6.1Z"/><rect x="7.1" y="7.35" width="9.8" height="1.55" rx=".78"/><rect x="7.1" y="10.6" width="6.4" height="1.55" rx=".78"/></svg></i>
                 <div class="fs-vol-wrap">
                     <i class="ri-volume-up-line" id="fs-vol-icon" title="Volume" onclick="toggleFsVolumePopup(event)"></i>
                     <div class="fs-vol-popup" id="fs-vol-popup">
                         <span class="vol-pct" id="fs-vol-pct">50%</span>
                         <input type="range" class="slider vertical" id="fs-volume-slider" min="0" max="100" value="50" orient="vertical">
                         <i class="ri-volume-up-line" onclick="toggleMute()"></i>
+                    </div>
+                </div>
+                <div class="fs-timer-wrap">
+                    <i class="ri-moon-line" id="fs-sleep-icon" title="Sleep timer" onclick="toggleSleepMenu(event)"></i>
+                    <span class="fs-timer-badge" id="fs-sleep-badge"></span>
+                    <div class="fs-sleep-popup" id="fs-sleep-popup">
+                        <div class="sleep-title">Sleep timer</div>
+                        <button onclick="setSleepTimer(5)">5 minutes</button>
+                        <button onclick="setSleepTimer(10)">10 minutes</button>
+                        <button onclick="setSleepTimer(15)">15 minutes</button>
+                        <button onclick="setSleepTimer(30)">30 minutes</button>
+                        <button onclick="setSleepTimer(45)">45 minutes</button>
+                        <button onclick="setSleepTimer(60)">1 hour</button>
+                        <button onclick="setSleepTimerEndOfTrack()">End of song</button>
+                        <button class="sleep-off" onclick="cancelSleepTimer(true)">Turn off</button>
                     </div>
                 </div>
                 <i class="ri-play-list-add-line" onclick="openPlaylistModalFromPlayer()"></i>
@@ -1798,7 +1909,9 @@ input[type=range].slider.vertical {
             <div class="fs-controls">
                 <i class="ri-shuffle-line side" id="fs-shuffle" onclick="toggleShuffle()"></i>
                 <i class="ri-skip-back-fill" onclick="playPrevTrack()"></i>
+                <span class="fs-seek-btn" title="Back 10 seconds" onclick="seekBy(-10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></span>
                 <i class="ri-play-circle-fill fs-play" id="fs-play-icon" onclick="togglePlayback()"></i>
+                <span class="fs-seek-btn" title="Forward 10 seconds" onclick="seekBy(10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(24,0) scale(-1,1)"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/></g><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></span>
                 <i class="ri-skip-forward-fill" onclick="playNextTrack()"></i>
                 <i class="ri-repeat-line side" id="fs-loop" onclick="toggleAudioLoop()"></i>
             </div>
@@ -1816,7 +1929,7 @@ input[type=range].slider.vertical {
             <span style="width:28px;"></span>
         </div>
         <div class="lyrics-body" id="lyrics-body"></div>
-        <div class="lyrics-credit">Lyrics via <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a></div>
+        <div class="lyrics-credit">Lyrics via <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a> &amp; Lyrics+</div>
     </div>
 
     <!-- MODAL: Add to playlist -->
@@ -2913,6 +3026,7 @@ function toggleSaveItem(item, el = null) {
     const idx = list.findIndex(x => x.id === item.id);
     const added = idx === -1;
     if (added) list.push(item); else list.splice(idx, 1);
+    if (item.type !== 'artist' && item.type !== 'playlist') tasteEvent(added ? 'like' : 'unlike', item);
 
     if (el) {
         const icon = el.querySelector('i') || el;
@@ -3005,7 +3119,88 @@ function rememberListen(t) {
     hist = hist.filter(x => x.id !== t.id);
     hist.unshift({ ...t, type: 'song' });
     localStorage.setItem('taste_profile_history', JSON.stringify(hist.slice(0, 15)));
+    tasteEvent('play', t);
     renderRecentlyPlayed();
+}
+
+/* =====================================================================
+   TASTE PROFILE
+   A lightweight per-device profile of what the listener actually enjoys,
+   built from real signals instead of just "same artist as current song":
+     +1  played a song            +2  listened to (almost) the end
+     +3  liked / saved            -2  skipped early        -3  un-liked
+   Scores are tracked per artist (and lightly per track) and used to pick
+   suggestion seeds, rank candidates, and filter out artists the listener
+   keeps skipping.
+===================================================================== */
+const TASTE_KEY = 'taste_profile_v2';
+function loadTasteProfile() {
+    try {
+        const t = JSON.parse(localStorage.getItem(TASTE_KEY) || 'null');
+        if (t && t.artists) return t;
+    } catch (e) {}
+    return { artists: {}, tracks: {} };
+}
+function saveTasteProfile(t) {
+    try {
+        // Keep it bounded: only the 120 strongest artist signals survive.
+        const entries = Object.entries(t.artists);
+        if (entries.length > 120) {
+            entries.sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+            t.artists = Object.fromEntries(entries.slice(0, 120));
+        }
+        const trackEntries = Object.entries(t.tracks);
+        if (trackEntries.length > 200) t.tracks = Object.fromEntries(trackEntries.slice(-200));
+        localStorage.setItem(TASTE_KEY, JSON.stringify(t));
+    } catch (e) {}
+}
+function tasteArtistKey(artist) {
+    // First credited artist, normalized — "A, B" and "A feat. B" both key on A.
+    return cleanArtistName(artist).split(',')[0].split(/\bfeat\.?\b|\bft\.?\b/i)[0].trim().toLowerCase();
+}
+function tasteEvent(kind, track) {
+    if (!track || !track.title) return;
+    const weights = { play: 1, complete: 2, like: 3, skip: -2, unlike: -3 };
+    const w = weights[kind]; if (!w) return;
+    const t = loadTasteProfile();
+    const aKey = tasteArtistKey(track.artist);
+    if (aKey && aKey !== 'various artists') {
+        t.artists[aKey] = Math.max(-12, Math.min(30, (t.artists[aKey] || 0) + w));
+    }
+    if (track.id) t.tracks[track.id] = Math.max(-6, Math.min(12, (t.tracks[track.id] || 0) + w));
+    saveTasteProfile(t);
+}
+function tasteArtistScore(artist) {
+    const t = loadTasteProfile();
+    return t.artists[tasteArtistKey(artist)] || 0;
+}
+function tasteSkippedArtists() {
+    const t = loadTasteProfile();
+    return new Set(Object.keys(t.artists).filter(a => t.artists[a] <= -3));
+}
+/* Pick up to n seed tracks the listener demonstrably likes, from liked
+   songs + listen history, weighted by artist affinity, one per artist. */
+function tasteTopSeeds(n = 3, excludeId = null) {
+    const hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
+    const pool = [...(userProfile.likedSongs || []), ...hist]
+        .filter(t => t && t.id && t.title && t.id !== excludeId);
+    const skipped = tasteSkippedArtists();
+    const scored = pool.map(t => ({
+        t,
+        score: tasteArtistScore(t.artist)
+              + (userProfile.likedSongs?.some(s => s.id === t.id) ? 3 : 0)
+              + Math.random() * 2.5   // keep it from being the same seeds every time
+    })).filter(x => !skipped.has(tasteArtistKey(x.t.artist)));
+    scored.sort((a, b) => b.score - a.score);
+    const out = [], seenArtists = new Set();
+    for (const { t } of scored) {
+        const a = tasteArtistKey(t.artist);
+        if (seenArtists.has(a)) continue;
+        seenArtists.add(a);
+        out.push(t);
+        if (out.length >= n) break;
+    }
+    return out;
 }
 
 /* =====================================================================
@@ -3016,6 +3211,7 @@ function rememberListen(t) {
 ===================================================================== */
 let lyricsCache = new Map();
 let lyricsToken = 0;
+let lyricsAbort = null;          // AbortController for the single in-flight lyrics request
 let currentLyricsLines = null;   // array of {time, text} for synced, or a string for plain
 let currentLyricsMode = 'none';  // 'loading' | 'synced' | 'plain' | 'none' | 'error'
 let lastHighlightedLyricIndex = -1;
@@ -3036,47 +3232,142 @@ function parseLRC(lrcText) {
    "[4K]", "- Official Audio"...) that a lyrics database won't recognize
    as part of the song name. Stripping it before querying meaningfully
    improves match rate. */
+// Decode the handful of HTML entities YouTube titles actually contain.
+function decodeHtmlEntities(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/&amp;/g, '&').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(+d));
+}
+const LYRICS_JUNK_WORDS = /\b(official|officiel|oficial|music|video|videoclip|audio|lyric[s]?|lyric\s*video|visuali[sz]er|mv|hd|hq|4k|8k|remaster(?:ed)?|explicit|clip|prod\.?|prod\s+by|color(?:ed)?\s*coded|sub\s*español|legendado)\b/gi;
+
+// Turn a messy YouTube video title ("Sanfara ft. Nordo - Nbet Nhareb (Clip
+// Officiel) | نبات نحارب") into the clean song title a lyrics API expects
+// ("Nbet Nhareb"). This is the whole reason lyrics were failing: the raw
+// title carried the artist, features, a "(Clip Officiel)" tag and an
+// Arabic-script duplicate, so nothing ever matched.
 function cleanTitleForLyrics(title) {
-    return title.replace(/\s*(?:\[[^\]]*\]|\([^)]*\))\s*/g, ' ')
-                .replace(/official|video|audio|lyric|remix|ft\.|feat\.?/gi, '')
-                .replace(/\s*-\s*$/, '')
-                .trim();
+    if (!title) return '';
+    let t = decodeHtmlEntities(String(title)).trim();
+    // 1) If split by | • ·, keep the segment richest in Latin letters
+    //    (usually the romanized song title, which is what LRCLIB/KPoe index).
+    if (/[|•·]/.test(t)) {
+        const segs = t.split(/\s*[|•·]\s*/).map(s => s.trim()).filter(Boolean);
+        if (segs.length > 1) {
+            const latin = segs.filter(s => /[a-z]/i.test(s));
+            const pool = latin.length ? latin : segs;
+            t = pool.sort((a, b) => b.replace(/[^a-z]/gi, '').length - a.replace(/[^a-z]/gi, '').length)[0];
+        }
+    }
+    // 2) Drop bracketed groups: (Official Video), [Audio], {Prod. X}
+    t = t.replace(/\s*[\(\[\{][^)\]\}]*[\)\]\}]\s*/g, ' ');
+    // 3) "Artist - Title" -> keep the part after the first spaced dash
+    const dash = t.split(/\s+[-–—]\s+/);
+    if (dash.length >= 2) t = dash.slice(1).join(' - ');
+    // 4) Cut featured clauses and strip leftover junk keywords
+    t = t.replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
+         .replace(LYRICS_JUNK_WORDS, ' ')
+         .replace(/["'"'']/g, '')
+         .replace(/\s{2,}/g, ' ')
+         .replace(/^[\s\-–—•·:]+|[\s\-–—•·:]+$/g, '')
+         .trim();
+    // Guard: if we over-trimmed to nothing, fall back to just bracket removal.
+    if (t.length < 2) {
+        t = decodeHtmlEntities(String(title)).replace(/\s*[\(\[\{][^)\]\}]*[\)\]\}]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+    }
+    return t;
 }
 
-async function loadLyricsForTrack(track) {
+// Derive the best artist string for a lyrics lookup. YouTube's channel name
+// (track.artist) is often just the lead artist ("Sanfara"); the title's left
+// side usually lists everyone ("Sanfara ft. Nordo" -> "Sanfara, Nordo"),
+// which matches how these lyric DBs store the credit. Lyrics-only helper.
+function deriveArtistForLyrics(rawTitle, rawArtist) {
+    let artist = cleanArtistName(rawArtist);
+    if (rawTitle && /\s+[-–—]\s+/.test(rawTitle)) {
+        let left = decodeHtmlEntities(rawTitle.split(/\s+[-–—]\s+/)[0])
+            .replace(/\s*[\(\[\{][^)\]\}]*[\)\]\}]\s*/g, ' ')
+            .replace(/\s*\b(?:feat|ft|featuring)\b\.?\s*/gi, ', ')
+            .replace(/\s*[x×&]\s*/gi, ', ')
+            .replace(/\s{2,}/g, ' ').replace(/[,\s]+$/, '').trim();
+        if (left && left.length <= 60) {
+            const baseFirst = (artist || '').split(',')[0].trim().toLowerCase();
+            if (!artist || artist === 'Various Artists' || (baseFirst && left.toLowerCase().includes(baseFirst))) {
+                artist = left;
+            }
+        }
+    }
+    return (artist || 'Various Artists').replace(/\s*-\s*Topic$/i, '').trim();
+}
+
+async function loadLyricsForTrack(track, opts = {}) {
+    // Back-compat: older call sites passed a bare boolean for "force".
+    if (typeof opts === 'boolean') opts = { force: opts };
+    const { force = false, userOpened = false } = opts;
+
     if (!track || !track.title) return;
     const cleanTitle = cleanTitleForLyrics(track.title) || track.title;
-    const cleanArtist = cleanArtistName(track.artist);
+    const cleanArtist = deriveArtistForLyrics(track.title, track.artist);
     const key = `${cleanTitle}|${cleanArtist}`.toLowerCase();
     const myToken = ++lyricsToken;
 
+    // Cancel any request still in flight so it can't land late, double up, or
+    // poison state. (Its catch sees AbortError and bails out cleanly.)
+    if (lyricsAbort) { try { lyricsAbort.abort(); } catch (e) {} lyricsAbort = null; }
+
+    if (force) lyricsCache.delete(key);
+
     if (lyricsCache.has(key)) {
         const cached = lyricsCache.get(key);
-        currentLyricsMode = cached.mode;
-        currentLyricsLines = cached.lines;
-        renderLyricsOverlay();
-        return;
+        const isMiss = cached.mode === 'none' || cached.mode === 'error';
+        const stale = isMiss && (Date.now() - (cached.at || 0) > 3 * 60 * 1000);
+        // If the user explicitly opened the panel and all we have cached is a
+        // miss, give them a fresh attempt — the miss was very likely just a
+        // momentarily rate-limited provider. Otherwise trust the cache.
+        const refetchMiss = userOpened && isMiss;
+        if (!stale && !refetchMiss) {
+            currentLyricsMode = cached.mode;
+            currentLyricsLines = cached.lines;
+            renderLyricsOverlay();
+            return;
+        }
+        lyricsCache.delete(key);
     }
 
     currentLyricsMode = 'loading';
     currentLyricsLines = null;
     renderLyricsOverlay();
 
+    const ac = new AbortController();
+    lyricsAbort = ac;
+    const timeoutId = setTimeout(() => { try { ac.abort(); } catch (e) {} }, 20000);
     try {
         const durationParam = (audioEngine.duration && isFinite(audioEngine.duration)) ? `&duration=${Math.round(audioEngine.duration)}` : '';
+        // Secondary title candidate for the worker to try if the primary misses:
+        // brackets removed but NO artist/dash split and NO script preference — so
+        // it covers cases where the aggressive clean guessed wrong (e.g. the real
+        // title contains a dash, or the other-script side is the indexed one).
+        const lightTitle = decodeHtmlEntities(track.title || '')
+            .replace(/\s*[\(\[\{][^)\]\}]*[\)\]\}]\s*/g, ' ')
+            .split(/\s*[|•·]\s*/).map(s => s.trim()).filter(Boolean).sort((a, b) => b.length - a.length)[0] || (track.title || '');
+        const altParam = (lightTitle && lightTitle !== cleanTitle) ? `&alt=${encodeURIComponent(lightTitle)}` : '';
+        // Plain channel/uploader artist (what we always used to send, before the
+        // title-derived collab guess was added). Lyrics DBs often only credit the
+        // billed/primary artist even when the video title lists a collab, so the
+        // derived guess ("Drake, 21 Savage") can miss where the plain one
+        // ("Drake") would've hit. Send both — the Worker tries both, no more
+        // silently losing the fallback that used to work.
+        const plainArtist = cleanArtistName(track.artist);
+        const artist2Param = (plainArtist && plainArtist.toLowerCase() !== cleanArtist.toLowerCase()) ? `&artist2=${encodeURIComponent(plainArtist)}` : '';
 
-        // Try with duration first (more precise match)
-        let res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/lyrics-proxy?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}${durationParam}`, 9000);
-        let data = await res.json();
+        // ONE request only. The Worker already falls back internally (duration →
+        // no-duration, LRCLIB → geeked.wtf → search), so a second client call
+        // here just duplicated work and created the racing/cancelled requests.
+        const res = await fetch(`${NEW_HUB_BACKEND}/api/lyrics-proxy?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}${durationParam}${altParam}${artist2Param}`, { signal: ac.signal });
+        const data = await res.json();
 
-        // If that came up empty, retry without duration as a broader fallback —
-        // a slightly-off reported duration can make the exact-match lookup miss
-        if ((!data.found || (!data.synced && !data.plain)) && durationParam) {
-            res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/lyrics-proxy?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}`, 9000);
-            data = await res.json();
-        }
-
-        if (myToken !== lyricsToken) return; // a newer track already took over
+        if (myToken !== lyricsToken) return; // a newer track/attempt already took over
 
         let mode = 'none', lines = null;
         if (data.found && data.synced) {
@@ -3086,16 +3377,27 @@ async function loadLyricsForTrack(track) {
         } else if (data.found && data.plain) {
             mode = 'plain'; lines = data.plain;
         }
-        lyricsCache.set(key, { mode, lines });
+        lyricsCache.set(key, { mode, lines, at: Date.now() });
         currentLyricsMode = mode;
         currentLyricsLines = lines;
         renderLyricsOverlay();
     } catch (e) {
+        // Aborted (superseded by a new track / new attempt) is NOT a failure —
+        // leave the UI and cache untouched so the newer attempt owns the state.
+        if (e && e.name === 'AbortError') return;
         if (myToken !== lyricsToken) return;
         currentLyricsMode = 'error';
         currentLyricsLines = null;
+        lyricsCache.set(key, { mode: 'error', lines: null, at: Date.now() });
         renderLyricsOverlay();
+    } finally {
+        clearTimeout(timeoutId);
+        if (lyricsAbort === ac) lyricsAbort = null;
     }
+}
+
+function retryLyrics() {
+    if (activeTrackData) loadLyricsForTrack(activeTrackData, { force: true });
 }
 
 function renderLyricsOverlay() {
@@ -3105,15 +3407,18 @@ function renderLyricsOverlay() {
     if (currentLyricsMode === 'loading') {
         body.innerHTML = `<p class="status-note" style="text-align:center; margin-top:60px;">Finding lyrics…</p>`;
     } else if (currentLyricsMode === 'error') {
-        body.innerHTML = `<p class="status-note err" style="text-align:center; margin-top:60px;">Couldn't load lyrics right now.</p>`;
+        body.innerHTML = `<p class="status-note err" style="text-align:center; margin-top:60px;">Couldn't load lyrics right now.<br><span style="text-decoration:underline; cursor:pointer; color:#fff;" onclick="retryLyrics()">Try again</span></p>`;
     } else if (currentLyricsMode === 'plain' && currentLyricsLines) {
         body.innerHTML = `<pre class="lyrics-plain">${escapeHtml(currentLyricsLines)}</pre>`;
     } else if (currentLyricsMode === 'synced' && currentLyricsLines) {
-        body.innerHTML = currentLyricsLines.map((l, i) =>
-            `<p class="lyric-line" data-idx="${i}" onclick="seekToLyric(${i})">${escapeHtml(l.text || '♪')}</p>`
-        ).join('');
+        body.innerHTML = currentLyricsLines.map((l, i) => {
+            const words = (l.text || '♪').split(/\s+/).filter(Boolean);
+            const wordsHtml = words.map(w => `<span class="lyric-word">${escapeHtml(w)}</span>`).join(' ');
+            return `<p class="lyric-line" data-idx="${i}" onclick="seekToLyric(${i})">${wordsHtml}</p>`;
+        }).join('');
+        activeWordSpans = null;
     } else {
-        body.innerHTML = `<p class="status-note" style="text-align:center; margin-top:60px;">No lyrics found for this song.</p>`;
+        body.innerHTML = `<p class="status-note" style="text-align:center; margin-top:60px;">No lyrics found for this song.<br><span style="text-decoration:underline; cursor:pointer; color:#fff;" onclick="retryLyrics()">Search again</span></p>`;
     }
 }
 
@@ -3121,6 +3426,31 @@ function seekToLyric(i) {
     if (!Array.isArray(currentLyricsLines) || !currentLyricsLines[i]) return;
     if (!audioEngine.src && pendingResume) togglePlayback(); // resuming a restored session first
     audioEngine.currentTime = currentLyricsLines[i].time;
+}
+
+let activeWordSpans = null; // [{el, start, dur}] for the currently active line — driven each frame by lyricsWordFrame()
+
+// Estimate a per-word start/duration inside a line by spreading the line's
+// on-screen time proportionally across its words (weighted by word length,
+// since LRCLIB only gives us line-level timestamps, not real word timing —
+// this is the same estimation trick most lyric clones use to still get a
+// convincing word-by-word wipe out of plain LRC data).
+function computeActiveWordSpans(lineEl, line, nextTime) {
+    const spans = Array.from(lineEl.querySelectorAll('.lyric-word'));
+    if (!spans.length) return null;
+    const weights = spans.map(s => Math.max(1, s.textContent.length));
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    const rawDur = (typeof nextTime === 'number' ? nextTime : line.time + 4) - line.time;
+    // Cap so long instrumental gaps don't crawl forever — the wipe finishes
+    // at a natural reading pace and the line just sits fully lit after that.
+    const dur = Math.max(0.4, Math.min(rawDur, spans.length * 0.62 + 1.4));
+    let cumulative = 0;
+    return spans.map((el, i) => {
+        const wStart = line.time + (cumulative / totalWeight) * dur;
+        const wDur = (weights[i] / totalWeight) * dur;
+        cumulative += weights[i];
+        return { el, start: wStart, dur: wDur };
+    });
 }
 
 function updateLyricsHighlight() {
@@ -3134,18 +3464,57 @@ function updateLyricsHighlight() {
     if (idx === lastHighlightedLyricIndex) return;
     lastHighlightedLyricIndex = idx;
     const body = $('lyrics-body');
-    body.querySelectorAll('.lyric-line.active').forEach(el => el.classList.remove('active'));
+    body.querySelectorAll('.lyric-line').forEach(el => {
+        const i = +el.dataset.idx;
+        el.classList.toggle('active', i === idx);
+        el.classList.toggle('sung', i < idx);
+        const dist = Math.abs(i - idx);
+        if (dist === 0) delete el.dataset.dist; else el.dataset.dist = Math.min(dist, 3);
+    });
+    activeWordSpans = null;
     if (idx >= 0) {
         const el = body.querySelector(`.lyric-line[data-idx="${idx}"]`);
-        if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+        if (el) {
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            activeWordSpans = computeActiveWordSpans(el, currentLyricsLines[idx], currentLyricsLines[idx + 1]?.time);
+        }
     }
 }
+
+// Smooth per-frame wipe for the active line's words — timeupdate alone only
+// fires a few times a second, too choppy for the karaoke gradient to feel
+// synced to the words rather than just the sentence.
+function lyricsWordFrame() {
+    requestAnimationFrame(lyricsWordFrame);
+    if (!activeWordSpans || currentLyricsMode !== 'synced') return;
+    const overlay = $('lyrics-overlay');
+    if (!overlay || !overlay.classList.contains('open')) return;
+    const t = audioEngine.currentTime;
+    for (const s of activeWordSpans) {
+        const w = s.dur > 0 ? Math.min(1, Math.max(0, (t - s.start) / s.dur)) : (t >= s.start ? 1 : 0);
+        s.el.style.setProperty('--w', w.toFixed(3));
+    }
+}
+requestAnimationFrame(lyricsWordFrame);
 
 function toggleLyricsOverlay() {
     if (!activeTrackData) { showToast("Play a song first", true); return; }
     const overlay = $('lyrics-overlay');
     overlay.classList.toggle('open');
-    if (overlay.classList.contains('open')) { lastHighlightedLyricIndex = -1; updateLyricsHighlight(); }
+    if (overlay.classList.contains('open')) {
+        lastHighlightedLyricIndex = -1;
+        // Guarantee an attempt whenever the panel is opened without lyrics on
+        // screen. A cached miss or a half-finished attempt must NOT silently
+        // show "no lyrics" — that was why the first tap seemed to do nothing.
+        const haveLyrics = (currentLyricsMode === 'synced' || currentLyricsMode === 'plain') && currentLyricsLines;
+        const alreadyLoading = currentLyricsMode === 'loading' && lyricsAbort; // an in-flight preload will fill it in
+        if (!haveLyrics && !alreadyLoading) {
+            loadLyricsForTrack(activeTrackData, { userOpened: true });
+        }
+        updateLyricsHighlight();
+    } else {
+        activeWordSpans = null;
+    }
 }
 audioEngine.addEventListener('timeupdate', updateLyricsHighlight);
 
@@ -3367,6 +3736,13 @@ function playShuffledCollection() {
     initializeTrackStream(playbackQueue[currentQueueIndex]);
 }
 function playNextTrack(shuffleRetries = 0) {
+    // Taste signal: leaving a song early is a skip; finishing (or nearly
+    // finishing) it is a completion. Only counted once per advance.
+    if (shuffleRetries === 0 && activeTrackData && isFinite(audioEngine.duration) && audioEngine.duration > 0) {
+        const progress = audioEngine.currentTime / audioEngine.duration;
+        if (progress >= 0.85) tasteEvent('complete', activeTrackData);
+        else if (audioEngine.currentTime > 2 && progress < 0.4) tasteEvent('skip', activeTrackData);
+    }
     if (playbackQueue.length > 0) {
         if (isShuffleActive) {
             if (shuffleRetries >= playbackQueue.length) { playNextAlgorithmSong(); return; }
@@ -3393,17 +3769,18 @@ async function gatherAlgorithmicCandidates(seedTrack) {
     const jobs = [
         fetchJsonRetry(`${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(seedTrack.title)}&artist=${encodeURIComponent(seedTrack.artist)}`, 2, 500).catch(() => [])
     ];
-    const tastePool = shuffleArray([
-        ...(userProfile.likedSongs || []),
-        ...JSON.parse(localStorage.getItem('taste_profile_history') || '[]')
-    ]).filter(t => t && t.id && t.title && t.id !== seedTrack.id);
-    const altSeed = tastePool[0];
-    if (altSeed) {
+    // Seed from the taste profile: songs by artists the listener actually
+    // rates, not a random grab from history.
+    const altSeeds = tasteTopSeeds(2, seedTrack.id)
+        .filter(t => tasteArtistKey(t.artist) !== tasteArtistKey(seedTrack.artist));
+    altSeeds.forEach(altSeed => {
         jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(altSeed.title)}&artist=${encodeURIComponent(altSeed.artist)}`, 2, 500).catch(() => []));
-    }
+    });
     jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(seedTrack.artist)}&f=song`, 2, 500).catch(() => []));
 
     const responses = await Promise.all(jobs);
+    const skipped = tasteSkippedArtists();
+    const recentIds = new Set(JSON.parse(localStorage.getItem('taste_profile_history') || '[]').slice(0, 6).map(t => t.id));
     const seen = new Set();
     const out = [];
     responses.forEach(r => {
@@ -3412,6 +3789,8 @@ async function gatherAlgorithmicCandidates(seedTrack) {
             const t = normalizeTrack(raw, 'song');
             if (!t.id || !t.title) return;
             if (t.id === seedTrack.id || seen.has(t.id) || autoPlayHistory.includes(t.id)) return;
+            if (recentIds.has(t.id)) return;                          // just played it
+            if (skipped.has(tasteArtistKey(t.artist))) return;        // artist they keep skipping
             seen.add(t.id);
             out.push(t);
         });
@@ -3420,10 +3799,25 @@ async function gatherAlgorithmicCandidates(seedTrack) {
 }
 
 function pickDiverseCandidate(candidates, seedTrack) {
-    const seedArtist = (seedTrack.artist || '').toLowerCase();
-    const different = candidates.filter(c => (c.artist || '').toLowerCase() !== seedArtist);
-    const pool = different.length ? different : candidates; 
-    return pool[Math.floor(Math.random() * pool.length)];
+    const seedArtist = tasteArtistKey(seedTrack.artist);
+    const lastArtists = new Set(
+        JSON.parse(localStorage.getItem('taste_profile_history') || '[]')
+            .slice(0, 3).map(t => tasteArtistKey(t.artist))
+    );
+    // Weighted pick: taste affinity pulls a candidate up, repeating the same
+    // artist (seed or the last few played) pulls it down — so it follows the
+    // listener's vibe without turning into an artist-radio loop.
+    const scored = candidates.map(c => {
+        const aKey = tasteArtistKey(c.artist);
+        let w = 3 + Math.max(-2, Math.min(8, tasteArtistScore(c.artist)));
+        if (aKey === seedArtist) w -= 2.5;
+        if (lastArtists.has(aKey)) w -= 1.5;
+        return { c, w: Math.max(0.25, w) };
+    });
+    const total = scored.reduce((s, x) => s + x.w, 0);
+    let r = Math.random() * total;
+    for (const x of scored) { r -= x.w; if (r <= 0) return x.c; }
+    return scored.length ? scored[scored.length - 1].c : candidates[Math.floor(Math.random() * candidates.length)];
 }
 
 async function prefetchNextAlgorithmSong() {
@@ -3606,6 +4000,86 @@ function toggleFsVolumePopup(event) {
 }
 document.addEventListener('click', e => {
     if (!e.target.closest('.fs-vol-wrap')) $('fs-vol-popup').classList.remove('open');
+});
+
+/* ---------- Quick seek ±10s ---------- */
+function seekBy(delta) {
+    if (!audioEngine.src || isNaN(audioEngine.duration)) return;
+    const dur = audioEngine.duration;
+    let t = (audioEngine.currentTime || 0) + delta;
+    t = Math.max(0, t);
+    if (isFinite(dur)) t = Math.min(dur - 0.25, t);
+    audioEngine.currentTime = t;
+    updateProgressUI();
+}
+
+/* ---------- Sleep timer ---------- */
+let sleepTimerId = null, sleepTimerEnd = 0, sleepBadgeInterval = null, sleepEndOfTrack = false;
+function toggleSleepMenu(event) {
+    if (event) event.stopPropagation();
+    $('fs-sleep-popup').classList.toggle('open');
+}
+function markSleepChoice(label) {
+    document.querySelectorAll('#fs-sleep-popup button').forEach(b => {
+        b.classList.toggle('active-choice', !!label && b.textContent.trim() === label);
+    });
+}
+function setSleepTimer(minutes) {
+    cancelSleepTimer(false);
+    sleepTimerEnd = Date.now() + minutes * 60000;
+    sleepTimerId = setTimeout(fireSleepTimer, minutes * 60000);
+    $('fs-sleep-icon').classList.add('on');
+    startSleepBadge();
+    markSleepChoice(minutes === 60 ? '1 hour' : `${minutes} minutes`);
+    $('fs-sleep-popup').classList.remove('open');
+    showToast(`Sleep timer: ${minutes === 60 ? '1 hour' : minutes + ' min'}`, true);
+}
+function setSleepTimerEndOfTrack() {
+    cancelSleepTimer(false);
+    sleepEndOfTrack = true;
+    $('fs-sleep-icon').classList.add('on');
+    const badge = $('fs-sleep-badge');
+    badge.textContent = '♪'; badge.classList.add('show');
+    markSleepChoice('End of song');
+    $('fs-sleep-popup').classList.remove('open');
+    showToast('Sleep at end of song', true);
+}
+function fireSleepTimer() {
+    try { audioEngine.pause(); } catch (e) {}
+    cancelSleepTimer(false);
+    showToast('Sleep timer ended', true);
+}
+function cancelSleepTimer(userAction) {
+    if (sleepTimerId) { clearTimeout(sleepTimerId); sleepTimerId = null; }
+    if (sleepBadgeInterval) { clearInterval(sleepBadgeInterval); sleepBadgeInterval = null; }
+    sleepTimerEnd = 0; sleepEndOfTrack = false;
+    const icon = $('fs-sleep-icon'); if (icon) icon.classList.remove('on');
+    const badge = $('fs-sleep-badge'); if (badge) { badge.classList.remove('show'); badge.textContent = ''; }
+    markSleepChoice(null);
+    if (userAction) { $('fs-sleep-popup').classList.remove('open'); showToast('Sleep timer off', true); }
+}
+function startSleepBadge() {
+    const badge = $('fs-sleep-badge');
+    const upd = () => {
+        const remMs = sleepTimerEnd - Date.now();
+        if (remMs <= 0) { badge.classList.remove('show'); return; }
+        badge.textContent = Math.ceil(remMs / 60000) + 'm';
+        badge.classList.add('show');
+    };
+    upd();
+    sleepBadgeInterval = setInterval(upd, 15000);
+}
+// "End of song": pause just before the current track finishes (so it doesn't auto-advance).
+audioEngine.addEventListener('timeupdate', () => {
+    if (sleepEndOfTrack && audioEngine.duration && isFinite(audioEngine.duration)
+        && audioEngine.currentTime >= audioEngine.duration - 0.5) {
+        try { audioEngine.pause(); } catch (e) {}
+        cancelSleepTimer(false);
+        showToast('Sleep timer ended', true);
+    }
+});
+document.addEventListener('click', e => {
+    if (!e.target.closest('.fs-timer-wrap')) $('fs-sleep-popup').classList.remove('open');
 });
 
 document.addEventListener('keydown', e => {
@@ -3898,10 +4372,15 @@ async function loadHomeRecommendations(manual = false) {
 }
 
 async function buildRecommendations() {
-    // Seeds: liked songs + local listen/search history
+    // Seeds: the taste profile's strongest picks (liked + finished songs by
+    // artists you rate), padded with random history so new accounts still work.
     const hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
-    let seeds = [...(userProfile.likedSongs || []), ...hist.filter(t => t && t.id && t.title)];
-    seeds = shuffleArray(seeds).slice(0, 3);
+    let seeds = tasteTopSeeds(3);
+    if (seeds.length < 3) {
+        const filler = shuffleArray([...(userProfile.likedSongs || []), ...hist.filter(t => t && t.id && t.title)])
+            .filter(t => !seeds.some(s => s.id === t.id));
+        seeds = [...seeds, ...filler].slice(0, 3);
+    }
 
     const jobs = [];
     seeds.forEach(s => {
@@ -3923,11 +4402,18 @@ async function buildRecommendations() {
 
     songPool = shuffleArray(songPool); plPool = shuffleArray(plPool);
 
+    const skipped = tasteSkippedArtists();
     const songs = [], seenS = new Set();
     songPool.forEach(t => {
         const id = t.id || t.videoId;
-        if (id && !seenS.has(id)) { seenS.add(id); songs.push(normalizeTrack(t, 'song')); }
+        if (id && !seenS.has(id)) {
+            const norm = normalizeTrack(t, 'song');
+            if (skipped.has(tasteArtistKey(norm.artist))) return; // don't resurface artists you keep skipping
+            seenS.add(id); songs.push(norm);
+        }
     });
+    // Rank the shelf by taste affinity (with jitter so it stays fresh)
+    songs.sort((a, b) => (tasteArtistScore(b.artist) + Math.random() * 3) - (tasteArtistScore(a.artist) + Math.random() * 3));
     const playlists = [], seenP = new Set();
     plPool.forEach(t => {
         const id = t.id || t.playlistId || t.browseId;
@@ -4053,6 +4539,152 @@ function dismissSurprise() {
 }
 
 /* =====================================================================
+   BACK BUTTON + SWIPE-DOWN GESTURES
+   1. Hardware/browser Back (Android back button, iOS edge-swipe) now acts
+      as an in-app "back": it closes the topmost thing that's open —
+      lyrics → fullscreen player → any modal → collection view → back to
+      Home — and never exits the site. Implemented with a single history
+      "guard" entry that is re-armed after every pop, so no existing
+      open/close function needed to change.
+   2. The fullscreen player and the lyrics sheet can be dragged/swiped
+      down to dismiss, like every native music app.
+===================================================================== */
+function handleInAppBack() {
+    // Close things in visual stacking order (topmost first).
+    const lyrics = $('lyrics-overlay');
+    if (lyrics && lyrics.classList.contains('open')) { lyrics.classList.remove('open'); return true; }
+
+    const volPopup = $('fs-vol-popup');
+    if (volPopup && volPopup.classList.contains('open')) { volPopup.classList.remove('open'); return true; }
+
+    const sleepPopup = $('fs-sleep-popup');
+    if (sleepPopup && sleepPopup.classList.contains('open')) { sleepPopup.classList.remove('open'); return true; }
+
+    const fs = $('full-player-overlay');
+    if (fs && fs.classList.contains('active')) { fs.classList.remove('active'); return true; }
+
+    const openModal = document.querySelector('.modal-overlay.open');
+    if (openModal) {
+        closeModals(); closeConfirmModal(); closeImportModal(); closeAddLinkModal();
+        return true;
+    }
+
+    const suggBox = $('suggestions-box');
+    if (suggBox && suggBox.style.display === 'block') { suggBox.style.display = 'none'; return true; }
+
+    const collection = $('pane-collection');
+    if (collection && collection.classList.contains('active')) { triggerPaneRollback(); return true; }
+
+    const home = $('pane-home');
+    if (home && !home.classList.contains('active')) { switchPane('home'); return true; }
+
+    return false; // already at Home with nothing open
+}
+
+function initBackButtonHandling() {
+    try {
+        // One guard entry sits on top of the real history. Every Back press
+        // pops it, we do our in-app back action, then immediately re-arm it —
+        // so Back always works and never leaves the app.
+        history.replaceState({ msRoot: true }, '', location.href);
+        history.pushState({ msGuard: true }, '', location.href);
+        window.addEventListener('popstate', () => {
+            handleInAppBack(); // even when false (home, nothing open) we stay put
+            history.pushState({ msGuard: true }, '', location.href);
+        });
+    } catch (e) { /* history API unavailable — nothing breaks, just no back handling */ }
+}
+
+/* ---- swipe-down to dismiss ---- */
+function makeSwipeDismissable(el, opts) {
+    const { canStart, close } = opts;
+    let startY = 0, startX = 0, startT = 0, dy = 0, dragging = false, committed = false;
+
+    function snapBack() {
+        el.style.transition = 'transform .25s cubic-bezier(.3,.8,.3,1)';
+        el.style.transform = '';
+        setTimeout(() => { el.style.transition = ''; }, 270);
+    }
+    function animateOut() {
+        el.style.transition = 'transform .22s cubic-bezier(.3,.8,.3,1)';
+        el.style.transform = 'translateY(100vh)';
+        setTimeout(() => {
+            // Remove the open class while transitions are off, so the overlay
+            // doesn't visibly re-animate from its dragged position.
+            el.style.transition = 'none';
+            close();
+            el.style.transform = '';
+            requestAnimationFrame(() => { el.style.transition = ''; });
+        }, 230);
+    }
+
+    el.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        if (canStart && !canStart(e)) { dragging = false; return; }
+        dragging = true; committed = false;
+        startY = e.touches[0].clientY;
+        startX = e.touches[0].clientX;
+        startT = Date.now();
+        dy = 0;
+    }, { passive: true });
+
+    el.addEventListener('touchmove', (e) => {
+        if (!dragging) return;
+        const t = e.touches[0];
+        dy = t.clientY - startY;
+        const dx = t.clientX - startX;
+        if (!committed) {
+            // Only take over once it's clearly a downward vertical drag.
+            if (dy > 14 && dy > Math.abs(dx) * 1.4) committed = true;
+            else if (Math.abs(dx) > 26 || dy < -14) { dragging = false; return; }
+            else return;
+        }
+        if (dy < 0) dy = 0;
+        e.preventDefault(); // we're handling this drag; don't scroll behind it
+        el.style.transition = 'none';
+        el.style.transform = `translateY(${dy}px)`;
+    }, { passive: false });
+
+    el.addEventListener('touchend', () => {
+        if (!dragging) return;
+        dragging = false;
+        if (!committed) return;
+        const elapsed = Math.max(1, Date.now() - startT);
+        const velocity = dy / elapsed; // px per ms
+        const threshold = Math.min(180, window.innerHeight * 0.24);
+        if (dy > threshold || velocity > 0.55) animateOut();
+        else snapBack();
+        committed = false; dy = 0;
+    }, { passive: true });
+
+    el.addEventListener('touchcancel', () => {
+        if (dragging && committed) snapBack();
+        dragging = false; committed = false; dy = 0;
+    }, { passive: true });
+}
+
+function initSwipeGestures() {
+    const fs = $('full-player-overlay');
+    if (fs) makeSwipeDismissable(fs, {
+        // Don't hijack seek/volume slider drags or the volume popup.
+        canStart: (e) => !e.target.closest('input, .fs-vol-popup, .fs-sleep-popup, .fs-timer-wrap'),
+        close: () => fs.classList.remove('active')
+    });
+
+    const lyrics = $('lyrics-overlay');
+    if (lyrics) makeSwipeDismissable(lyrics, {
+        // Start from the header always; from the lyrics body only when it's
+        // scrolled to the very top (otherwise the drag is a normal scroll).
+        canStart: (e) => {
+            if (e.target.closest('.lyrics-head')) return true;
+            const body = $('lyrics-body');
+            return body && body.scrollTop <= 0;
+        },
+        close: () => lyrics.classList.remove('open')
+    });
+}
+
+/* =====================================================================
    INIT — order matters; everything is defined above this point.
 ===================================================================== */
 (function init() {
@@ -4065,6 +4697,8 @@ function dismissSurprise() {
     paintSlider($('fs-seek'), 0);
     populateLibraryUI();
     renderRecentlyPlayed();
+    initBackButtonHandling();             // hardware/browser Back = in-app back, never exits
+    initSwipeGestures();                  // swipe down to close the player / lyrics sheets
     restoreSessionState();                // bring back the last song + position, ready to resume on Play
     loadHomeRecommendations();            // paints instantly from cache, refreshes in background
     if (globalUser && globalPass) {
