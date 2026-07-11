@@ -147,7 +147,8 @@ export default {
             likedSongs: body.likedSongs || [], 
             customPlaylists: body.customPlaylists || [],
             favouriteArtists: body.favouriteArtists || [],
-            favouriteAlbums: body.favouriteAlbums || []
+            favouriteAlbums: body.favouriteAlbums || [],
+            recentlyPlayed: Array.isArray(body.recentlyPlayed) ? body.recentlyPlayed.slice(0, 30) : (existingUser.recentlyPlayed || [])
         };
         await env.NEW_USER_STORE.put(key, JSON.stringify(profileData));
 
