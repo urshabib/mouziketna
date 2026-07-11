@@ -69,8 +69,9 @@ img { user-select: none; }
 /* ===== SIDEBAR ===== */
 .sidebar { width: 260px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
 .side-block { background: var(--panel); border-radius: var(--radius); padding: 18px 20px; }
-.logo { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.5px; display: flex; align-items: baseline; gap: 10px; margin-bottom: 20px; }
-.logo i { color: var(--accent); font-size: 1.7rem; align-self: center; }
+.logo { font-size: 1.35rem; font-weight: 800; letter-spacing: -0.5px; display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.logo i { color: var(--accent); font-size: 1.7rem; align-self: center; flex-shrink: 0; }
+.logo-textblock { display: flex; flex-direction: column; line-height: 1.05; min-width: 0; }
 .logo-signature { font-family: 'Caveat', cursive; font-weight: 700; font-size: 1rem; color: var(--dim); letter-spacing: 0; margin-left: 2px; }
 .mobile-only-logo { display: none; margin-bottom: 0; }
 .nav { list-style: none; display: flex; flex-direction: column; gap: 6px; }
@@ -1627,6 +1628,66 @@ input[type=range].slider.vertical {
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
+/* ===== PLAYLIST LIST VIEW (Spotify-style rows) ===== */
+.track-list { display: flex; flex-direction: column; gap: 2px; }
+.track-row {
+    display: flex; align-items: center; gap: 12px; padding: 8px 8px; border-radius: 8px;
+    cursor: pointer; transition: background .15s; position: relative;
+}
+.track-row:hover { background: var(--elev); }
+.track-row.playing { background: var(--accent-soft); }
+.track-row .row-art { width: 48px; height: 48px; border-radius: 5px; object-fit: cover; background: var(--elev); flex-shrink: 0; }
+.track-row .row-art.generic-cover { display: flex; align-items: center; justify-content: center; font-size: 1.3rem; color: var(--dim); }
+.track-row .row-meta { flex: 1; min-width: 0; }
+.track-row .row-meta h4 { font-size: 0.98rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+.track-row .row-meta p { font-size: 0.82rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 2px 0 0; }
+.track-row.playing .row-meta h4 { color: var(--accent); }
+.track-row .row-eq { display: flex; align-items: flex-end; gap: 2px; height: 15px; flex-shrink: 0; }
+.track-row .row-eq span { width: 3px; background: var(--accent); border-radius: 1px; animation: eqbar .9s ease-in-out infinite; }
+.track-row .row-eq span:nth-child(2) { animation-delay: .3s; }
+.track-row .row-eq span:nth-child(3) { animation-delay: .6s; }
+@keyframes eqbar { 0%,100% { height: 4px; } 50% { height: 14px; } }
+.track-row .row-menu-btn { background: none; border: none; color: var(--dim); font-size: 1.35rem; cursor: pointer; padding: 6px; flex-shrink: 0; border-radius: 50%; transition: color .15s, background .15s; line-height: 1; }
+.track-row .row-menu-btn:hover { color: #fff; background: var(--elev-2); }
+.row-add-btn { background: none; border: 1.5px solid var(--dim); color: #fff; width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 1.15rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform .15s, border-color .15s, background .15s; }
+.row-add-btn:hover { border-color: var(--accent); color: var(--accent); transform: scale(1.08); }
+.row-add-btn.added { border-color: var(--accent); background: var(--accent); color: #000; }
+
+/* 3-dot bottom sheet */
+.row-sheet-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 23000;
+    opacity: 0; pointer-events: none; transition: opacity .25s;
+}
+.row-sheet-backdrop.open { opacity: 1; pointer-events: auto; }
+.row-sheet {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 23001;
+    background: var(--elev); border-radius: 18px 18px 0 0; padding: 10px 10px max(20px, env(safe-area-inset-bottom));
+    transform: translateY(110%); transition: transform .32s cubic-bezier(.3,.85,.3,1);
+    max-width: 520px; margin: 0 auto;
+}
+.row-sheet.open { transform: translateY(0); }
+.row-sheet-grip { width: 40px; height: 4px; border-radius: 2px; background: var(--elev-2); margin: 4px auto 12px; }
+.row-sheet-head { display: flex; align-items: center; gap: 12px; padding: 0 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 8px; }
+.row-sheet-head img, .row-sheet-head .generic-cover { width: 46px; height: 46px; border-radius: 5px; object-fit: cover; flex-shrink: 0; background: var(--elev-2); display: flex; align-items: center; justify-content: center; }
+.row-sheet-head .rsh-meta { min-width: 0; }
+.row-sheet-head h5 { font-size: 0.95rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sheet-head p { font-size: 0.8rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sheet-action { display: flex; align-items: center; gap: 16px; padding: 15px 12px; cursor: pointer; border-radius: 10px; font-size: 0.98rem; font-weight: 600; transition: background .15s; }
+.row-sheet-action:hover { background: var(--elev-2); }
+.row-sheet-action i { font-size: 1.4rem; color: var(--dim); }
+.row-sheet-action.danger { color: var(--danger); }
+.row-sheet-action.danger i { color: var(--danger); }
+.row-sheet-action.on i { color: var(--accent); }
+
+/* Playlist suggestions block */
+.pl-suggest { margin-top: 40px; }
+.pl-suggest-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.pl-suggest-head h3 { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.3px; }
+.pl-suggest-head .refresh-sugg { background: none; border: 1px solid var(--elev-2); color: var(--dim); padding: 7px 14px; border-radius: 20px; cursor: pointer; font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; gap: 6px; transition: color .15s, border-color .15s; }
+.pl-suggest-head .refresh-sugg:hover { color: #fff; border-color: var(--dim); }
+.pl-suggest-head .refresh-sugg i.spin { animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
 </style>
 </head>
 <body>
@@ -1650,7 +1711,7 @@ input[type=range].slider.vertical {
         <!-- SIDEBAR -->
         <aside class="sidebar">
             <div class="side-block">
-                <div class="logo"><i class="ri-pulse-fill"></i>MOUZIKETNA<span class="logo-signature">by habib</span></div>
+                <div class="logo"><i class="ri-pulse-fill"></i><span class="logo-textblock">MOUZIKETNA<span class="logo-signature">by habib</span></span></div>
                 <ul class="nav">
                     <li onclick="switchPane('home')" id="btn-home" class="active"><i class="ri-home-5-fill"></i> Home</li>
                     <li onclick="switchPane('search')" id="btn-search"><i class="ri-search-line"></i> Search</li>
@@ -1671,7 +1732,7 @@ input[type=range].slider.vertical {
         <main id="main-scroller">
             <div class="main-inner">
                 <div class="main-topbar">
-                    <div class="logo mobile-only-logo"><i class="ri-pulse-fill"></i>MOUZIKETNA<span class="logo-signature">by habib</span></div>
+                    <div class="logo mobile-only-logo"><i class="ri-pulse-fill"></i><span class="logo-textblock">MOUZIKETNA<span class="logo-signature">by habib</span></span></div>
                     <span class="topbar-title" id="topbar-greeting">Good evening</span>
                     <div class="user-chip" onclick="switchPane('account')" id="user-chip">
                         <div class="avatar"><i class="ri-user-3-line"></i></div>
@@ -1726,6 +1787,29 @@ input[type=range].slider.vertical {
                         <div class="artist-top-result" id="artist-top-result"></div>
                         <div class="shelf-head" id="results-heading" style="display:none;"><h3>Top results</h3></div>
                         <div class="music-grid" id="search-output-grid"></div>
+                    </div>
+                    <div id="search-browse">
+                        <div class="shelf-head"><h3>Browse all</h3></div>
+                        <div class="music-grid">
+                            <div class="genre-card" style="background:#7b2cbf;" onclick="triggerGenreSearch('Top 50 Arabic Hits')"><i class="ri-fire-fill"></i><h4>Arabic Hits</h4></div>
+                            <div class="genre-card" style="background:#1e3264;" onclick="triggerGenreSearch('Global Pop Hits')"><i class="ri-earth-fill"></i><h4>Global Pop</h4></div>
+                            <div class="genre-card" style="background:#4a919e;" onclick="triggerGenreSearch('Calm Chill Relax Lofi')"><i class="ri-cup-fill"></i><h4>Chill & Relax</h4></div>
+                            <div class="genre-card" style="background:#8c6216;" onclick="triggerGenreSearch('Tunisian Rap')"><i class="ri-mic-2-fill"></i><h4>Tunisian Rap</h4></div>
+                            <div class="genre-card" style="background:#27856a;" onclick="triggerGenreSearch('Deep Focus Study')"><i class="ri-book-read-fill"></i><h4>Deep Focus</h4></div>
+                            <div class="genre-card" style="background:#b02897;" onclick="triggerGenreSearch('Gym Workout Motivation')"><i class="ri-run-fill"></i><h4>Workout</h4></div>
+                            <div class="genre-card" style="background:#8d6e63;" onclick="triggerGenreSearch('Hip Hop Rap Essentials')"><i class="ri-mic-fill"></i><h4>Hip-Hop</h4></div>
+                            <div class="genre-card" style="background:#2e7d32;" onclick="triggerGenreSearch('R&B Soul Essentials')"><i class="ri-heart-2-fill"></i><h4>R&B</h4></div>
+                            <div class="genre-card" style="background:#c2185b;" onclick="triggerGenreSearch('Pop Party Hits')"><i class="ri-disc-fill"></i><h4>Pop</h4></div>
+                            <div class="genre-card" style="background:#0277bd;" onclick="triggerGenreSearch('Electronic Dance Music')"><i class="ri-flashlight-fill"></i><h4>Electronic</h4></div>
+                            <div class="genre-card" style="background:#5d4037;" onclick="triggerGenreSearch('Rock Classics')"><i class="ri-guitar-fill"></i><h4>Rock</h4></div>
+                            <div class="genre-card" style="background:#455a64;" onclick="triggerGenreSearch('Rai Algerian Music')"><i class="ri-album-fill"></i><h4>Raï</h4></div>
+                            <div class="genre-card" style="background:#6a1b9a;" onclick="triggerGenreSearch('Moroccan Rap Trap')"><i class="ri-star-fill"></i><h4>Moroccan Rap</h4></div>
+                            <div class="genre-card" style="background:#37474f;" onclick="triggerGenreSearch('Egyptian Mahraganat')"><i class="ri-sound-module-fill"></i><h4>Mahraganat</h4></div>
+                            <div class="genre-card" style="background:#00695c;" onclick="triggerGenreSearch('Latin Reggaeton Hits')"><i class="ri-sun-fill"></i><h4>Latin</h4></div>
+                            <div class="genre-card" style="background:#4527a0;" onclick="triggerGenreSearch('French Rap Francais')"><i class="ri-quill-pen-fill"></i><h4>French Rap</h4></div>
+                            <div class="genre-card" style="background:#ad1457;" onclick="triggerGenreSearch('Love Songs Romantic')"><i class="ri-heart-3-fill"></i><h4>Romantic</h4></div>
+                            <div class="genre-card" style="background:#3e2723;" onclick="triggerGenreSearch('Old School Classics 90s')"><i class="ri-history-fill"></i><h4>Throwback</h4></div>
+                        </div>
                     </div>
                 </div>
 
@@ -1986,6 +2070,14 @@ input[type=range].slider.vertical {
         </div>
     </div>
 
+    <!-- TRACK ROW BOTTOM SHEET (⋮ menu) -->
+    <div class="row-sheet-backdrop" id="row-sheet-backdrop" onclick="closeRowSheet()"></div>
+    <div class="row-sheet" id="row-sheet">
+        <div class="row-sheet-grip"></div>
+        <div class="row-sheet-head" id="row-sheet-head"></div>
+        <div class="row-sheet-body" id="row-sheet-body"></div>
+    </div>
+
     <div id="toast-zone"></div>
 
     <!-- ============ SURPRISE OVERLAY (one-time welcome) ============ -->
@@ -2111,7 +2203,7 @@ const PLAYLIST_ART = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd8
 /* ---------- State ---------- */
 let globalUser = localStorage.getItem("hub_active_user") || null;
 let globalPass = localStorage.getItem("hub_active_pass") || null;
-let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [] };
+let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [] };
 
 let activeTrackData = null;
 let isLoopingActive = false;
@@ -2124,6 +2216,11 @@ let currentSearchFilter = "all";
 let playToken = 0;               // guards against stale stream resolutions
 let pendingModalTrack = null;    // track being added to a playlist
 let pendingResume = null;        // { track, resumeAt } restored from a previous session, loaded lazily on first Play
+// Session-only ordered stack of every track actually played — this is what
+// "Previous" walks back through. Separate from playbackQueue because
+// algorithm/autoplay chains have no fixed queue, which is exactly the case the
+// old Previous button couldn't handle (it just restarted the song).
+let playedHistory = [];
 let lastVolumeBeforeMute = 50;
 
 let hasPrefetchedNext = false;
@@ -2295,6 +2392,99 @@ function skeletonCards(n = 6) {
     return out;
 }
 
+/* Spotify-style list row for the collection/playlist view. Reuses the SAME
+   regTrack key + data-act wiring as the cards, so play/like/remove all flow
+   through the one delegated click handler — the row is purely a different
+   presentation, not a different behaviour. */
+function createTrackRowHTML(track, opts = {}) {
+    const key = regTrack(track, opts);
+    const isPlaying = activeTrackData && activeTrackData.id === track.id;
+    const art = track.thumb && track.thumb !== PLAYLIST_ART
+        ? `<img class="row-art" src="${escapeHtml(track.thumb)}" loading="lazy" alt="" onerror="this.outerHTML='<div class=&quot;row-art generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+        : `<div class="row-art generic-cover"><i class="ri-music-2-line"></i></div>`;
+    return `
+    <div class="track-row ${isPlaying ? 'playing' : ''}" data-id="${escapeHtml(track.id || '')}" data-act="open" data-key="${key}">
+        ${art}
+        <div class="row-meta"><h4>${escapeHtml(track.title)}</h4><p>${escapeHtml(track.artist || '')}</p></div>
+        ${isPlaying ? '<div class="row-eq"><span></span><span></span><span></span></div>' : ''}
+        <button class="row-menu-btn" data-act="rowmenu" data-key="${key}" title="More" aria-label="More options"><i class="ri-more-2-fill"></i></button>
+    </div>`;
+}
+
+function skeletonRows(n = 6) {
+    let out = '';
+    for (let i = 0; i < n; i++) out += `<div class="track-row skel-card" style="pointer-events:none;"><div class="skel art" style="width:48px;height:48px;border-radius:5px;"></div><div style="flex:1;"><div class="skel line"></div><div class="skel line short"></div></div></div>`;
+    return out;
+}
+
+/* ---- 3-dot bottom sheet (Like / Remove) ---- */
+let rowSheetKey = null;
+function openRowSheet(key) {
+    const entry = TRACK_REG.get(key);
+    if (!entry) return;
+    rowSheetKey = key;
+    const { track, meta } = entry;
+    const liked = userProfile.likedSongs?.some(s => s.id === track.id);
+    const art = track.thumb && track.thumb !== PLAYLIST_ART
+        ? `<img src="${escapeHtml(track.thumb)}" alt="" onerror="this.outerHTML='<div class=&quot;generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+        : `<div class="generic-cover"><i class="ri-music-2-line"></i></div>`;
+    $('row-sheet-head').innerHTML = `${art}<div class="rsh-meta"><h5>${escapeHtml(track.title)}</h5><p>${escapeHtml(track.artist || '')}</p></div>`;
+
+    // Remove is available inside a custom playlist (meta.collectionId = 'pl_…')
+    // or the Liked collection; external playlists/albums aren't editable so it
+    // is hidden there.
+    const inCustomPl = meta && typeof meta.collectionId === 'string' && meta.collectionId.startsWith('pl_');
+    const inLiked = meta && meta.collectionId === 'liked';
+    let removeRow = '';
+    if (inCustomPl) removeRow = `<div class="row-sheet-action danger" onclick="rowSheetRemove()"><i class="ri-delete-bin-line"></i> Remove from this playlist</div>`;
+    else if (inLiked) removeRow = `<div class="row-sheet-action danger" onclick="rowSheetRemove()"><i class="ri-heart-fill"></i> Remove from Liked Songs</div>`;
+
+    $('row-sheet-body').innerHTML = `
+        <div class="row-sheet-action ${liked ? 'on' : ''}" onclick="rowSheetToggleLike()">
+            <i class="ri-heart-${liked ? 'fill' : 'line'}"></i> ${liked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}
+        </div>
+        <div class="row-sheet-action" onclick="rowSheetAddToPlaylist()"><i class="ri-play-list-add-line"></i> Add to a playlist</div>
+        ${removeRow}`;
+
+    $('row-sheet-backdrop').classList.add('open');
+    $('row-sheet').classList.add('open');
+}
+function closeRowSheet() {
+    $('row-sheet-backdrop').classList.remove('open');
+    $('row-sheet').classList.remove('open');
+    rowSheetKey = null;
+}
+function rowSheetToggleLike() {
+    const entry = TRACK_REG.get(rowSheetKey);
+    if (entry) toggleSaveItem(entry.track);
+    closeRowSheet();
+}
+function rowSheetRemove() {
+    const entry = TRACK_REG.get(rowSheetKey);
+    if (!entry) { closeRowSheet(); return; }
+    const { track, meta } = entry;
+    if (meta && typeof meta.collectionId === 'string' && meta.collectionId.startsWith('pl_')) {
+        removeSongFromCustomPlaylist(meta.collectionId, track.id);
+    } else if (meta && meta.collectionId === 'liked') {
+        userProfile.likedSongs = (userProfile.likedSongs || []).filter(s => s.id !== track.id);
+        syncProfile();
+        openCollection('liked');
+        showToast("Removed from Liked Songs", true);
+    }
+    closeRowSheet();
+}
+function rowSheetAddToPlaylist() {
+    const entry = TRACK_REG.get(rowSheetKey);
+    if (entry) {
+        if (!globalUser || globalUser === 'admin') { closeRowSheet(); switchPane('account'); showToast("Log in to use playlists", true); return; }
+        pendingModalTrack = { ...entry.track, type: 'song' };
+        $('modal-top-title').textContent = "Add to playlist";
+        renderModalPlaylistList(true);
+        $('add-playlist-modal').classList.add('open');
+    }
+    closeRowSheet();
+}
+
 /* One delegated click handler for every card action */
 document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-act]');
@@ -2312,6 +2502,16 @@ document.addEventListener('click', (e) => {
     if (act === 'removefrompl') {
         e.stopPropagation();
         removeSongFromCustomPlaylist(meta.collectionId, track.id);
+        return;
+    }
+    if (act === 'rowmenu') {
+        e.stopPropagation();
+        openRowSheet(el.dataset.key);
+        return;
+    }
+    if (act === 'addsong') {
+        e.stopPropagation();
+        addSuggestionToPlaylist(meta.collectionId, track, el);
         return;
     }
     if (act === 'open') {
@@ -2341,6 +2541,11 @@ function triggerPaneRollback() { switchPane(navigationOriginPane); }
 function triggerGenreSearch(query) {
     switchPane('search');
     $('search-box-field').value = query;
+    $('search-clear').style.display = 'block';
+    justSearched = true;
+    if (suggestAbort) { suggestAbort.abort(); suggestAbort = null; }
+    $('suggestions-box').style.display = "none";
+    setSearchIdle(false);
     currentSearchQuery = query;
     setSearchFilter('playlist');
 }
@@ -2416,7 +2621,8 @@ async function executeLogin(user, pass) {
                 likedSongs: data.profile.likedSongs || [],
                 customPlaylists: data.profile.customPlaylists || [],
                 favouriteArtists: data.profile.favouriteArtists || [],
-                favouriteAlbums: data.profile.favouriteAlbums || []
+                favouriteAlbums: data.profile.favouriteAlbums || [],
+                recentlyPlayed: data.profile.recentlyPlayed || []
             };
             applyIdentityUI(userProfile.username);
             populateLibraryUI();
@@ -2452,7 +2658,7 @@ function logoutFriend(silent = false) {
     localStorage.removeItem("hub_active_user");
     localStorage.removeItem("hub_active_pass");
     globalUser = null; globalPass = null;
-    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [] };
+    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [] };
     $('btn-admin').style.display = "none";
     $('friend-password').value = "";
     applyIdentityUI(null);
@@ -2636,10 +2842,22 @@ function syncProfile() {
 const searchField = $('search-box-field');
 let typeaheadTimer = null;
 let suggestAbort = null;
+let justSearched = false; // set right after a search runs — stops a late-arriving suggestion popping the box back open
+
+// Whether the search field is idle (nothing typed): the genre browse grid only
+// shows then, and steps aside once there's a query or results.
+function setSearchIdle(isIdle) {
+    const browse = $('search-browse'); if (browse) browse.style.display = isIdle ? '' : 'none';
+}
 
 searchField.addEventListener('input', function () {
     $('search-clear').style.display = this.value ? 'block' : 'none';
+    justSearched = false; // the user is typing again — suggestions welcome once more
+    setSearchIdle(!this.value.trim());
     handleLiveTyping(this.value);
+});
+searchField.addEventListener('focus', function () {
+    if (!this.value.trim()) showSearchHistory();
 });
 function isVideoLink(str) {
     return /(?:music\.youtube\.com|youtube\.com|youtu\.be)\//i.test(str);
@@ -2649,6 +2867,8 @@ searchField.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') {
         e.preventDefault();
         clearTimeout(typeaheadTimer);
+        if (suggestAbort) { suggestAbort.abort(); suggestAbort = null; } // kill any in-flight suggestion so it can't pop after we search
+        justSearched = true;
         $('suggestions-box').style.display = "none";
         const q = this.value.trim();
         if (!q) return;
@@ -2673,6 +2893,7 @@ async function resolveAndShowLinkResult(link) {
     $('search-filters').style.display = "none";
     $('results-heading').style.display = "flex";
     $('artist-top-result').innerHTML = "";
+    setSearchIdle(false);
     grid.innerHTML = skeletonCards(1);
     try {
         const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/resolve-video-proxy?url=${encodeURIComponent(link)}`, 10000);
@@ -2687,27 +2908,58 @@ async function resolveAndShowLinkResult(link) {
 function clearSearch() {
     searchField.value = ""; searchField.focus();
     $('search-clear').style.display = 'none';
-    $('suggestions-box').style.display = 'none';
+    justSearched = false;
+    setSearchIdle(true);
+    showSearchHistory();
 }
 
+// Dedicated key for the search box's recent-terms list — kept separate from
+// taste_profile_history (which holds played TRACK objects for recommendations)
+// so search terms no longer pollute the taste/recently-played data.
 function rememberSearchTerm(q) {
-    let hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
-    if (!hist.some(t => t === q || t.title === q)) {
-        hist.unshift(q);
-        localStorage.setItem('taste_profile_history', JSON.stringify(hist.slice(0, 15)));
-    }
+    q = String(q || '').trim();
+    if (!q) return;
+    let hist = JSON.parse(localStorage.getItem('recent_searches') || '[]');
+    hist = hist.filter(t => t.toLowerCase() !== q.toLowerCase());
+    hist.unshift(q);
+    localStorage.setItem('recent_searches', JSON.stringify(hist.slice(0, 12)));
+}
+
+// Shown when the field is focused/empty and nothing's been typed yet — the last
+// four searches, one tap away. Replaced by live suggestions the moment the user
+// types, and suppressed right after a completed search.
+function showSearchHistory() {
+    if (justSearched) return;
+    const box = $('suggestions-box');
+    const hist = JSON.parse(localStorage.getItem('recent_searches') || '[]').slice(0, 4);
+    if (!hist.length) { box.style.display = "none"; return; }
+    box.innerHTML = "";
+    hist.forEach(text => {
+        const div = document.createElement('div');
+        div.className = 'suggestion-item';
+        div.innerHTML = `<i class="ri-history-line"></i>${escapeHtml(text)}`;
+        div.onclick = () => selectSuggestion(text);
+        box.appendChild(div);
+    });
+    box.style.display = "block";
 }
 
 function handleLiveTyping(val) {
     clearTimeout(typeaheadTimer);
     const box = $('suggestions-box');
-    if (val.trim().length < 2) { box.style.display = "none"; return; }
+    if (val.trim().length < 2) {
+        if (!val.trim()) showSearchHistory(); else box.style.display = "none";
+        return;
+    }
     typeaheadTimer = setTimeout(async () => {
         try {
             if (suggestAbort) suggestAbort.abort();
-            suggestAbort = new AbortController();
-            const res = await fetch(`${NEW_HUB_BACKEND}/api/suggestions-proxy?q=${encodeURIComponent(val)}`, { signal: suggestAbort.signal });
+            const ac = new AbortController();
+            suggestAbort = ac;
+            const res = await fetch(`${NEW_HUB_BACKEND}/api/suggestions-proxy?q=${encodeURIComponent(val)}`, { signal: ac.signal });
             const list = await res.json();
+            if (suggestAbort !== ac) return; // a newer keystroke/search superseded this
+            if (justSearched) return;        // the search already completed while this was in flight — don't pop it
             box.innerHTML = "";
             if (list && list.length > 0) {
                 box.style.display = "block";
@@ -2725,6 +2977,8 @@ function handleLiveTyping(val) {
 
 function selectSuggestion(text) {
     searchField.value = text;
+    if (suggestAbort) { suggestAbort.abort(); suggestAbort = null; }
+    justSearched = true;
     $('suggestions-box').style.display = "none";
     currentSearchQuery = text;
     rememberSearchTerm(text);
@@ -2743,6 +2997,10 @@ async function executeSearch(keyword, silentRound = 0) {
     const grid = $('search-output-grid');
     const myToken = silentRound === 0 ? ++searchToken : searchToken;
     if (silentRound === 0) {
+        justSearched = true;
+        if (suggestAbort) { suggestAbort.abort(); suggestAbort = null; }
+        $('suggestions-box').style.display = "none";
+        setSearchIdle(false);
         $('search-filters').style.display = "flex";
         $('results-heading').style.display = "flex";
         $('artist-top-result').innerHTML = "";
@@ -2812,6 +3070,8 @@ async function exploreArtistSongs(channelId, artistName, thumb = null) {
     switchPane('collection');
     const header = $('collection-header');
     const grid = $('collection-tracks-grid');
+    grid.className = 'music-grid';
+    const oldSugg = $('collection-suggest'); if (oldSugg) oldSugg.remove();
     const cleanName = cleanArtistName(artistName) === "Various Artists" ? String(artistName) : cleanArtistName(artistName);
     grid.innerHTML = skeletonCards(8);
 
@@ -2861,7 +3121,9 @@ async function explorePlaylistOrAlbumSongs(id, title, thumb = null, silentRound 
     const hasRealArt = thumb && thumb !== PLAYLIST_ART && thumb !== FALLBACK_ART;
 
     if (silentRound === 0) {
-        grid.innerHTML = skeletonCards(8);
+        grid.className = 'track-list';
+        const oldSugg = $('collection-suggest'); if (oldSugg) oldSugg.remove();
+        grid.innerHTML = skeletonRows(8);
         const isFav = userProfile.favouriteAlbums?.some(a => a.id === id);
         const favKey = regTrack({ id, title, artist: title, thumb: thumb || PLAYLIST_ART, type: 'playlist' });
         const art = hasRealArt
@@ -2874,6 +3136,7 @@ async function explorePlaylistOrAlbumSongs(id, title, thumb = null, silentRound 
                 <h2>${escapeHtml(title)}</h2>
                 <div class="hero-actions">
                     <button class="btn-play-big" onclick="playWholeCollection()"><i class="ri-play-fill"></i> Play</button>
+                    <button class="btn-outline" onclick="playShuffledCollection()"><i class="ri-shuffle-line"></i> Shuffle</button>
                     <button class="btn-outline" data-act="fav" data-key="${favKey}">
                         <i class="ri-heart-${isFav ? 'fill' : 'line'}" style="${isFav ? 'color:var(--accent);' : ''}"></i> ${isFav ? 'Saved' : 'Save'}
                     </button>
@@ -2889,7 +3152,7 @@ async function explorePlaylistOrAlbumSongs(id, title, thumb = null, silentRound 
         items.forEach((t, i) => {
             const nt = normalizeTrack(t, 'song');
             playbackQueue.push(nt);
-            grid.insertAdjacentHTML('beforeend', createTrackCardHTML(nt, { queueIndex: i }));
+            grid.insertAdjacentHTML('beforeend', createTrackRowHTML(nt, { queueIndex: i }));
         });
         // No real cover art was available up front — borrow the first track's artwork instead of a bare icon
         if (!hasRealArt && playbackQueue[0]?.thumb) {
@@ -2909,7 +3172,9 @@ function openCollection(type, id = null) {
     switchPane('collection');
     const header = $('collection-header');
     const grid = $('collection-tracks-grid');
+    grid.className = 'track-list';
     grid.innerHTML = ""; playbackQueue = [];
+    const suggWrap = $('collection-suggest'); if (suggWrap) suggWrap.remove();
 
     if (type === 'liked') {
         const n = userProfile.likedSongs.length;
@@ -2924,7 +3189,7 @@ function openCollection(type, id = null) {
         if (!n) { grid.innerHTML = `<p class="status-note" style="grid-column:1/-1;">Songs you like will show up here. Tap the heart on any track.</p>`; return; }
         userProfile.likedSongs.forEach((t, i) => {
             playbackQueue.push(t);
-            grid.insertAdjacentHTML('beforeend', createTrackCardHTML(t, { queueIndex: i }));
+            grid.insertAdjacentHTML('beforeend', createTrackRowHTML(t, { collectionId: 'liked', queueIndex: i }));
         });
     } else if (type === 'custom-playlist') {
         const pl = userProfile.customPlaylists.find(p => p.id === id);
@@ -2940,15 +3205,21 @@ function openCollection(type, id = null) {
                 <span class="sub">${pl.tracks.length} track${pl.tracks.length === 1 ? '' : 's'}</span>
                 <div class="hero-actions">
                     <button class="btn-play-big" onclick="playWholeCollection()"><i class="ri-play-fill"></i> Play</button>
+                    <button class="btn-outline" onclick="playShuffledCollection()"><i class="ri-shuffle-line"></i> Shuffle</button>
                     <button class="btn-outline" onclick="openAddLinkModal('${pl.id}')"><i class="ri-link"></i> Add by link</button>
                     <button class="btn-outline" onclick="removeCustomPlaylist('${pl.id}')"><i class="ri-delete-bin-line"></i> Delete</button>
                 </div>
             </div>`;
-        if (!pl.tracks.length) { grid.innerHTML = `<p class="status-note" style="grid-column:1/-1;">This playlist is empty. Add songs from the player, any card, or by pasting a link above.</p>`; return; }
-        pl.tracks.forEach((t, i) => {
-            playbackQueue.push(t);
-            grid.insertAdjacentHTML('beforeend', createTrackCardHTML(t, { collectionId: id, queueIndex: i }));
-        });
+        if (!pl.tracks.length) {
+            grid.innerHTML = `<p class="status-note" style="grid-column:1/-1;">This playlist is empty. Add songs from the player, any card, or by pasting a link above.</p>`;
+        } else {
+            pl.tracks.forEach((t, i) => {
+                playbackQueue.push(t);
+                grid.insertAdjacentHTML('beforeend', createTrackRowHTML(t, { collectionId: id, queueIndex: i }));
+            });
+        }
+        // Suggestions block (only for the user's own playlists)
+        renderPlaylistSuggestions(id);
     }
 }
 
@@ -3120,6 +3391,13 @@ function rememberListen(t) {
     hist.unshift({ ...t, type: 'song' });
     localStorage.setItem('taste_profile_history', JSON.stringify(hist.slice(0, 15)));
     tasteEvent('play', t);
+    // Account-based recently-played: mirror the listen onto the user's profile
+    // (server-synced) so it follows them across devices, not just this browser.
+    if (globalUser && globalUser !== 'admin') {
+        const slim = { id: t.id, title: t.title, artist: t.artist, thumb: t.thumb, type: 'song' };
+        userProfile.recentlyPlayed = [slim, ...(userProfile.recentlyPlayed || []).filter(x => x.id !== t.id)].slice(0, 30);
+        syncProfile();
+    }
     renderRecentlyPlayed();
 }
 
@@ -3654,12 +3932,20 @@ function tryPlayCandidates(candidates, myToken, resumeAt) {
 
 async function initializeTrackStream(track, opts = {}) {
     if (!track || !track.id || !track.title) return;
-    const { autoplay = true, resumeAt = 0 } = opts;
+    const { autoplay = true, resumeAt = 0, fromHistory = false } = opts;
     pendingResume = null; 
     
     // Reset prefetched track state
     hasPrefetchedNext = false;
     prefetchedNextTrack = null;
+
+    // Record the track we're LEAVING so Previous can return to it — unless we
+    // got here BY walking back through history (fromHistory), which would
+    // otherwise re-push it and make Previous loop in place.
+    if (!fromHistory && activeTrackData && activeTrackData.id && activeTrackData.id !== track.id) {
+        playedHistory.push({ ...activeTrackData });
+        if (playedHistory.length > 60) playedHistory.shift();
+    }
 
     const myToken = ++playToken;
     activeTrackData = { id: track.id, title: track.title, artist: track.artist, thumb: track.thumb };
@@ -3755,10 +4041,19 @@ function playNextTrack(shuffleRetries = 0) {
     } else playNextAlgorithmSong();
 }
 function playPrevTrack() {
-    if (playbackQueue.length > 0 && currentQueueIndex > 0 && audioEngine.currentTime < 3) {
-        currentQueueIndex--;
-        initializeTrackStream(playbackQueue[currentQueueIndex]);
-    } else audioEngine.currentTime = 0;
+    // Spotify behavior: >3s into the song, Previous restarts it. Only a fresh
+    // tap within the first 3s actually goes back a track.
+    if (audioEngine.currentTime > 3) { audioEngine.currentTime = 0; return; }
+    if (playedHistory.length > 0) {
+        const prev = playedHistory.pop();
+        // Keep the fixed-queue index in sync if that track is part of the
+        // current album/playlist, so Next continues correctly from here.
+        const qi = playbackQueue.findIndex(t => t.id === prev.id);
+        if (qi >= 0) currentQueueIndex = qi;
+        initializeTrackStream(prev, { fromHistory: true });
+        return;
+    }
+    audioEngine.currentTime = 0; // nothing behind us this session — just restart
 }
 
 /* When a song ends (or Next is pressed with nothing queued) the app picks
@@ -3931,8 +4226,11 @@ function updateProgressUI() {
         paintSlider($('fs-seek'), pct);
         $('mini-progress-fill').style.width = pct + "%";
 
-        // Pre-fetch suggestion algorithm at 90% completion
-        if (pct >= 90 && !hasPrefetchedNext && !isLoopingActive) {
+        // Prefetch the next algorithm song ~30s before this one ends, so the
+        // handoff is gapless instead of waiting on the network right at the end.
+        // A fixed time window (not a percentage) means it triggers at the same
+        // "30 seconds left" point whether the song is 2 minutes or 8.
+        if (!hasPrefetchedNext && !isLoopingActive && dur > 60 && (dur - cur) <= 30) {
             // Only prefetch if we are essentially at the end of the manual queue
             if (playbackQueue.length === 0 || currentQueueIndex >= playbackQueue.length - 1) {
                 if (!isShuffleActive) { 
@@ -4166,6 +4464,104 @@ function removeSongFromCustomPlaylist(plId, trackId) {
     openCollection('custom-playlist', plId);
     showToast("Removed from playlist", true);
 }
+
+/* ---- Playlist suggestions (bottom of a custom playlist) ----
+   Seeds off the playlist's own tracks plus the listener's taste profile, then
+   shows 5 songs not already in the playlist, each with an instant "add" button
+   and a refresh control. Reuses gatherAlgorithmicCandidates so it follows the
+   same taste logic as the home recommendations. */
+let plSuggestToken = 0;
+async function renderPlaylistSuggestions(plId, forceRefresh = false) {
+    const pl = userProfile.customPlaylists.find(p => p.id === plId);
+    if (!pl) return;
+    const grid = $('collection-tracks-grid');
+    const main = grid.parentElement;
+    // Build (or reuse) the suggestions container placed after the track list.
+    let wrap = $('collection-suggest');
+    if (!wrap) {
+        wrap = document.createElement('div');
+        wrap.id = 'collection-suggest';
+        wrap.className = 'pl-suggest';
+        main.appendChild(wrap);
+    }
+    wrap.innerHTML = `
+        <div class="pl-suggest-head">
+            <h3>Suggested for this playlist</h3>
+            <button class="refresh-sugg" onclick="renderPlaylistSuggestions('${plId}', true)"><i class="ri-refresh-line" id="pl-sugg-refresh-ico"></i> Refresh</button>
+        </div>
+        <div class="track-list" id="pl-suggest-list">${skeletonRows(5)}</div>`;
+    const refIco = $('pl-sugg-refresh-ico'); if (refIco) refIco.classList.add('spin');
+
+    const myToken = ++plSuggestToken;
+    try {
+        // Seed from the playlist's own songs (most recent first), padded with
+        // the listener's strongest taste seeds so even small playlists work.
+        const seeds = [...pl.tracks].slice(-3).reverse();
+        if (seeds.length < 2) seeds.push(...tasteTopSeeds(2));
+        if (!seeds.length) { renderPlSuggestList(plId, []); return; }
+
+        const inPlaylist = new Set(pl.tracks.map(t => t.id));
+        const seenSug = new Set();
+        const pool = [];
+        for (const seed of seeds) {
+            if (!seed || !seed.title) continue;
+            const cands = await gatherAlgorithmicCandidates(seed).catch(() => []);
+            for (const c of cands) {
+                if (!c.id || inPlaylist.has(c.id) || seenSug.has(c.id)) continue;
+                seenSug.add(c.id);
+                pool.push(c);
+            }
+            if (pool.length >= 20) break;
+        }
+        if (myToken !== plSuggestToken) return; // a newer refresh/collection took over
+
+        // Shuffle a little so Refresh actually varies the picks.
+        for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+        renderPlSuggestList(plId, pool.slice(0, 5));
+    } catch (e) {
+        if (myToken !== plSuggestToken) return;
+        renderPlSuggestList(plId, []);
+    }
+}
+
+function renderPlSuggestList(plId, songs) {
+    const list = $('pl-suggest-list');
+    const refIco = $('pl-sugg-refresh-ico'); if (refIco) refIco.classList.remove('spin');
+    if (!list) return;
+    if (!songs.length) {
+        list.innerHTML = `<p class="status-note" style="padding:14px 4px; color:var(--dim);">No suggestions right now — play a few songs or hit Refresh.</p>`;
+        return;
+    }
+    list.innerHTML = songs.map(t => {
+        const key = regTrack(t, { collectionId: plId, suggestion: true });
+        const art = t.thumb && t.thumb !== PLAYLIST_ART
+            ? `<img class="row-art" src="${escapeHtml(t.thumb)}" loading="lazy" alt="" onerror="this.outerHTML='<div class=&quot;row-art generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+            : `<div class="row-art generic-cover"><i class="ri-music-2-line"></i></div>`;
+        return `
+        <div class="track-row" data-id="${escapeHtml(t.id || '')}" data-act="open" data-key="${key}">
+            ${art}
+            <div class="row-meta"><h4>${escapeHtml(t.title)}</h4><p>${escapeHtml(t.artist || '')}</p></div>
+            <button class="row-add-btn" data-act="addsong" data-key="${key}" title="Add to playlist" aria-label="Add to playlist"><i class="ri-add-line"></i></button>
+        </div>`;
+    }).join('');
+}
+
+function addSuggestionToPlaylist(plId, track, btnEl) {
+    const pl = userProfile.customPlaylists.find(p => p.id === plId);
+    if (!pl) return;
+    if (pl.tracks.some(t => t.id === track.id)) { showToast("Already in this playlist", true); return; }
+    pl.tracks.push({ id: track.id, title: track.title, artist: track.artist, thumb: track.thumb, type: 'song' });
+    syncProfile();
+    // Instant visual feedback: mark the button as added and update the count.
+    if (btnEl) {
+        btnEl.classList.add('added');
+        btnEl.innerHTML = '<i class="ri-check-line"></i>';
+        btnEl.setAttribute('data-act', 'noop');
+    }
+    const sub = document.querySelector('#collection-header .sub');
+    if (sub) sub.textContent = `${pl.tracks.length} track${pl.tracks.length === 1 ? '' : 's'}`;
+    showToast(`Added to "${pl.name}"`);
+}
 function closeModals() { $('add-playlist-modal').classList.remove('open'); pendingModalTrack = null; }
 
 /* =====================================================================
@@ -4329,7 +4725,14 @@ $('new-pl-input').addEventListener('keydown', e => { if (e.key === 'Enter') crea
    3. All seed lookups run in parallel instead of sequentially.
 ===================================================================== */
 function renderRecentlyPlayed() {
-    const hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]').filter(t => t && t.id && t.title);
+    // Prefer the account-synced list when logged in (follows the user across
+    // devices); fall back to this device's local history for guests/admin.
+    let hist;
+    if (globalUser && globalUser !== 'admin' && Array.isArray(userProfile.recentlyPlayed) && userProfile.recentlyPlayed.length) {
+        hist = userProfile.recentlyPlayed.filter(t => t && t.id && t.title);
+    } else {
+        hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]').filter(t => t && t.id && t.title);
+    }
     const shelf = $('shelf-recent');
     if (!hist.length) { shelf.style.display = 'none'; return; }
     shelf.style.display = 'block';
@@ -4551,6 +4954,9 @@ function dismissSurprise() {
 ===================================================================== */
 function handleInAppBack() {
     // Close things in visual stacking order (topmost first).
+    const rowSheet = $('row-sheet');
+    if (rowSheet && rowSheet.classList.contains('open')) { closeRowSheet(); return true; }
+
     const lyrics = $('lyrics-overlay');
     if (lyrics && lyrics.classList.contains('open')) { lyrics.classList.remove('open'); return true; }
 
