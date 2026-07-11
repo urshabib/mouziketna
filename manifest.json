@@ -1,6 +1,6 @@
 {
-  "name": "MOUZIKETNA",
-  "short_name": "MOUZIKETNA",
+  "name": "MOUZIKA",
+  "short_name": "MOUZIKA",
   "description": "Your music, your library, your suggestions.",
   "start_url": "./index.html",
   "display": "standalone",
