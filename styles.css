@@ -339,11 +339,11 @@ input[type=range].slider::-moz-range-thumb { width: 12px; height: 12px; border-r
 
 /* ===== FULLSCREEN PLAYER ===== */
 .fs-overlay {
-    position: fixed; inset: 0; top: 100%; background: linear-gradient(to bottom, #3a2413, #0c0c0c 65%);
-    z-index: 20000; transition: top .38s cubic-bezier(.3,.8,.3,1); display: flex; flex-direction: column;
+    position: fixed; inset: 0; background: linear-gradient(to bottom, #3a2413, #0c0c0c 65%);
+    z-index: 20000; transform: translateY(100%); transition: transform .38s cubic-bezier(.3,.8,.3,1); display: flex; flex-direction: column;
     align-items: center; padding: max(20px, env(safe-area-inset-top)) 24px max(34px, env(safe-area-inset-bottom));
 }
-.fs-overlay.active { top: 0; }
+.fs-overlay.active { transform: translateY(0); }
 .fs-head { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
 .fs-head i { font-size: 1.9rem; cursor: pointer; }
 .fs-head span { font-size: 0.72rem; font-weight: 800; letter-spacing: 1.5px; color: var(--dim); }
@@ -407,19 +407,17 @@ input[type=range].slider.vertical {
     font-family: 'Poppins', 'Segoe UI', sans-serif;
     font-size: 1.6rem; font-weight: 800; line-height: 1.5; padding: 11px 0;
     cursor: pointer; letter-spacing: -.01em;
-    color: rgba(255,255,255,0.32);
-    filter: blur(3px); opacity: .3;
+    color: rgba(255,255,255,0.45);
+    opacity: .62;
     transform: scale(1); transform-origin: left center;
-    transition: filter .45s ease, opacity .45s ease, transform .45s cubic-bezier(.3,.8,.3,1);
+    transition: opacity .35s ease, transform .35s cubic-bezier(.3,.8,.3,1);
 }
-.lyric-line:hover { filter: blur(0); opacity: .7; }
-.lyric-line[data-dist="1"] { filter: blur(1.5px); opacity: .55; }
-.lyric-line[data-dist="2"] { filter: blur(2.4px); opacity: .38; }
+.lyric-line:hover { opacity: .85; }
 .lyric-line.active {
-    color: #fff; filter: blur(0); opacity: 1; transform: scale(1.045);
+    color: #fff; opacity: 1; transform: scale(1.045);
     text-shadow: rgba(255,255,255,0.4) 0 0 14px;
 }
-.lyric-line.sung { filter: blur(0); opacity: .5; }
+.lyric-line[dir="rtl"] { transform-origin: right center; }
 
 /* Word-by-word karaoke wipe: each word is its own gradient-filled span.
    --w (0→1) is driven from JS in sync with playback and animates the fill
@@ -1678,3 +1676,47 @@ input[type=range].slider.vertical {
 .pl-suggest-head .refresh-sugg:hover { color: #fff; border-color: var(--dim); }
 .pl-suggest-head .refresh-sugg i.spin { animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* ===== LIQUID GLASS THEME (opt-in, Profile > Liquid Glass) =====
+   A translucent/frosted skin layered on top of the existing dark theme via
+   a body class — no existing rule is removed, this only overrides surface
+   backgrounds with blur so it's safe to toggle on/off at any time. */
+body.liquid-glass {
+    background: radial-gradient(circle at 15% 0%, rgba(255,107,26,0.16), transparent 55%),
+                radial-gradient(circle at 85% 100%, rgba(255,140,60,0.10), transparent 50%),
+                #060606;
+}
+body.liquid-glass .sidebar,
+body.liquid-glass .main-topbar,
+body.liquid-glass .mini-player,
+body.liquid-glass .fs-overlay,
+body.liquid-glass .lyrics-overlay,
+body.liquid-glass .modal-content,
+body.liquid-glass .bottom-sheet-overlay .modal-content,
+body.liquid-glass .row-sheet,
+body.liquid-glass .search-box,
+body.liquid-glass .settings-row,
+body.liquid-glass .track-card,
+body.liquid-glass .genre-card,
+body.liquid-glass .suggestions-box {
+    background: rgba(30,30,30,0.46) !important;
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    border: 1px solid rgba(255,255,255,0.08);
+}
+body.liquid-glass .fs-overlay { background: linear-gradient(to bottom, rgba(58,36,19,0.55), rgba(12,12,12,0.75) 65%) !important; }
+body.liquid-glass .lyrics-overlay { background: linear-gradient(to bottom, rgba(32,26,20,0.6), rgba(0,0,0,0.8) 55%) !important; }
+body.liquid-glass .icon-btn,
+body.liquid-glass .filter-pill,
+body.liquid-glass .btn-outline,
+body.liquid-glass .switch {
+    background: rgba(255,255,255,0.07) !important;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.09);
+}
+body.liquid-glass .btn-play-big,
+body.liquid-glass .switch.on {
+    background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
+    box-shadow: 0 4px 18px rgba(255,107,26,0.35);
+}
+body.liquid-glass ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }

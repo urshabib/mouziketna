@@ -19,7 +19,7 @@ const PLAYLIST_ART = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd8
 let globalUser = localStorage.getItem("hub_active_user") || null;
 let sessionSynced = false;   // true once executeLogin actually got a profile back from the server
 let globalPass = localStorage.getItem("hub_active_pass") || null;
-let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false };
+let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: false };
 
 let activeTrackData = null;
 let activeBlobUrl = null; // object URL for the currently-playing downloaded track, revoked on track change
@@ -42,6 +42,8 @@ let lastVolumeBeforeMute = 50;
 
 let hasPrefetchedNext = false;
 let prefetchedNextTrack = null;
+let prefetchedQueueTrackId = null; // id of the queued track we've already resolved a stream URL for
+let prefetchedQueueUrl = null;     // its resolved stream URL, consumed (and cleared) by initializeTrackStream
 
 const audioEngine = document.getElementById('audio-engine');
 const $ = id => document.getElementById(id);
@@ -124,16 +126,23 @@ function cleanArtistName(item) {
 function getTrackThumbnail(item) {
     if (!item) return FALLBACK_ART;
     if (typeof item === 'string' && (item.startsWith('http') || item.includes('googleusercontent') || item.includes('ytimg'))) return item;
-    if (item.img && typeof item.img === 'string') return item.img.startsWith('/') ? `https://wsrv.nl?url=https://yt3.googleusercontent.com${item.img}` : item.img;
+    if (item.img && typeof item.img === 'string') {
+        if (item.img.startsWith('http')) return item.img;
+        if (item.img.startsWith('/')) return `https://wsrv.nl/?url=https://yt3.googleusercontent.com${item.img}`;
+        // Bare YouTube video id — this is what ytify's playlist search results give
+        // as "img" (see e.g. a playlist result's img:"6vAAGnF3PAw"). Proxy it into
+        // an actual thumbnail URL instead of handing the raw id to <img src>.
+        return `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${item.img}/default.webp`;
+    }
     if (item.thumbnails && Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
         return item.thumbnails[item.thumbnails.length - 1].url || item.thumbnails[0].url;
     }
     if (item.thumbnail && typeof item.thumbnail === 'string') return item.thumbnail;
     const targetId = item.id || item.playlistId || item.videoId || item.browseId;
     if (typeof targetId === 'string' && targetId.length > 0) {
-        if (targetId.startsWith('/')) return `https://wsrv.nl?url=https://yt3.googleusercontent.com${targetId}`;
+        if (targetId.startsWith('/')) return `https://wsrv.nl/?url=https://yt3.googleusercontent.com${targetId}`;
         if (targetId.startsWith('PL') || targetId.startsWith('OL') || targetId.startsWith('RD')) return PLAYLIST_ART;
-        return `https://wsrv.nl?url=https://i.ytimg.com/vi_webp/${targetId}/mqdefault.webp`;
+        return `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${targetId}/mqdefault.webp`;
     }
     return FALLBACK_ART;
 }
@@ -361,6 +370,14 @@ function corsSafeThumbUrl(url) {
     return `https://wsrv.nl?url=${encodeURIComponent(url)}`;
 }
 
+// Data Saver off (default): keep the same artwork quality shown in the app —
+// just fetch it as-is, no downscaling. Compression only kicks in when the
+// user explicitly turns Data Saver on (see fetchAndCompressThumb below).
+async function fetchThumbFullQuality(url) {
+    if (!url) return null;
+    try { return await (await fetch(url)).blob(); } catch (e) { return null; }
+}
+
 async function fetchAndCompressThumb(url) {
     if (!url) return null;
     const safeUrl = corsSafeThumbUrl(url);
@@ -382,10 +399,11 @@ async function fetchAndCompressThumb(url) {
     }
 }
 
-async function saveDownload(track, audioBlob, thumbBlob, quality) {
+async function saveDownload(track, audioBlob, thumbBlob, quality, lyricsData = null) {
     const record = {
         id: track.id, title: track.title, artist: track.artist || '',
         thumbLowRes: thumbBlob || null, audioBlob, quality: quality || '320',
+        lyricsData: lyricsData || null,
         sizeBytes: (audioBlob?.size || 0) + (thumbBlob?.size || 0),
         downloadedAt: Date.now()
     };
@@ -458,6 +476,24 @@ function refreshAllDownloadBadges() { downloadedIds.forEach(refreshDownloadBadge
 // Actually fetch + store one track. Reuses the exact same stream sources as
 // live playback (fast-saavn first, Invidious mirrors as fallback) so nothing
 // new is introduced server-side — just a lower bitrate tier for Data Saver.
+// Off by default (see the toggle in Profile). Uses the exact same worker
+// endpoint + LRC parsing as live playback, just fetched once up front and
+// stored with the download instead of over the network every time.
+async function fetchLyricsForDownload(track) {
+    try {
+        const cleanTitle = cleanTitleForLyrics(track.title) || track.title;
+        const cleanArtist = deriveArtistForLyrics(track.title, track.artist);
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/lyrics-proxy?title=${encodeURIComponent(cleanTitle)}&artist=${encodeURIComponent(cleanArtist)}`, 12000);
+        const data = await res.json();
+        if (data.found && data.synced) {
+            const parsed = parseLRC(data.synced);
+            if (parsed.length) return { mode: 'synced', lines: parsed };
+        }
+        if (data.found && data.plain) return { mode: 'plain', lines: data.plain };
+    } catch (e) {}
+    return null;
+}
+
 async function downloadTrackForOffline(track, opts = {}) {
     const { silent = false } = opts;
     if (!track?.id) return false;
@@ -477,8 +513,9 @@ async function downloadTrackForOffline(track, opts = {}) {
         const audioRes = await fetch(streamUrl);
         if (!audioRes.ok) throw new Error("audio fetch failed");
         const audioBlob = await audioRes.blob();
-        const thumbBlob = await fetchAndCompressThumb(track.thumb);
-        await saveDownload(track, audioBlob, thumbBlob, quality);
+        const thumbBlob = userProfile.dataSaver ? await fetchAndCompressThumb(track.thumb) : await fetchThumbFullQuality(track.thumb);
+        const lyricsData = userProfile.downloadLyricsOffline ? await fetchLyricsForDownload(track) : null;
+        await saveDownload(track, audioBlob, thumbBlob, quality, lyricsData);
         refreshDownloadBadges(track.id);
         if (!silent) showToast(`Downloaded "${track.title}"`);
         return true;
@@ -754,9 +791,12 @@ async function executeLogin(user, pass, auto = false) {
                 favouriteArtists: data.profile.favouriteArtists || [],
                 favouriteAlbums: data.profile.favouriteAlbums || [],
                 recentlyPlayed: data.profile.recentlyPlayed || [],
-                dataSaver: !!data.profile.dataSaver
+                dataSaver: !!data.profile.dataSaver,
+                downloadLyricsOffline: !!data.profile.downloadLyricsOffline,
+                liquidGlass: !!data.profile.liquidGlass
             };
             applyIdentityUI(userProfile.username);
+            applyLiquidGlassTheme();
             populateLibraryUI();
             loadHomeRecommendations();
             switchPane('home');
@@ -786,6 +826,10 @@ function applyIdentityUI(name) {
         $('stat-artists').textContent = userProfile.favouriteArtists?.length || 0;
         const dsToggle = $('data-saver-toggle');
         if (dsToggle) dsToggle.classList.toggle('on', !!userProfile.dataSaver);
+        const lyToggle = $('lyrics-offline-toggle');
+        if (lyToggle) lyToggle.classList.toggle('on', !!userProfile.downloadLyricsOffline);
+        const lgToggle = $('liquid-glass-toggle');
+        if (lgToggle) lgToggle.classList.toggle('on', !!userProfile.liquidGlass);
     }
 }
 
@@ -793,7 +837,7 @@ function logoutFriend(silent = false) {
     localStorage.removeItem("hub_active_user");
     localStorage.removeItem("hub_active_pass");
     globalUser = null; globalPass = null;
-    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false };
+    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: false };
     $('btn-admin').style.display = "none";
     $('friend-password').value = "";
     applyIdentityUI(null);
@@ -962,6 +1006,25 @@ function toggleDataSaver() {
     if (el) el.classList.toggle('on', userProfile.dataSaver);
     showToast(userProfile.dataSaver ? "Data Saver on — new downloads will use a smaller file size" : "Data Saver off — downloads use full quality");
     syncProfile();
+}
+
+function toggleLyricsOffline() {
+    userProfile.downloadLyricsOffline = !userProfile.downloadLyricsOffline;
+    const el = $('lyrics-offline-toggle');
+    if (el) el.classList.toggle('on', userProfile.downloadLyricsOffline);
+    showToast(userProfile.downloadLyricsOffline ? "New downloads will also save lyrics for offline" : "Lyrics won't be saved with new downloads");
+    syncProfile();
+}
+
+function toggleLiquidGlass() {
+    userProfile.liquidGlass = !userProfile.liquidGlass;
+    const el = $('liquid-glass-toggle');
+    if (el) el.classList.toggle('on', userProfile.liquidGlass);
+    applyLiquidGlassTheme();
+    syncProfile();
+}
+function applyLiquidGlassTheme() {
+    document.body.classList.toggle('liquid-glass', !!userProfile.liquidGlass);
 }
 
 let profileSyncTimer = null;
@@ -1150,7 +1213,7 @@ async function executeSearch(keyword, silentRound = 0) {
         grid.innerHTML = skeletonCards(8);
     }
     try {
-        const apiFilter = currentSearchFilter === 'artist' ? 'artists' : 'all';
+        const apiFilter = currentSearchFilter === 'artist' ? 'artists' : currentSearchFilter;
         const results = await fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(keyword)}&f=${apiFilter}`);
         if (myToken !== searchToken) return; // a newer search took over
 
@@ -1795,6 +1858,21 @@ async function loadLyricsForTrack(track, opts = {}) {
     const { force = false, userOpened = false } = opts;
 
     if (!track || !track.title) return;
+
+    // Offline-first: if this track was downloaded with lyrics attached, use
+    // those straight away — no network involved, works with no connection.
+    if (isDownloaded(track.id)) {
+        try {
+            const record = await getDownload(track.id);
+            if (record?.lyricsData) {
+                currentLyricsMode = record.lyricsData.mode;
+                currentLyricsLines = record.lyricsData.lines;
+                renderLyricsOverlay();
+                return;
+            }
+        } catch (e) { /* fall through to normal network lookup below */ }
+    }
+
     const cleanTitle = cleanTitleForLyrics(track.title) || track.title;
     const cleanArtist = deriveArtistForLyrics(track.title, track.artist);
     const key = `${cleanTitle}|${cleanArtist}`.toLowerCase();
@@ -1902,7 +1980,8 @@ function renderLyricsOverlay() {
         body.innerHTML = currentLyricsLines.map((l, i) => {
             const words = (l.text || '♪').split(/\s+/).filter(Boolean);
             const wordsHtml = words.map(w => `<span class="lyric-word">${escapeHtml(w)}</span>`).join(' ');
-            return `<p class="lyric-line" data-idx="${i}" onclick="seekToLyric(${i})">${wordsHtml}</p>`;
+            const isRtl = /[\u0600-\u06FF\u0750-\u077F]/.test(l.text || ''); // Arabic/Arabic-supplement script
+            return `<p class="lyric-line" dir="${isRtl ? 'rtl' : 'ltr'}" data-idx="${i}" onclick="seekToLyric(${i})">${wordsHtml}</p>`;
         }).join('');
         activeWordSpans = null;
     } else {
@@ -1955,9 +2034,6 @@ function updateLyricsHighlight() {
     body.querySelectorAll('.lyric-line').forEach(el => {
         const i = +el.dataset.idx;
         el.classList.toggle('active', i === idx);
-        el.classList.toggle('sung', i < idx);
-        const dist = Math.abs(i - idx);
-        if (dist === 0) delete el.dataset.dist; else el.dataset.dist = Math.min(dist, 3);
     });
     activeWordSpans = null;
     if (idx >= 0) {
@@ -2194,6 +2270,10 @@ async function initializeTrackStream(track, opts = {}) {
     // Reset prefetched track state
     hasPrefetchedNext = false;
     prefetchedNextTrack = null;
+    let readyPrefetchedUrl = null;
+    if (prefetchedQueueTrackId === track.id && prefetchedQueueUrl) readyPrefetchedUrl = prefetchedQueueUrl;
+    prefetchedQueueTrackId = null;
+    prefetchedQueueUrl = null;
 
     // Record the track we're LEAVING so Previous can return to it — unless we
     // got here BY walking back through history (fromHistory), which would
@@ -2243,15 +2323,18 @@ async function initializeTrackStream(track, opts = {}) {
     }
 
     const cleanedArtist = cleanArtistName(track.artist);
-    const mirrorPromise = resolveMirrorStreams(track.id); 
+    const mirrorPromise = readyPrefetchedUrl ? Promise.resolve([]) : resolveMirrorStreams(track.id);
     mirrorPromise.catch(() => {});
 
     const candidates = [];
-    
+    if (readyPrefetchedUrl) candidates.push(readyPrefetchedUrl);
+
     if (myToken !== playToken) return;
 
-    try { candidates.push(await resolveSaavnStream(cleanTitleForLyrics(track.title) || track.title, cleanedArtist, '320', track.title, track.artist)); } catch (e) {}
-    if (myToken !== playToken) return;
+    if (!readyPrefetchedUrl) {
+        try { candidates.push(await resolveSaavnStream(cleanTitleForLyrics(track.title) || track.title, cleanedArtist, '320', track.title, track.artist)); } catch (e) {}
+        if (myToken !== playToken) return;
+    }
 
     try { candidates.push(...(await mirrorPromise)); } catch (e) {}
     if (myToken !== playToken) return;
@@ -2397,6 +2480,20 @@ function pickDiverseCandidate(candidates, seedTrack) {
     return scored.length ? scored[scored.length - 1].c : candidates[Math.floor(Math.random() * candidates.length)];
 }
 
+// Resolves (and stashes) the next queued track's stream URL ahead of time,
+// so when it actually starts we can skip straight to playback instead of
+// waiting on Saavn/mirror lookups right at the handoff moment.
+async function prefetchQueueTrack(track) {
+    if (!track || !track.id || prefetchedQueueTrackId === track.id) return;
+    if (isDownloaded(track.id)) return; // already instant from IndexedDB, nothing to prefetch
+    try {
+        const cleanedArtist = cleanArtistName(track.artist);
+        const url = await resolveSaavnStream(cleanTitleForLyrics(track.title) || track.title, cleanedArtist, '320', track.title, track.artist);
+        prefetchedQueueTrackId = track.id;
+        prefetchedQueueUrl = url;
+    } catch (e) { /* mirror fallback still runs fresh at handoff time — no big loss */ }
+}
+
 async function prefetchNextAlgorithmSong() {
     if (!activeTrackData || prefetchedNextTrack) return;
     try {
@@ -2508,17 +2605,19 @@ function updateProgressUI() {
         paintSlider($('fs-seek'), pct);
         $('mini-progress-fill').style.width = pct + "%";
 
-        // Prefetch the next algorithm song ~30s before this one ends, so the
-        // handoff is gapless instead of waiting on the network right at the end.
+        // Prefetch ~10s before this track ends, so the handoff to the next
+        // one is instant instead of waiting on the network right at the end.
         // A fixed time window (not a percentage) means it triggers at the same
-        // "30 seconds left" point whether the song is 2 minutes or 8.
-        if (!hasPrefetchedNext && !isLoopingActive && dur > 60 && (dur - cur) <= 30) {
-            // Only prefetch if we are essentially at the end of the manual queue
-            if (playbackQueue.length === 0 || currentQueueIndex >= playbackQueue.length - 1) {
-                if (!isShuffleActive) { 
-                    hasPrefetchedNext = true;
-                    prefetchNextAlgorithmSong();
-                }
+        // "10 seconds left" point whether the song is 2 minutes or 8.
+        if (!hasPrefetchedNext && !isLoopingActive && dur > 20 && (dur - cur) <= 10) {
+            hasPrefetchedNext = true;
+            if (!isShuffleActive && playbackQueue.length > 0 && currentQueueIndex < playbackQueue.length - 1) {
+                // There's an actual next track queued (playlist/album/search results) —
+                // resolve its stream now instead of waiting for it to start.
+                prefetchQueueTrack(playbackQueue[currentQueueIndex + 1]);
+            } else if (playbackQueue.length === 0 || currentQueueIndex >= playbackQueue.length - 1) {
+                // Nothing queued next — fall back to the algorithmic pick, same as before.
+                if (!isShuffleActive) prefetchNextAlgorithmSong();
             }
         }
     }
@@ -3077,11 +3176,11 @@ async function buildRecommendations() {
     const jobs = [];
     seeds.forEach(s => {
         jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(s.title)}&artist=${encodeURIComponent(s.artist)}`, 2, 500).catch(() => []));
-        jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(s.artist + " playlist mix")}&f=playlists`, 2, 500).catch(() => []));
+        jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(s.artist + " playlist mix")}&f=playlist`, 2, 500).catch(() => []));
     });
     // Global fallbacks run in the SAME parallel batch (old code awaited them serially)
     jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=Tunisian+Rap+Arabic+Pop&f=song`, 2, 500).catch(() => []));
-    jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=Top+Arabic+Hits&f=playlists`, 2, 500).catch(() => []));
+    jobs.push(fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=Top+Arabic+Hits&f=playlist`, 2, 500).catch(() => []));
 
     const responses = await Promise.all(jobs);
     let songPool = [], plPool = [];
