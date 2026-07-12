@@ -188,6 +188,19 @@ async function getOfflineThumbUrl(id) {
     offlineThumbCache.set(id, url);
     return url;
 }
+// This cache was never invalidated when a download was added/removed, so a
+// lookup that ran once — e.g. before a download finished saving, or before
+// it existed at all — kept returning that same stale (often empty) answer
+// forever, even after the song was re-downloaded or removed and re-added.
+// saveDownload/deleteDownload/deleteAllDownloads all clear the relevant
+// entry so the next card that needs it looks it up fresh.
+function invalidateOfflineThumbCache(id) {
+    if (offlineThumbCache.has(id)) {
+        const prev = offlineThumbCache.get(id);
+        if (prev) try { URL.revokeObjectURL(prev); } catch (e) {}
+        offlineThumbCache.delete(id);
+    }
+}
 
 // Shared <img onerror> handler for track artwork. The live thumbnail URL can
 // go dead — or just be unreachable while offline — even for a song that's
@@ -384,14 +397,14 @@ async function fetchAndCompressThumb(url) {
     try {
         const srcBlob = await (await fetch(safeUrl)).blob();
         const bitmap = await createImageBitmap(srcBlob);
-        const size = 96;
+        const size = 200; // was 96 @ 0.55 — visibly soft; still only a few KB at this size/quality
         const canvas = document.createElement('canvas');
         canvas.width = size; canvas.height = size;
         const ctx = canvas.getContext('2d');
         const scale = Math.max(size / bitmap.width, size / bitmap.height);
         const dw = bitmap.width * scale, dh = bitmap.height * scale;
         ctx.drawImage(bitmap, (size - dw) / 2, (size - dh) / 2, dw, dh);
-        return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.55));
+        return await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
     } catch (e) {
         // Compression failed (e.g. no createImageBitmap support) — still better
         // to keep the original image offline than to have none at all.
@@ -410,6 +423,7 @@ async function saveDownload(track, audioBlob, thumbBlob, quality, lyricsData = n
     const store = await dlTx('readwrite');
     await new Promise((res, rej) => { const r = store.put(record); r.onsuccess = res; r.onerror = () => rej(r.error); });
     downloadedIds.add(track.id);
+    invalidateOfflineThumbCache(track.id);
     return record;
 }
 
@@ -426,6 +440,7 @@ async function deleteDownload(id) {
     const store = await dlTx('readwrite');
     await new Promise((res, rej) => { const r = store.delete(id); r.onsuccess = res; r.onerror = () => rej(r.error); });
     downloadedIds.delete(id);
+    invalidateOfflineThumbCache(id);
     refreshDownloadBadges(id);
 }
 
@@ -434,7 +449,7 @@ async function deleteAllDownloads() {
     await new Promise((res, rej) => { const r = store.clear(); r.onsuccess = res; r.onerror = () => rej(r.error); });
     const hadIds = [...downloadedIds];
     downloadedIds = new Set();
-    hadIds.forEach(id => refreshDownloadBadges(id));
+    hadIds.forEach(id => { invalidateOfflineThumbCache(id); refreshDownloadBadges(id); });
 }
 
 function listDownloads() {
