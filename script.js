@@ -345,14 +345,25 @@ async function dlTx(mode) {
 // Populate the in-memory id Set once at startup so isDownloaded() can be
 // called synchronously from render code (card/row templates) without every
 // track card awaiting IndexedDB.
-async function initDownloadsRegistry() {
-    try {
-        const store = await dlTx('readonly');
-        const keysReq = store.getAllKeys();
-        keysReq.onsuccess = () => { downloadedIds = new Set(keysReq.result); refreshAllDownloadBadges(); };
-    } catch (e) { /* IndexedDB unavailable (private mode etc.) — downloads just won't be offered */ }
+// NOTE: this used to be fire-and-forget — the function was `async` but never
+// actually awaited the IDBRequest, so it resolved immediately, before
+// downloadedIds was populated. Anything that ran isDownloaded() during the
+// first page paint (Recently Played, first thing rendered on launch) saw an
+// empty registry and always got "not downloaded", which is why offline
+// artwork only ever showed up after something else re-rendered the shelf
+// later. It's now a real Promise that resolves only once the read finishes,
+// so callers that need an accurate answer on first paint can await it.
+function initDownloadsRegistry() {
+    return new Promise(async (resolve) => {
+        try {
+            const store = await dlTx('readonly');
+            const keysReq = store.getAllKeys();
+            keysReq.onsuccess = () => { downloadedIds = new Set(keysReq.result); refreshAllDownloadBadges(); resolve(); };
+            keysReq.onerror = () => resolve(); // IndexedDB unavailable (private mode etc.) — downloads just won't be offered
+        } catch (e) { resolve(); }
+    });
 }
-initDownloadsRegistry();
+const downloadsRegistryReady = initDownloadsRegistry();
 
 function isDownloaded(id) { return !!id && downloadedIds.has(id); }
 
@@ -1674,15 +1685,23 @@ function updateMediaSession(t) {
 }
 
 function rememberListen(t) {
+    // Never persist a blob: URL as an artwork reference. Those come from
+    // URL.createObjectURL() on a downloaded track's offline copy — valid
+    // only for the current browser session — so saving one into history
+    // means the very next time the app opens, Recently Played is left
+    // pointing at a link that no longer resolves to anything. Store null
+    // instead; the card renderer resolves a fresh offline thumbnail by id
+    // for any downloaded track at render time.
+    const persistThumb = (t.thumb && t.thumb.startsWith('blob:')) ? null : t.thumb;
     let hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
     hist = hist.filter(x => x.id !== t.id);
-    hist.unshift({ ...t, type: 'song' });
+    hist.unshift({ ...t, thumb: persistThumb, type: 'song' });
     localStorage.setItem('taste_profile_history', JSON.stringify(hist.slice(0, 15)));
     tasteEvent('play', t);
     // Account-based recently-played: mirror the listen onto the user's profile
     // (server-synced) so it follows them across devices, not just this browser.
     if (globalUser && globalUser !== 'admin') {
-        const slim = { id: t.id, title: t.title, artist: t.artist, thumb: t.thumb, type: 'song' };
+        const slim = { id: t.id, title: t.title, artist: t.artist, thumb: persistThumb, type: 'song' };
         userProfile.recentlyPlayed = [slim, ...(userProfile.recentlyPlayed || []).filter(x => x.id !== t.id)].slice(0, 30);
         syncProfile();
     }
@@ -3127,7 +3146,13 @@ $('new-pl-input').addEventListener('keydown', e => { if (e.key === 'Enter') crea
       last result, then refresh silently in the background.
    3. All seed lookups run in parallel instead of sequentially.
 ===================================================================== */
-function renderRecentlyPlayed() {
+async function renderRecentlyPlayed() {
+    // Otherwise, on a fresh page load this runs before downloadedIds is
+    // populated (see initDownloadsRegistry above) and every downloaded
+    // track's isDownloaded() check below comes back false, so the offline
+    // artwork never even gets looked up on the first paint.
+    await downloadsRegistryReady;
+
     // Prefer the account-synced list when logged in (follows the user across
     // devices); fall back to this device's local history for guests/admin.
     let hist;
@@ -3139,7 +3164,20 @@ function renderRecentlyPlayed() {
     const shelf = $('shelf-recent');
     if (!hist.length) { shelf.style.display = 'none'; return; }
     shelf.style.display = 'block';
-    $('recent-grid').innerHTML = hist.slice(0, 6).map(t => createTrackCardHTML({ ...t, type: 'song' })).join('');
+
+    const items = hist.slice(0, 6).map(t => ({ ...t }));
+    // A history entry's thumb can be missing, or (from before the fix in
+    // rememberListen) a dead blob: URL left over from an earlier session —
+    // for any track that's downloaded (or was downloaded when it was
+    // played), resolve the current offline copy up front instead of
+    // painting a broken/placeholder image and waiting for a click to fix it.
+    await Promise.all(items.map(async t => {
+        if ((!t.thumb || t.thumb.startsWith('blob:')) && isDownloaded(t.id)) {
+            const url = await getOfflineThumbUrl(t.id);
+            if (url) t.thumb = url;
+        }
+    }));
+    $('recent-grid').innerHTML = items.map(t => createTrackCardHTML({ ...t, type: 'song' })).join('');
 }
 
 function renderRecGrids(songs, playlists) {
