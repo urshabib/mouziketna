@@ -148,7 +148,10 @@ export default {
             customPlaylists: body.customPlaylists || [],
             favouriteArtists: body.favouriteArtists || [],
             favouriteAlbums: body.favouriteAlbums || [],
-            recentlyPlayed: Array.isArray(body.recentlyPlayed) ? body.recentlyPlayed.slice(0, 30) : (existingUser.recentlyPlayed || [])
+            recentlyPlayed: Array.isArray(body.recentlyPlayed) ? body.recentlyPlayed.slice(0, 30) : (existingUser.recentlyPlayed || []),
+            dataSaver: typeof body.dataSaver === 'boolean' ? body.dataSaver : !!existingUser.dataSaver,
+            downloadLyricsOffline: typeof body.downloadLyricsOffline === 'boolean' ? body.downloadLyricsOffline : !!existingUser.downloadLyricsOffline,
+            liquidGlass: typeof body.liquidGlass === 'boolean' ? body.liquidGlass : !!existingUser.liquidGlass
         };
         await env.NEW_USER_STORE.put(key, JSON.stringify(profileData));
 
