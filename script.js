@@ -19,7 +19,7 @@ const PLAYLIST_ART = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd8
 let globalUser = localStorage.getItem("hub_active_user") || null;
 let sessionSynced = false;   // true once executeLogin actually got a profile back from the server
 let globalPass = localStorage.getItem("hub_active_pass") || null;
-let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white' };
+let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass' };
 
 let activeTrackData = null;
 let activeBlobUrl = null; // object URL for the currently-playing downloaded track, revoked on track change
@@ -321,6 +321,43 @@ function skeletonRows(n = 6) {
     return out;
 }
 
+// Same as createTrackRowHTML (art + title/artist + downloaded badge, tap to
+// play) but WITHOUT the ⋮ menu button — used inside the compact home-screen
+// carousels, where the row is small and the menu isn't needed there (the
+// full menu is still one tap away from any other list in the app).
+function createMiniTrackRowHTML(track, opts = {}) {
+    const key = regTrack(track, opts);
+    const isPlaying = activeTrackData && activeTrackData.id === track.id;
+    const art = track.thumb && track.thumb !== PLAYLIST_ART
+        ? `<img class="row-art" src="${escapeHtml(track.thumb)}" loading="lazy" alt="" onerror="handleThumbError(this, '${escapeHtml(track.id || '')}', 'row-art generic-cover')">`
+        : `<div class="row-art generic-cover"><i class="ri-music-2-line"></i></div>`;
+    const downloaded = isDownloaded(track.id);
+    return `
+    <div class="track-row mini-track-row ${isPlaying ? 'playing' : ''}" data-id="${escapeHtml(track.id || '')}" data-act="open" data-key="${key}">
+        ${art}
+        <div class="row-meta"><h4>${downloaded ? '<i class="ri-download-2-fill dl-badge" title="Downloaded"></i>' : ''}${escapeHtml(track.title)}</h4><p>${escapeHtml(track.artist || '')}</p></div>
+        ${isPlaying ? '<div class="row-eq"><span></span><span></span><span></span></div>' : ''}
+    </div>`;
+}
+
+// Chunks a list of tracks into horizontally swipeable "pages" of up to 4
+// compact rows each — the YouTube-Music-style shelf layout (small square
+// art, list of 4, swipe right for the next 4) instead of one long list or a
+// grid of big cards.
+function renderCarouselShelf(containerId, items, regTrackOpts = {}) {
+    const perPage = 4;
+    const el = $(containerId);
+    if (!el) return;
+    if (!items.length) { el.innerHTML = ''; return; }
+    let html = '<div class="carousel-wrap">';
+    for (let i = 0; i < items.length; i += perPage) {
+        const page = items.slice(i, i + perPage);
+        html += `<div class="carousel-page">${page.map(t => createMiniTrackRowHTML(t, regTrackOpts)).join('')}</div>`;
+    }
+    html += '</div>';
+    el.innerHTML = html;
+}
+
 /* =====================================================================
    OFFLINE DOWNLOADS
    Audio is stored as a Blob in IndexedDB, keyed by track id — not Cache
@@ -443,6 +480,51 @@ async function fetchAndCompressThumb(url) {
     }
 }
 
+/* ---- Custom playlist cover upload ----
+   A standard <input type="file" accept="image/*"> opens the native photo
+   picker/gallery on both Android and iOS with zero platform-specific code —
+   this is not a mobile limitation to work around, it's just how file inputs
+   already work everywhere. The chosen image is downscaled + re-encoded
+   client-side (same canvas technique already used for download thumbnails)
+   before being stored, so a full-resolution phone photo doesn't bloat the
+   synced profile. */
+let pendingCoverPlaylistId = null;
+function triggerPlaylistCoverUpload(plId) {
+    pendingCoverPlaylistId = plId;
+    $('playlist-cover-input').click();
+}
+async function handlePlaylistCoverUpload(event) {
+    const file = event.target.files?.[0];
+    const plId = pendingCoverPlaylistId;
+    pendingCoverPlaylistId = null;
+    event.target.value = ''; // so choosing the same file again still fires 'change' next time
+    if (!file || !plId) return;
+    const pl = userProfile.customPlaylists.find(p => p.id === plId);
+    if (!pl) return;
+    showToast("Updating cover…", true);
+    try {
+        const dataUrl = await compressUploadedImageToDataUrl(file, 500, 0.82);
+        if (!dataUrl) throw new Error("compress failed");
+        pl.thumb = dataUrl;
+        syncProfile();
+        if ($('pane-collection').classList.contains('active')) openCollection('custom-playlist', plId);
+        showToast("Playlist cover updated");
+    } catch (e) {
+        showToast("Couldn't update the cover — try a different image", true);
+    }
+}
+async function compressUploadedImageToDataUrl(file, maxSize = 500, quality = 0.82) {
+    try {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1, maxSize / Math.max(bitmap.width, bitmap.height));
+        const w = Math.max(1, Math.round(bitmap.width * scale)), h = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+        return canvas.toDataURL('image/jpeg', quality);
+    } catch (e) { return null; }
+}
+
 async function saveDownload(track, audioBlob, thumbBlob, quality, lyricsData = null) {
     const record = {
         id: track.id, title: track.title, artist: track.artist || '',
@@ -547,7 +629,11 @@ async function downloadTrackForOffline(track, opts = {}) {
     ensurePersistentStorageOnce();
     if (!silent) showToast(`Downloading "${track.title}"…`);
     try {
-        const quality = userProfile.dataSaver ? '96' : '320';
+        // 'off' -> 320kbps (full quality), 'saver' -> 96kbps, 'ultra' -> 48kbps
+        // (JioSaavn's lowest standard-quality tier — still clearly listenable,
+        // just the smallest file size available).
+        const level = userProfile.dataSaverLevel || (userProfile.dataSaver ? 'saver' : 'off');
+        const quality = level === 'ultra' ? '48' : level === 'saver' ? '96' : '320';
         const cleanedArtist = cleanArtistName(track.artist);
         let streamUrl = null;
         try { streamUrl = await resolveSaavnStream(cleanTitleForLyrics(track.title) || track.title, cleanedArtist, quality, track.title, track.artist); }
@@ -559,7 +645,7 @@ async function downloadTrackForOffline(track, opts = {}) {
         const audioRes = await fetch(streamUrl);
         if (!audioRes.ok) throw new Error("audio fetch failed");
         const audioBlob = await audioRes.blob();
-        const thumbBlob = userProfile.dataSaver ? await fetchAndCompressThumb(track.thumb) : await fetchThumbFullQuality(track.thumb);
+        const thumbBlob = level !== 'off' ? await fetchAndCompressThumb(track.thumb) : await fetchThumbFullQuality(track.thumb);
         const lyricsData = userProfile.downloadLyricsOffline ? await fetchLyricsForDownload(track) : null;
         await saveDownload(track, audioBlob, thumbBlob, quality, lyricsData);
         refreshDownloadBadges(track.id);
@@ -584,21 +670,57 @@ async function toggleTrackDownload(key) {
 // requests) so a big playlist finishes much faster than strictly one-by-one,
 // while still bounded. Progress is shown live in the triggering button.
 const DOWNLOAD_BATCH_SIZE = 4;
+// Global, persistent progress — NOT tied to the button that started the
+// download. Previously progress was written straight into that specific
+// button's innerHTML, so navigating away (the button gets torn down when its
+// view unmounts) made progress invisible until you came back, and coming
+// back rendered a brand-new button that had no idea a download was already
+// running. The download itself was never actually interrupted — only the
+// display was broken. This tracks progress globally so the topbar pill (and
+// the button, if you're still looking at it) both stay live regardless.
+let activeBulkDownload = null; // { done, total, token }
+let bulkDownloadToken = 0;
+
+function renderBulkDownloadProgress() {
+    const pill = $('global-dl-pill'), pillText = $('global-dl-pill-text');
+    if (!activeBulkDownload) { if (pill) pill.style.display = 'none'; return; }
+    if (pill) pill.style.display = 'flex';
+    if (pillText) pillText.textContent = `${activeBulkDownload.done}/${activeBulkDownload.total}`;
+    // If the button that originally started this run is still on-screen
+    // (user never navigated away, or came back to the same collection),
+    // keep it in sync too — but only while a download is actually in flight;
+    // once finished we set its final label directly (see below).
+    const btn = $('pl-download-btn');
+    if (btn && btn.isConnected) btn.innerHTML = `<i class="ri-loader-4-line animate-spin"></i> ${activeBulkDownload.done}/${activeBulkDownload.total}`;
+}
+
 async function downloadPlaylistTracks(tracks, buttonEl) {
     const todo = (tracks || []).filter(t => t?.id && !isDownloaded(t.id));
     if (!todo.length) { showToast("Everything here is already downloaded"); return; }
-    const setLabel = (html) => { if (buttonEl) buttonEl.innerHTML = html; };
-    let done = 0;
-    setLabel(`<i class="ri-loader-4-line animate-spin"></i> 0/${todo.length}`);
+    const myToken = ++bulkDownloadToken; // starting a new bulk download supersedes any other in-flight one
+    activeBulkDownload = { done: 0, total: todo.length, token: myToken };
+    renderBulkDownloadProgress();
     for (let i = 0; i < todo.length; i += DOWNLOAD_BATCH_SIZE) {
+        if (bulkDownloadToken !== myToken) return; // superseded — a newer bulk download took over
         const batch = todo.slice(i, i + DOWNLOAD_BATCH_SIZE);
         await Promise.all(batch.map(t => downloadTrackForOffline(t, { silent: true })));
-        done += batch.length;
-        setLabel(`<i class="ri-loader-4-line animate-spin"></i> ${done}/${todo.length}`);
+        if (bulkDownloadToken !== myToken) return;
+        activeBulkDownload.done += batch.length;
+        renderBulkDownloadProgress();
     }
-    setLabel(`<i class="ri-checkbox-circle-fill"></i> Downloaded`);
-    showToast(`Downloaded ${done}/${todo.length} track${todo.length === 1 ? '' : 's'}`);
-    setTimeout(() => setLabel(`<i class="ri-download-2-line"></i> Download`), 2200);
+    if (bulkDownloadToken !== myToken) return;
+    const finishedTotal = activeBulkDownload.total, finishedDone = activeBulkDownload.done;
+    activeBulkDownload = null;
+    renderBulkDownloadProgress();
+    // Whichever button is currently on-screen for this collection (may not be
+    // the same DOM node that kicked this off, if the view was re-rendered
+    // after navigating away and back) gets the finished state.
+    const btn = (buttonEl && buttonEl.isConnected) ? buttonEl : ($('pl-download-btn'));
+    if (btn) {
+        btn.innerHTML = `<i class="ri-checkbox-circle-fill"></i> Downloaded`;
+        setTimeout(() => { if (btn.isConnected) btn.innerHTML = `<i class="ri-download-2-line"></i> Download`; }, 2200);
+    }
+    showToast(`Downloaded ${finishedDone}/${finishedTotal} track${finishedTotal === 1 ? '' : 's'}`);
 }
 
 /* ---- 3-dot bottom sheet (Like / Remove) ---- */
@@ -842,6 +964,7 @@ async function executeLogin(user, pass, auto = false) {
                 favouriteAlbums: data.profile.favouriteAlbums || [],
                 recentlyPlayed: data.profile.recentlyPlayed || [],
                 dataSaver: !!data.profile.dataSaver,
+                dataSaverLevel: ['off', 'saver', 'ultra'].includes(data.profile.dataSaverLevel) ? data.profile.dataSaverLevel : (data.profile.dataSaver ? 'saver' : 'off'),
                 downloadLyricsOffline: !!data.profile.downloadLyricsOffline,
                 // undefined = this account has never touched the setting (brand new,
                 // or predates it) -> use the new default (on). An explicit past
@@ -849,7 +972,9 @@ async function executeLogin(user, pass, auto = false) {
                 liquidGlass: data.profile.liquidGlass === undefined ? true : !!data.profile.liquidGlass,
                 theme: data.profile.theme === 'light' ? 'light' : 'dark',
                 accentColor: data.profile.accentColor || 'orange',
-                lyricsColor: data.profile.lyricsColor || 'white'
+                lyricsColor: data.profile.lyricsColor || 'white',
+                presetTint: data.profile.presetTint || 'none',
+                activePreset: data.profile.activePreset === undefined ? 'glass' : data.profile.activePreset
             };
             // The server copy above can be stale (e.g. you toggled a setting
             // and refreshed before the debounced save reached it) — the
@@ -877,7 +1002,7 @@ async function executeLogin(user, pass, auto = false) {
 function applyIdentityUI(name) {
     const loggedIn = !!name;
     $('topbar-greeting').textContent = loggedIn ? `${timeGreeting()}, ${name}` : timeGreeting();
-    $('user-chip-name').textContent = "Settings";
+    $('user-chip-name').textContent = loggedIn ? name : "Log in";
     $('auth-portal-form').style.display = loggedIn ? "none" : "flex";
     $('active-profile-details').style.display = loggedIn ? "flex" : "none";
     if (loggedIn) {
@@ -886,8 +1011,8 @@ function applyIdentityUI(name) {
         $('stat-liked').textContent = userProfile.likedSongs?.length || 0;
         $('stat-playlists').textContent = userProfile.customPlaylists?.length || 0;
         $('stat-artists').textContent = userProfile.favouriteArtists?.length || 0;
-        const dsToggle = $('data-saver-toggle');
-        if (dsToggle) dsToggle.classList.toggle('on', !!userProfile.dataSaver);
+        const dsLevel = userProfile.dataSaverLevel || (userProfile.dataSaver ? 'saver' : 'off');
+        document.querySelectorAll('.data-saver-option').forEach(b => b.classList.toggle('active', b.dataset.level === dsLevel));
         const lyToggle = $('lyrics-offline-toggle');
         if (lyToggle) lyToggle.classList.toggle('on', !!userProfile.downloadLyricsOffline);
         const lgToggle = $('liquid-glass-toggle');
@@ -896,6 +1021,7 @@ function applyIdentityUI(name) {
         if (themeToggle) themeToggle.classList.toggle('on', userProfile.theme === 'light');
         document.querySelectorAll('.accent-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.accent === (userProfile.accentColor || 'orange')));
         document.querySelectorAll('.lyrics-color-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.lyricsColor === (userProfile.lyricsColor || 'white')));
+        document.querySelectorAll('.preset-theme-btn').forEach(b => b.classList.toggle('active', b.dataset.preset === userProfile.activePreset));
     }
 }
 
@@ -903,7 +1029,7 @@ function logoutFriend(silent = false) {
     localStorage.removeItem("hub_active_user");
     localStorage.removeItem("hub_active_pass");
     globalUser = null; globalPass = null;
-    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white' };
+    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass' };
     loadDeviceSettings(); // these are device prefs, not account data — logging out shouldn't reset them
     applyLiquidGlassTheme();
     applyThemePreference();
@@ -1085,11 +1211,14 @@ function saveDeviceSettings() {
     try {
         localStorage.setItem(DEVICE_SETTINGS_KEY, JSON.stringify({
             dataSaver: !!userProfile.dataSaver,
+            dataSaverLevel: userProfile.dataSaverLevel || 'off',
             downloadLyricsOffline: !!userProfile.downloadLyricsOffline,
             liquidGlass: !!userProfile.liquidGlass,
             theme: userProfile.theme === 'light' ? 'light' : 'dark',
             accentColor: userProfile.accentColor || 'orange',
-            lyricsColor: userProfile.lyricsColor || 'white'
+            lyricsColor: userProfile.lyricsColor || 'white',
+            presetTint: userProfile.presetTint || 'none',
+            activePreset: userProfile.activePreset || null
         }));
     } catch (e) {}
 }
@@ -1100,22 +1229,31 @@ function loadDeviceSettings() {
         const s = JSON.parse(raw);
         if (!s || typeof s !== 'object') return false;
         userProfile.dataSaver = !!s.dataSaver;
+        userProfile.dataSaverLevel = ['off', 'saver', 'ultra'].includes(s.dataSaverLevel) ? s.dataSaverLevel : (s.dataSaver ? 'saver' : 'off');
         userProfile.downloadLyricsOffline = !!s.downloadLyricsOffline;
         userProfile.liquidGlass = !!s.liquidGlass;
         userProfile.theme = s.theme === 'light' ? 'light' : 'dark';
         userProfile.accentColor = s.accentColor || 'orange';
         userProfile.lyricsColor = s.lyricsColor || 'white';
+        userProfile.presetTint = s.presetTint || 'none';
+        userProfile.activePreset = s.activePreset || null;
         return true;
     } catch (e) { return false; }
 }
 
-function toggleDataSaver() {
-    userProfile.dataSaver = !userProfile.dataSaver;
-    const el = $('data-saver-toggle');
-    if (el) el.classList.toggle('on', userProfile.dataSaver);
-    showToast(userProfile.dataSaver ? "Data Saver on — new downloads will use a smaller file size" : "Data Saver off — downloads use full quality");
+function setDataSaverLevel(level) {
+    if (!['off', 'saver', 'ultra'].includes(level)) return;
+    userProfile.dataSaverLevel = level;
+    userProfile.dataSaver = level !== 'off'; // kept in sync for any older code/account data still reading the boolean
+    document.querySelectorAll('.data-saver-option').forEach(b => b.classList.toggle('active', b.dataset.level === level));
+    const labels = { off: "Data Saver off — downloads use full quality", saver: "Data Saver on — smaller downloads", ultra: "Ultra Data Saver on — smallest possible downloads" };
+    showToast(labels[level]);
     saveDeviceSettings();
     syncProfile();
+}
+// Kept so nothing that still calls the old boolean toggle breaks.
+function toggleDataSaver() {
+    setDataSaverLevel((userProfile.dataSaverLevel || 'off') === 'off' ? 'saver' : 'off');
 }
 
 function toggleLyricsOffline() {
@@ -1129,9 +1267,11 @@ function toggleLyricsOffline() {
 
 function toggleLiquidGlass() {
     userProfile.liquidGlass = !userProfile.liquidGlass;
+    userProfile.activePreset = null; // hand-toggling a single dimension means "no preset" anymore
     const el = $('liquid-glass-toggle');
     if (el) el.classList.toggle('on', userProfile.liquidGlass);
     applyLiquidGlassTheme();
+    refreshActivePresetButton();
     saveDeviceSettings();
     syncProfile();
 }
@@ -1147,37 +1287,53 @@ function applyThemePreference() {
     document.documentElement.setAttribute('data-theme', userProfile.theme === 'light' ? 'light' : 'dark');
     document.documentElement.setAttribute('data-accent', userProfile.accentColor || 'orange');
     document.documentElement.setAttribute('data-lyrics-color', userProfile.lyricsColor || 'white');
+    document.documentElement.setAttribute('data-preset-tint', userProfile.presetTint || 'none');
 }
 function toggleThemeMode() {
     userProfile.theme = userProfile.theme === 'light' ? 'dark' : 'light';
+    userProfile.activePreset = null;
     const el = $('theme-mode-toggle');
     if (el) el.classList.toggle('on', userProfile.theme === 'light');
     applyThemePreference();
+    refreshActivePresetButton();
     showToast(userProfile.theme === 'light' ? "Light mode on" : "Dark mode on");
     saveDeviceSettings();
     syncProfile();
 }
 function setAccentColor(key) {
     userProfile.accentColor = key;
+    userProfile.activePreset = null;
     document.querySelectorAll('.accent-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.accent === key));
     applyThemePreference();
+    refreshActivePresetButton();
     saveDeviceSettings();
     syncProfile();
 }
 function setLyricsColor(key) {
     userProfile.lyricsColor = key;
+    userProfile.activePreset = null;
     document.querySelectorAll('.lyrics-color-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.lyricsColor === key));
     applyThemePreference();
+    refreshActivePresetButton();
     saveDeviceSettings();
     syncProfile();
 }
 function applyPresetTheme(preset) {
-    // One-tap bundles across every appearance dimension at once.
+    // One-tap bundles across every appearance dimension at once. Each pairs
+    // an accent, a matching lyrics-highlight color, and (for the new ones) a
+    // subtle signature background tint, so it reads as one deliberately
+    // designed look rather than just a different-colored dot.
     const presets = {
-        classic:   { liquidGlass: false, accentColor: 'orange', lyricsColor: 'white',  theme: 'dark'  },
-        glass:     { liquidGlass: true,  accentColor: 'orange', lyricsColor: 'white',  theme: 'dark'  },
-        monochrome:{ liquidGlass: false, accentColor: 'mono',   lyricsColor: 'mono',   theme: 'dark'  },
-        daylight:  { liquidGlass: false, accentColor: 'blue',   lyricsColor: 'white',  theme: 'light' }
+        classic:   { liquidGlass: false, accentColor: 'orange',  lyricsColor: 'white',   theme: 'dark',  presetTint: 'none'    },
+        glass:     { liquidGlass: true,  accentColor: 'orange',  lyricsColor: 'white',   theme: 'dark',  presetTint: 'none'    },
+        monochrome:{ liquidGlass: false, accentColor: 'mono',    lyricsColor: 'mono',    theme: 'dark',  presetTint: 'none'    },
+        daylight:  { liquidGlass: false, accentColor: 'blue',    lyricsColor: 'white',   theme: 'light', presetTint: 'none'    },
+        gold:      { liquidGlass: false, accentColor: 'gold',    lyricsColor: 'gold',    theme: 'dark',  presetTint: 'gold'    },
+        midnight:  { liquidGlass: true,  accentColor: 'purple',  lyricsColor: 'purple',  theme: 'dark',  presetTint: 'purple'  },
+        ocean:     { liquidGlass: false, accentColor: 'ocean',   lyricsColor: 'ocean',   theme: 'dark',  presetTint: 'ocean'   },
+        emerald:   { liquidGlass: false, accentColor: 'emerald', lyricsColor: 'emerald', theme: 'dark',  presetTint: 'emerald' },
+        crimson:   { liquidGlass: true,  accentColor: 'crimson', lyricsColor: 'crimson', theme: 'dark',  presetTint: 'crimson' },
+        sunset:    { liquidGlass: false, accentColor: 'sunset',  lyricsColor: 'sunset',  theme: 'dark',  presetTint: 'sunset'  }
     };
     const p = presets[preset];
     if (!p) return;
@@ -1185,25 +1341,38 @@ function applyPresetTheme(preset) {
     userProfile.accentColor = p.accentColor;
     userProfile.lyricsColor = p.lyricsColor;
     userProfile.theme = p.theme;
+    userProfile.presetTint = p.presetTint;
+    userProfile.activePreset = preset;
     applyLiquidGlassTheme();
     applyThemePreference();
     applyIdentityUI(globalUser === 'admin' ? 'admin' : (userProfile.username || null));
+    refreshActivePresetButton();
     saveDeviceSettings();
     syncProfile();
     showToast(`"${preset[0].toUpperCase() + preset.slice(1)}" theme applied`);
+}
+// Highlights whichever preset button matches the CURRENT combination of
+// settings — including "none of them" if the user has since hand-picked an
+// accent/lyrics-color/glass combo that no longer matches any preset exactly.
+function refreshActivePresetButton() {
+    document.querySelectorAll('.preset-theme-btn').forEach(b => b.classList.toggle('active', b.dataset.preset === userProfile.activePreset));
 }
 
 function confirmClearSettings() {
     openConfirmModal("Reset settings?", "Data Saver, offline lyrics, Liquid Glass, and the theme/accent will go back to their defaults. Your liked songs, playlists, and downloads are not affected.", () => {
         userProfile.dataSaver = false;
+        userProfile.dataSaverLevel = 'off';
         userProfile.downloadLyricsOffline = false;
         userProfile.liquidGlass = false;
         userProfile.theme = 'dark';
         userProfile.accentColor = 'orange';
         userProfile.lyricsColor = 'white';
+        userProfile.presetTint = 'none';
+        userProfile.activePreset = 'classic';
         applyLiquidGlassTheme();
         applyThemePreference();
         applyIdentityUI(globalUser === 'admin' ? 'admin' : (userProfile.username || null));
+        refreshActivePresetButton();
         saveDeviceSettings();
         syncProfile();
         showToast("Settings reset to default", true);
@@ -1232,6 +1401,7 @@ function restoreProfileFromCache(username) {
         return true;
     } catch (e) { return false; }
 }
+let profileSaveErrorShown = false; // gates the "couldn't save" toast to once per outage, not once per action
 function syncProfile() {
     populateLibraryUI();
     applyIdentityUI(globalUser === 'admin' ? 'admin' : (userProfile.username || null));
@@ -1243,7 +1413,12 @@ function syncProfile() {
         fetch(`${NEW_HUB_BACKEND}/api/save-profile`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(userProfile)
-        }).catch(() => showToast("Couldn't save to your profile — check the server", true));
+        }).then(() => { profileSaveErrorShown = false; }) // back online / working again — a later outage should still get one fresh notice
+          .catch(() => {
+              if (profileSaveErrorShown) return; // already told the user this session — every play/like/etc. shouldn't re-announce it
+              profileSaveErrorShown = true;
+              showToast("Couldn't save to your profile — check the server", true);
+          });
     }, 600);
 }
 
@@ -1634,7 +1809,10 @@ async function openCollection(type, id = null) {
             ? `<img class="hero-art" src="${escapeHtml(coverSrc)}" alt="" onerror="this.outerHTML='<div class=&quot;hero-art&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
             : `<div class="hero-art"><i class="ri-music-2-line"></i></div>`;
         header.innerHTML = `
-            ${art}
+            <div class="hero-art-wrap">
+                ${art}
+                <button class="cover-edit-btn" title="Change cover" onclick="triggerPlaylistCoverUpload('${pl.id}')"><i class="ri-pencil-fill"></i></button>
+            </div>
             <div class="hero-info">
                 <span class="kicker">Playlist${pl.source ? ' · ' + escapeHtml(pl.source) : ''}</span><h2>${escapeHtml(pl.name)}</h2>
                 <span class="sub">${pl.tracks.length} track${pl.tracks.length === 1 ? '' : 's'}</span>
@@ -1843,10 +2021,24 @@ function setNowPlayingArt(t) {
 
 function highlightActiveTrackCard() {
     document.querySelectorAll('.track-card.playing').forEach(c => { c.classList.remove('playing'); c.querySelector('.eq-badge')?.remove(); });
+    document.querySelectorAll('.track-row.playing').forEach(r => { r.classList.remove('playing'); r.querySelector('.row-eq')?.remove(); });
     if (activeTrackData?.id) {
-        document.querySelectorAll(`.track-card[data-id="${CSS.escape(activeTrackData.id)}"]`).forEach(c => {
+        const id = CSS.escape(activeTrackData.id);
+        document.querySelectorAll(`.track-card[data-id="${id}"]`).forEach(c => {
             c.classList.add('playing');
             if (!audioEngine.paused) c.querySelector('.card-art-wrap')?.insertAdjacentHTML('beforeend', '<div class="eq-badge"><span></span><span></span><span></span></div>');
+        });
+        document.querySelectorAll(`.track-row[data-id="${id}"]`).forEach(r => {
+            r.classList.add('playing');
+            // Row layout puts the badge right before the ⋮ menu button, matching
+            // how createTrackRowHTML places it when a row is rendered fresh.
+            if (!audioEngine.paused && !r.querySelector('.row-eq')) {
+                const menuBtn = r.querySelector('.row-menu-btn');
+                const badge = document.createElement('div');
+                badge.className = 'row-eq';
+                badge.innerHTML = '<span></span><span></span><span></span>';
+                if (menuBtn) r.insertBefore(badge, menuBtn); else r.appendChild(badge);
+            }
         });
     }
 }
@@ -3226,7 +3418,15 @@ async function importFromYoutubeMusic(listId) {
     const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/playlist-import-proxy?id=${encodeURIComponent(listId)}`, 18000);
     const data = await res.json().catch(() => null);
     if (!res.ok || !data) throw new Error(data?.error || "Couldn't reach the playlist importer.");
-    if (data.error) throw new Error(data.error);
+    if (data.error) {
+        // Surface exactly which strategy failed and why (Data API / InnerTube /
+        // HTML scrape) instead of a single opaque message — this is what
+        // actually lets a failure get diagnosed and fixed for good, instead of
+        // guessing again next time.
+        const d = data.diagnostics;
+        const detail = d ? `\n\n(Data API: ${d.dataApi}\nInnerTube: ${d.innerTube}\nScrape: ${d.scrape})` : '';
+        throw new Error(data.error + detail);
+    }
 
     const items = Array.isArray(data.items) ? data.items : [];
     if (!items.length) throw new Error("This playlist looks empty, private, or couldn't be read.");
@@ -3368,11 +3568,13 @@ async function renderRecentlyPlayed() {
         }
         t.thumb = canonicalThumbUrl(t.id);
     }));
-    $('recent-grid').innerHTML = items.map(t => createTrackCardHTML({ ...t, type: 'song' })).join('');
+    $('recent-grid').className = 'home-carousel';
+    renderCarouselShelf('recent-grid', items.map(t => ({ ...t, type: 'song' })));
 }
 
 function renderRecGrids(songs, playlists) {
-    $('recommended-songs-grid').innerHTML = songs.slice(0, 10).map(t => createTrackCardHTML(t)).join('');
+    $('recommended-songs-grid').className = 'home-carousel';
+    renderCarouselShelf('recommended-songs-grid', songs.slice(0, 12));
     $('recommended-playlists-grid').innerHTML = playlists.slice(0, 6).map(t => createTrackCardHTML(t)).join('');
     highlightActiveTrackCard();
 }
@@ -3386,7 +3588,8 @@ async function loadHomeRecommendations(manual = false) {
     if (cached && cached.songs?.length && !manual) {
         renderRecGrids(cached.songs, cached.playlists || []);
     } else {
-        $('recommended-songs-grid').innerHTML = skeletonCards(8);
+        $('recommended-songs-grid').className = 'home-carousel';
+        $('recommended-songs-grid').innerHTML = `<div class="carousel-wrap"><div class="carousel-page">${skeletonRows(4)}</div></div>`;
         $('recommended-playlists-grid').innerHTML = skeletonCards(4);
     }
 
@@ -3747,6 +3950,7 @@ function initSwipeGestures() {
     // handled above regardless of this succeeding.
     if (globalUser && globalUser !== 'admin') restoreProfileFromCache(globalUser);
     loadDeviceSettings(); // re-assert: the per-account cache above must never override the device's own settings
+    refreshActivePresetButton();
 
     populateLibraryUI();
     renderRecentlyPlayed();

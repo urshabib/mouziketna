@@ -42,6 +42,12 @@
    "Monochrome" preset theme (see applyPresetTheme in script.js) alongside
    the matching --lyrics-color below. */
 :root[data-accent="mono"]   { --accent: #d8d8d8; --accent-hover: #ffffff; --accent-soft: rgba(216,216,216,0.15); }
+/* New accents added for the expanded preset theme list below. */
+:root[data-accent="gold"]    { --accent: #d4af37; --accent-hover: #e8c968; --accent-soft: rgba(212,175,55,0.16); }
+:root[data-accent="ocean"]   { --accent: #06b6d4; --accent-hover: #22d3ee; --accent-soft: rgba(6,182,212,0.15); }
+:root[data-accent="emerald"] { --accent: #10b981; --accent-hover: #34d399; --accent-soft: rgba(16,185,129,0.15); }
+:root[data-accent="crimson"] { --accent: #e11d48; --accent-hover: #fb7185; --accent-soft: rgba(225,29,72,0.15); }
+:root[data-accent="sunset"]  { --accent: #fb7185; --accent-hover: #fda4af; --accent-soft: rgba(251,113,133,0.16); }
 
 /* Lyrics color (Settings -> Appearance -> Lyrics color): only affects the
    currently-sung word/line highlight — everything else about the lyrics
@@ -52,6 +58,22 @@
 :root[data-lyrics-color="green"]  { --lyrics-color: #28c76f; --lyrics-color-rgb: 40,199,111; }
 :root[data-lyrics-color="pink"]   { --lyrics-color: #ff5fa2; --lyrics-color-rgb: 255,95,162; }
 :root[data-lyrics-color="mono"]   { --lyrics-color: #d8d8d8; --lyrics-color-rgb: 216,216,216; }
+:root[data-lyrics-color="gold"]    { --lyrics-color: #e8c968; --lyrics-color-rgb: 232,201,104; }
+:root[data-lyrics-color="ocean"]   { --lyrics-color: #22d3ee; --lyrics-color-rgb: 34,211,238; }
+:root[data-lyrics-color="emerald"] { --lyrics-color: #34d399; --lyrics-color-rgb: 52,211,153; }
+:root[data-lyrics-color="crimson"] { --lyrics-color: #fb7185; --lyrics-color-rgb: 251,113,133; }
+:root[data-lyrics-color="sunset"]  { --lyrics-color: #fda4af; --lyrics-color-rgb: 253,164,175; }
+
+/* Preset themes' signature background wash — a soft, mostly-transparent tint
+   behind everything (see body's radial-gradient above), tuned to feel like
+   part of a deliberately-designed palette rather than just a flat dark page.
+   Transparent by default so it's invisible unless a preset sets it. */
+:root[data-preset-tint="gold"]    { --tint-1: rgba(212,175,55,0.10); --tint-2: rgba(150,110,20,0.07); }
+:root[data-preset-tint="purple"]  { --tint-1: rgba(139,92,246,0.14); --tint-2: rgba(76,29,149,0.09); }
+:root[data-preset-tint="ocean"]   { --tint-1: rgba(6,182,212,0.12); --tint-2: rgba(8,80,120,0.08); }
+:root[data-preset-tint="emerald"] { --tint-1: rgba(16,185,129,0.12); --tint-2: rgba(6,78,59,0.08); }
+:root[data-preset-tint="crimson"] { --tint-1: rgba(225,29,72,0.12); --tint-2: rgba(80,7,36,0.08); }
+:root[data-preset-tint="sunset"]  { --tint-1: rgba(251,113,133,0.15); --tint-2: rgba(251,146,60,0.10); }
 
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; transition-timing-function: cubic-bezier(.22,.9,.32,1); }
 button, .track-card, .icon-btn, .hover-play, .btn-solid, .btn-outline, .btn-play-big, .nav li, .side-lib-item, .genre-card, .filter-pill, .pb-btn, .pb-action, .user-chip, .mobile-nav li {
@@ -62,12 +84,19 @@ button:active, .btn-solid:active, .btn-outline:active, .btn-play-big:active, .ho
 }
 html, body { height: 100%; }
 body {
-    background: var(--bg); color: var(--text);
+    background: radial-gradient(circle at 15% 0%, var(--tint-1, transparent), transparent 55%),
+                radial-gradient(circle at 85% 100%, var(--tint-2, transparent), transparent 50%),
+                var(--bg);
+    color: var(--text);
     font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
     overflow: hidden;
 }
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #3a3a3a; border-radius: 5px; }
+/* Scrollbar hidden everywhere (was previously just re-styled/visible) —
+   scrolling itself is completely unaffected, this only hides the visual
+   track/thumb indicator. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+::-webkit-scrollbar { width: 0; height: 0; }
+::-webkit-scrollbar-thumb { background: transparent; }
 ::-webkit-scrollbar-track { background: transparent; }
 button { font-family: inherit; }
 input { font-family: inherit; }
@@ -122,6 +151,13 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
     background: linear-gradient(to bottom, rgba(18,18,18,0.97), rgba(18,18,18,0.85)); backdrop-filter: blur(12px);
 }
 .topbar-title { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
+.dl-progress-pill {
+    margin-left: auto; display: flex; align-items: center; gap: 7px; background: var(--elev); border-radius: 30px;
+    padding: 7px 14px; font-weight: 700; font-size: 0.82rem; color: var(--accent); cursor: pointer; flex-shrink: 0;
+    transition: background .18s;
+}
+.dl-progress-pill:hover { background: var(--elev-2); }
+.dl-progress-pill i { font-size: 1rem; }
 .user-chip {
     margin-left: auto; display: flex; align-items: center; gap: 8px; background: var(--elev); border-radius: 30px;
     padding: 6px 14px 6px 8px; cursor: pointer; font-weight: 700; font-size: 0.88rem; transition: background .18s; flex-shrink: 0;
@@ -142,6 +178,25 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
 .shelf-head .shelf-action:hover { color: var(--text); }
 
 .music-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 18px; }
+
+/* Home-screen carousel shelf (Recently played / Recommended songs): rows of
+   4 compact tracks per "page", swiping right reveals the next page — the
+   YouTube-Music-style layout instead of one long list or a grid of big
+   cards. Scroll-snap makes each swipe land cleanly on a page boundary. */
+.home-carousel { width: 100%; }
+.carousel-wrap {
+    display: flex; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+    gap: 14px; padding-bottom: 2px;
+}
+.carousel-page {
+    flex: 0 0 92%; max-width: 480px; scroll-snap-align: start;
+    display: flex; flex-direction: column; gap: 2px;
+}
+@media (min-width: 720px) {
+    .carousel-page { flex: 0 0 46%; } /* two pages visible at once on wider screens */
+}
+.mini-track-row { padding: 6px 8px; }
+.mini-track-row .row-art { width: 44px; height: 44px; }
 
 /* ===== CARDS ===== */
 .track-card {
@@ -177,6 +232,12 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
 }
 .track-card:hover .icon-btn { opacity: 1; }
 .icon-btn:hover { color: var(--text); transform: scale(1.08); }
+.account-mini-row > .icon-btn, .settings-page-head > .icon-btn {
+    position: static; opacity: 1; background: var(--elev); color: var(--text); flex-shrink: 0;
+}
+.account-mini-row > .icon-btn:hover, .settings-page-head > .icon-btn:hover { background: var(--elev-2); color: var(--accent); }
+.settings-page-head { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.settings-page-head h2 { font-size: 1.4rem; font-weight: 800; }
 .icon-btn.liked { color: var(--accent); opacity: 1; }
 .icon-btn.trash:hover { color: var(--danger); }
 
@@ -214,6 +275,15 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
 }
 .collection-hero .hero-art.round { border-radius: 50%; }
 .collection-hero .hero-art.liked-grad { background: linear-gradient(135deg, var(--accent), #6b2600); color: #fff; }
+.hero-art-wrap { position: relative; flex-shrink: 0; }
+.hero-art-wrap .hero-art { display: flex; } /* ensures the wrap doesn't collapse if the art is a plain <img> */
+.cover-edit-btn {
+    position: absolute; bottom: 8px; right: 8px; width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(0,0,0,0.75); border: 2px solid var(--bg); color: #fff; font-size: 0.95rem;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: transform .15s, background .18s;
+}
+.cover-edit-btn:hover { transform: scale(1.1); background: var(--accent); }
 .hero-info { min-width: 0; }
 .hero-info .kicker { text-transform: uppercase; font-size: 0.75rem; font-weight: 800; letter-spacing: 1.2px; color: var(--dim); }
 .hero-info h2 { font-size: clamp(2rem, 5vw, 3.6rem); font-weight: 900; letter-spacing: -1.5px; line-height: 1.05; margin: 8px 0 10px; overflow-wrap: anywhere; }
@@ -285,7 +355,7 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
 }
 .btn-solid:hover { transform: scale(1.03); background: var(--accent-hover); }
 .btn-solid:disabled { opacity: 0.6; transform: none; cursor: wait; }
-.form-msg { text-align: center; font-weight: 600; font-size: 0.88rem; min-height: 1.2em; }
+.form-msg { text-align: center; font-weight: 600; font-size: 0.88rem; min-height: 1.2em; white-space: pre-line; }
 .form-msg.ok { color: #43d17c; } .form-msg.err { color: var(--danger); }
 .profile-hero { text-align: center; margin-top: 24px; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 420px; margin-left: auto; margin-right: auto; }
 .account-mini-row { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 380px; text-align: left; margin-bottom: 8px; }
@@ -313,6 +383,11 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
     cursor: pointer; transition: transform .15s, border-color .15s;
 }
 .preset-theme-btn:hover { transform: scale(1.03); border-color: var(--accent); }
+.preset-theme-btn.active {
+    border-color: var(--accent); background: var(--accent-soft);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.preset-theme-btn.active .preset-swatch { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
 .preset-swatch { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; }
 .settings-danger-zone {
     display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 380px;
@@ -337,6 +412,15 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
 }
 .switch.on { background: var(--accent); }
 .switch.on .switch-knob { transform: translateX(18px); }
+.segmented-control {
+    display: flex; background: var(--elev-2); border-radius: 10px; padding: 3px; gap: 3px;
+}
+.segmented-control button {
+    flex: 1; background: none; border: none; color: var(--dim); font-weight: 700; font-size: 0.84rem;
+    padding: 8px 6px; border-radius: 8px; cursor: pointer; transition: background .18s, color .18s;
+}
+.segmented-control button.active { background: var(--accent); color: #fff; }
+.segmented-control button:not(.active):hover { color: var(--text); }
 .dl-badge { color: var(--accent); font-size: 0.95em; margin-right: 4px; }
 .icon-btn.downloaded i { color: var(--accent); }
 .dl-progress-note { font-size: 0.78rem; color: var(--dim); margin-top: 8px; }
@@ -1804,6 +1888,12 @@ body.liquid-glass .suggestions-box {
 /* The two fullscreen overlays keep their own tinted gradient background
    (matching the art/lyrics mood) instead of the flat neutral panel color
    above — just adding blur on top of it. */
+/* The topbar is sticky/floating in Liquid Glass mode, so it should read as a
+   floating glass pill once you scroll under it — flat square corners looked
+   like an unfinished hard edge. Only rounding the bottom (the edge that's
+   actually visible against scrolled content) since the top is flush with the
+   very top of the screen anyway. */
+body.liquid-glass .main-topbar { border-radius: 20px; }
 body.liquid-glass .fs-overlay {
     background: linear-gradient(to bottom, rgba(58,36,19,0.55), rgba(12,12,12,0.78) 65%) !important;
     backdrop-filter: blur(24px) saturate(170%);
