@@ -150,11 +150,14 @@ export default {
             favouriteAlbums: body.favouriteAlbums || [],
             recentlyPlayed: Array.isArray(body.recentlyPlayed) ? body.recentlyPlayed.slice(0, 30) : (existingUser.recentlyPlayed || []),
             dataSaver: typeof body.dataSaver === 'boolean' ? body.dataSaver : !!existingUser.dataSaver,
+            dataSaverLevel: ['off', 'saver', 'ultra'].includes(body.dataSaverLevel) ? body.dataSaverLevel : (existingUser.dataSaverLevel || 'off'),
             downloadLyricsOffline: typeof body.downloadLyricsOffline === 'boolean' ? body.downloadLyricsOffline : !!existingUser.downloadLyricsOffline,
             liquidGlass: typeof body.liquidGlass === 'boolean' ? body.liquidGlass : !!existingUser.liquidGlass,
             theme: body.theme === 'light' ? 'light' : (body.theme === 'dark' ? 'dark' : (existingUser.theme || 'dark')),
             accentColor: typeof body.accentColor === 'string' ? body.accentColor : (existingUser.accentColor || 'orange'),
-            lyricsColor: typeof body.lyricsColor === 'string' ? body.lyricsColor : (existingUser.lyricsColor || 'white')
+            lyricsColor: typeof body.lyricsColor === 'string' ? body.lyricsColor : (existingUser.lyricsColor || 'white'),
+            presetTint: typeof body.presetTint === 'string' ? body.presetTint : (existingUser.presetTint || 'none'),
+            activePreset: ('activePreset' in body) ? (body.activePreset || null) : (existingUser.activePreset === undefined ? 'glass' : existingUser.activePreset)
         };
         await env.NEW_USER_STORE.put(key, JSON.stringify(profileData));
 
@@ -377,12 +380,30 @@ export default {
         }
 
         let result = null;
-        try { result = await importViaDataApi(); } catch (e) {}
-        if (!result) { try { result = await importViaInnerTube(); } catch (e) {} }
-        if (!result) { try { result = await importViaScrape(); } catch (e) {} }
+        const diag = { dataApi: env.YT_API_KEY ? 'not tried yet' : 'skipped (no YT_API_KEY secret set)', innerTube: 'not tried yet', scrape: 'not tried yet' };
+
+        try { result = await importViaDataApi(); diag.dataApi = result ? 'ok' : (env.YT_API_KEY ? 'returned no items (private/empty/404 on first page)' : diag.dataApi); }
+        catch (e) { diag.dataApi = 'threw: ' + (e?.message || e); }
 
         if (!result) {
-          return jsonResp({ error: "Couldn't read this playlist — make sure it's public (not unlisted-private) and that the link contains list=…" }, 502);
+          try { result = await importViaInnerTube(); diag.innerTube = result ? 'ok' : 'browse request failed or returned no playlistVideoRenderer items — YouTube may have served an error page, a consent/login wall, or restructured the response'; }
+          catch (e) { diag.innerTube = 'threw: ' + (e?.message || e); }
+        } else diag.innerTube = 'skipped — Data API already succeeded';
+
+        if (!result) {
+          try { result = await importViaScrape(); diag.scrape = result ? 'ok' : 'fetched the HTML page but found no ytInitialData / no video items in it — likely a consent interstitial or a markup change'; }
+          catch (e) { diag.scrape = 'threw: ' + (e?.message || e); }
+        } else diag.scrape = 'skipped — an earlier strategy already succeeded';
+
+        if (!result) {
+          // Setting a YT_API_KEY secret (npx wrangler secret put YT_API_KEY, from
+          // Google Cloud Console -> YouTube Data API v3) makes this strategy the
+          // one that runs, which doesn't depend on reverse-engineering YouTube's
+          // internal endpoints at all — the durable fix if scraping keeps drifting.
+          return jsonResp({
+            error: "Couldn't read this playlist — make sure it's public (not unlisted-private) and that the link contains list=…",
+            diagnostics: diag
+          }, 502);
         }
         return jsonResp(result);
       }
