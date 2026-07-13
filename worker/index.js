@@ -49,7 +49,7 @@ export default {
         const existing = await env.NEW_USER_STORE.get(`user:${username.toLowerCase()}`);
         if (existing) throw new Error("Username already exists.");
 
-        const newUser = { username, password, isAdmin: !!isAdmin, surprise: !!surprise, likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [] };
+        const newUser = { username, password, isAdmin: !!isAdmin, surprise: !!surprise, likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], liquidGlass: true };
         await env.NEW_USER_STORE.put(`user:${username.toLowerCase()}`, JSON.stringify(newUser));
         
         return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -151,7 +151,10 @@ export default {
             recentlyPlayed: Array.isArray(body.recentlyPlayed) ? body.recentlyPlayed.slice(0, 30) : (existingUser.recentlyPlayed || []),
             dataSaver: typeof body.dataSaver === 'boolean' ? body.dataSaver : !!existingUser.dataSaver,
             downloadLyricsOffline: typeof body.downloadLyricsOffline === 'boolean' ? body.downloadLyricsOffline : !!existingUser.downloadLyricsOffline,
-            liquidGlass: typeof body.liquidGlass === 'boolean' ? body.liquidGlass : !!existingUser.liquidGlass
+            liquidGlass: typeof body.liquidGlass === 'boolean' ? body.liquidGlass : !!existingUser.liquidGlass,
+            theme: body.theme === 'light' ? 'light' : (body.theme === 'dark' ? 'dark' : (existingUser.theme || 'dark')),
+            accentColor: typeof body.accentColor === 'string' ? body.accentColor : (existingUser.accentColor || 'orange'),
+            lyricsColor: typeof body.lyricsColor === 'string' ? body.lyricsColor : (existingUser.lyricsColor || 'white')
         };
         await env.NEW_USER_STORE.put(key, JSON.stringify(profileData));
 
@@ -196,6 +199,24 @@ export default {
 
         const jsonResp = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
         const cleanArtist = (a) => (a || "Unknown Artist").replace(/\s*-\s*Topic$/i, "").trim();
+
+        // Shared by both the InnerTube API strategy AND the HTML-scrape
+        // fallback below: recursively finds the playlistVideoListRenderer
+        // wherever it lives in the response tree, instead of assuming one
+        // fixed path — YouTube reshuffles the surrounding wrapper nodes
+        // periodically, and a fixed-path lookup (tabs[0].tabRenderer...) is
+        // exactly the kind of brittle assumption that silently breaks when
+        // that happens, which otherwise shows up as "it worked, then one day
+        // it just stopped."
+        function findVideoList(node) {
+          if (!node || typeof node !== "object") return null;
+          if (node.playlistVideoListRenderer?.contents) return node.playlistVideoListRenderer.contents;
+          for (const k of Object.keys(node)) {
+            const found = findVideoList(node[k]);
+            if (found) return found;
+          }
+          return null;
+        }
 
         /* --- Strategy 1: official YouTube Data API v3 (most reliable) ---
            Enable it by adding a key:  npx wrangler secret put YT_API_KEY  */
@@ -244,10 +265,15 @@ export default {
         /* --- Strategy 2: InnerTube browse API (what YouTube's own web app calls).
            Far more stable than scraping the HTML page, supports continuations. --- */
         async function importViaInnerTube() {
-          const ctx = { context: { client: { clientName: "WEB", clientVersion: "2.20260101.00.00", hl: "en", gl: "US" } } };
+          const ctx = { context: { client: { clientName: "WEB", clientVersion: "2.20260710.01.00", hl: "en", gl: "US" } } };
           const browse = (body) => fetchWithTimeout("https://www.youtube.com/youtubei/v1/browse?prettyPrint=false", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" },
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+              "Origin": "https://www.youtube.com",
+              "Referer": "https://www.youtube.com/playlist?list=" + encodeURIComponent(listId)
+            },
             body: JSON.stringify({ ...ctx, ...body })
           }, 9000).then(r => r.ok ? r.json() : null);
 
@@ -259,16 +285,8 @@ export default {
             || data?.header?.pageHeaderRenderer?.pageTitle
             || "Imported playlist";
 
-          // Find the playlistVideoListRenderer contents wherever they live.
-          function findVideoList(node) {
-            if (!node || typeof node !== "object") return null;
-            if (node.playlistVideoListRenderer?.contents) return node.playlistVideoListRenderer.contents;
-            for (const k of Object.keys(node)) {
-              const found = findVideoList(node[k]);
-              if (found) return found;
-            }
-            return null;
-          }
+          // Find the playlistVideoListRenderer contents wherever they live
+          // (shared findVideoList() helper defined above).
 
           const items = [];
           const pushFrom = (contents) => {
@@ -309,11 +327,15 @@ export default {
 
         /* --- Strategy 3: legacy HTML scrape (last resort) --- */
         async function importViaScrape() {
-          const ytRes = await fetchWithTimeout(`https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}&hl=en`, {
+          const ytRes = await fetchWithTimeout(`https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}&hl=en&persist_hl=1&gl=US`, {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
               "Accept-Language": "en-US,en;q=0.9",
-              "Cookie": "CONSENT=YES+1; PREF=hl=en&gl=US"
+              // SOCS supplements plain CONSENT for Google's newer consent flow —
+              // without it some regions serve a consent-interstitial page
+              // instead of the actual playlist HTML, which is a very plausible
+              // reason this fallback would start silently failing over time.
+              "Cookie": "CONSENT=YES+1; PREF=hl=en&gl=US; SOCS=CAI"
             }
           }, 12000);
           const html = await ytRes.text();
@@ -329,12 +351,14 @@ export default {
             if (headerTitle) title = headerTitle;
           } catch (e) {}
 
+          // Same recursive search as the InnerTube strategy, instead of
+          // assuming one fixed nesting path (tabs[0].tabRenderer...content...)
+          // — that fixed path is exactly what breaks when YouTube reshuffles
+          // the wrapper nodes around the actual video list.
           let items = [];
           try {
-            const tabs = data.contents.twoColumnBrowseResultsRenderer.tabs;
-            const contents = tabs[0].tabRenderer.content.sectionListRenderer.contents[0]
-              .itemSectionRenderer.contents[0].playlistVideoListRenderer.contents;
-            items = contents
+            const contents = findVideoList(data.contents) || findVideoList(data);
+            items = (contents || [])
               .filter(c => c.playlistVideoRenderer)
               .map(c => {
                 const v = c.playlistVideoRenderer;
