@@ -72,9 +72,9 @@
                 <div class="main-topbar">
                     <div class="logo mobile-only-logo"><i class="ri-pulse-fill"></i><span class="logo-textblock">MOUZIKETNA<span class="logo-signature">by habib</span></span></div>
                     <span class="topbar-title" id="topbar-greeting">Good evening</span>
-                    <div class="user-chip" onclick="switchPane('account')" id="user-chip">
-                        <div class="avatar"><i class="ri-user-3-line"></i></div>
-                        <span id="user-chip-name">Log in</span>
+                    <div class="user-chip" onclick="switchPane('account')" id="user-chip" title="Settings">
+                        <div class="avatar"><i class="ri-settings-3-line"></i></div>
+                        <span id="user-chip-name">Settings</span>
                     </div>
                 </div>
 
@@ -186,15 +186,21 @@
                         <p class="form-msg" id="login-msg"></p>
                     </div>
                     <div class="profile-hero" id="active-profile-details" style="display:none;">
-                        <div class="big-avatar" id="profile-avatar-letter">?</div>
-                        <h2 id="logged-in-name" style="font-size:2rem; font-weight:900;"></h2>
-                        <div class="stat-row">
-                            <div><b id="stat-liked">0</b><span>Liked songs</span></div>
-                            <div><b id="stat-playlists">0</b><span>Playlists</span></div>
-                            <div><b id="stat-artists">0</b><span>Artists</span></div>
+                        <div class="account-mini-row">
+                            <div class="big-avatar small" id="profile-avatar-letter">?</div>
+                            <div class="account-mini-meta">
+                                <h2 id="logged-in-name" style="font-size:1.15rem; font-weight:800;"></h2>
+                                <div class="stat-row mini">
+                                    <div><b id="stat-liked">0</b><span>Liked</span></div>
+                                    <div><b id="stat-playlists">0</b><span>Playlists</span></div>
+                                    <div><b id="stat-artists">0</b><span>Artists</span></div>
+                                </div>
+                            </div>
+                            <button class="btn-outline" style="padding:9px 20px;" onclick="logoutFriend()">Log out</button>
                         </div>
-                        <button class="btn-outline" style="margin-top:18px; padding:11px 34px;" onclick="logoutFriend()">Log out</button>
-                        <div class="settings-row" style="margin-top:22px;">
+
+                        <h3 class="settings-section-title">Settings</h3>
+                        <div class="settings-row" style="margin-top:6px;">
                             <div class="settings-row-label">
                                 <h5>Data Saver</h5>
                                 <p>Downloads use a lower-bitrate stream to save space and data.</p>
@@ -213,7 +219,58 @@
                                 <h5>Liquid Glass theme</h5>
                                 <p>Switches the app to a translucent, frosted-glass look.</p>
                             </div>
-                            <button class="switch" id="liquid-glass-toggle" onclick="toggleLiquidGlass()" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+                            <button class="switch on" id="liquid-glass-toggle" onclick="toggleLiquidGlass()" role="switch" aria-checked="true"><span class="switch-knob"></span></button>
+                        </div>
+
+                        <h3 class="settings-section-title">Appearance</h3>
+                        <div class="settings-row" style="margin-top:6px;">
+                            <div class="settings-row-label">
+                                <h5>Light mode</h5>
+                                <p>Switch between the dark (default) and light look.</p>
+                            </div>
+                            <button class="switch" id="theme-mode-toggle" onclick="toggleThemeMode()" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+                        </div>
+                        <div class="settings-row" style="margin-top:10px; flex-direction:column; align-items:stretch; gap:10px;">
+                            <div class="settings-row-label"><h5>Accent color</h5><p>Personalize the highlight color used throughout the app.</p></div>
+                            <div class="accent-swatch-row">
+                                <button class="accent-swatch active" data-accent="orange" style="--sw:#ff6b1a;" onclick="setAccentColor('orange')" title="Orange"></button>
+                                <button class="accent-swatch" data-accent="purple" style="--sw:#a259ff;" onclick="setAccentColor('purple')" title="Purple"></button>
+                                <button class="accent-swatch" data-accent="blue" style="--sw:#3b9dff;" onclick="setAccentColor('blue')" title="Blue"></button>
+                                <button class="accent-swatch" data-accent="green" style="--sw:#28c76f;" onclick="setAccentColor('green')" title="Green"></button>
+                                <button class="accent-swatch" data-accent="pink" style="--sw:#ff5fa2;" onclick="setAccentColor('pink')" title="Pink"></button>
+                                <button class="accent-swatch" data-accent="red" style="--sw:#f15e6c;" onclick="setAccentColor('red')" title="Red"></button>
+                            </div>
+                        </div>
+                        <div class="settings-row" style="margin-top:10px; flex-direction:column; align-items:stretch; gap:10px;">
+                            <div class="settings-row-label"><h5>Lyrics color</h5><p>The color of the word/line highlight while lyrics play.</p></div>
+                            <div class="accent-swatch-row">
+                                <button class="lyrics-color-swatch active" data-lyrics-color="white" style="--sw:#ffffff;" onclick="setLyricsColor('white')" title="White"></button>
+                                <button class="lyrics-color-swatch" data-lyrics-color="orange" style="--sw:#ff6b1a;" onclick="setLyricsColor('orange')" title="Orange"></button>
+                                <button class="lyrics-color-swatch" data-lyrics-color="purple" style="--sw:#a259ff;" onclick="setLyricsColor('purple')" title="Purple"></button>
+                                <button class="lyrics-color-swatch" data-lyrics-color="blue" style="--sw:#3b9dff;" onclick="setLyricsColor('blue')" title="Blue"></button>
+                                <button class="lyrics-color-swatch" data-lyrics-color="green" style="--sw:#28c76f;" onclick="setLyricsColor('green')" title="Green"></button>
+                                <button class="lyrics-color-swatch" data-lyrics-color="pink" style="--sw:#ff5fa2;" onclick="setLyricsColor('pink')" title="Pink"></button>
+                            </div>
+                        </div>
+                        <div class="settings-row" style="margin-top:10px; flex-direction:column; align-items:stretch; gap:10px;">
+                            <div class="settings-row-label"><h5>Preset themes</h5><p>One tap sets Liquid Glass, accent, and lyrics color together.</p></div>
+                            <div class="preset-theme-row">
+                                <button class="preset-theme-btn" onclick="applyPresetTheme('classic')"><span class="preset-swatch" style="background:linear-gradient(135deg,#ff6b1a,#121212);"></span>Classic</button>
+                                <button class="preset-theme-btn" onclick="applyPresetTheme('glass')"><span class="preset-swatch" style="background:linear-gradient(135deg,#ff8b47,rgba(255,255,255,0.25));"></span>Liquid Glass</button>
+                                <button class="preset-theme-btn" onclick="applyPresetTheme('monochrome')"><span class="preset-swatch" style="background:linear-gradient(135deg,#d8d8d8,#1a1a1a);"></span>Monochrome</button>
+                                <button class="preset-theme-btn" onclick="applyPresetTheme('daylight')"><span class="preset-swatch" style="background:linear-gradient(135deg,#3b9dff,#f6f6f8);"></span>Daylight</button>
+                            </div>
+                        </div>
+
+                        <h3 class="settings-section-title">Storage</h3>
+                        <div class="settings-row" style="margin-top:6px; cursor:pointer;" onclick="openCollection('downloads')">
+                            <div class="settings-row-label"><h5>Manage downloads</h5><p id="settings-downloads-size">…</p></div>
+                            <i class="ri-arrow-right-s-line" style="font-size:1.3rem; color:var(--dim);"></i>
+                        </div>
+
+                        <div class="settings-danger-zone">
+                            <button class="btn-outline danger-outline" onclick="confirmClearSettings()"><i class="ri-restart-line"></i> Clear settings</button>
+                            <button class="btn-outline danger-outline" onclick="confirmDeleteAllDownloads()"><i class="ri-delete-bin-line"></i> Clear all downloads</button>
                         </div>
                     </div>
                 </div>

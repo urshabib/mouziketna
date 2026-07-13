@@ -12,7 +12,47 @@
     --dimmer: #7a7a7a;
     --danger: #f15e6c;
     --radius: 10px;
+    --lyrics-color: #ffffff;
+    --lyrics-color-rgb: 255,255,255;
 }
+/* ---- Appearance: theme + accent, set via data-theme/data-accent on <html> ----
+   Pure variable overrides — every component below already reads these vars,
+   so this re-themes the app without touching individual component rules.
+   First-pass light mode: the core surfaces (backgrounds/text/dim) are fully
+   covered; a few dark-tuned decorative gradients (album-art placeholders,
+   drop shadows) are left as-is since they still read fine and a full pixel
+   audit of every rule is a larger job than this pass. */
+:root[data-theme="light"] {
+    --bg: #f6f6f8;
+    --panel: #ffffff;
+    --panel-2: #f1f1f4;
+    --elev: #ebebef;
+    --elev-2: #dedee3;
+    --text: #16161a;
+    --dim: #55555c;
+    --dimmer: #85858c;
+}
+:root[data-theme="light"] ::-webkit-scrollbar-thumb { background: #c7c7cf; }
+:root[data-accent="purple"] { --accent: #a259ff; --accent-hover: #b87bff; --accent-soft: rgba(162,89,255,0.15); }
+:root[data-accent="blue"]   { --accent: #3b9dff; --accent-hover: #63b3ff; --accent-soft: rgba(59,157,255,0.15); }
+:root[data-accent="green"]  { --accent: #28c76f; --accent-hover: #4ddb8c; --accent-soft: rgba(40,199,111,0.15); }
+:root[data-accent="pink"]   { --accent: #ff5fa2; --accent-hover: #ff85b8; --accent-soft: rgba(255,95,162,0.15); }
+:root[data-accent="red"]    { --accent: #f15e6c; --accent-hover: #f78188; --accent-soft: rgba(241,94,108,0.15); }
+/* A neutral grayscale accent — used standalone, or as part of the
+   "Monochrome" preset theme (see applyPresetTheme in script.js) alongside
+   the matching --lyrics-color below. */
+:root[data-accent="mono"]   { --accent: #d8d8d8; --accent-hover: #ffffff; --accent-soft: rgba(216,216,216,0.15); }
+
+/* Lyrics color (Settings -> Appearance -> Lyrics color): only affects the
+   currently-sung word/line highlight — everything else about the lyrics
+   view (font, blur, wipe direction) is untouched. */
+:root[data-lyrics-color="orange"] { --lyrics-color: #ff6b1a; --lyrics-color-rgb: 255,107,26; }
+:root[data-lyrics-color="purple"] { --lyrics-color: #a259ff; --lyrics-color-rgb: 162,89,255; }
+:root[data-lyrics-color="blue"]   { --lyrics-color: #3b9dff; --lyrics-color-rgb: 59,157,255; }
+:root[data-lyrics-color="green"]  { --lyrics-color: #28c76f; --lyrics-color-rgb: 40,199,111; }
+:root[data-lyrics-color="pink"]   { --lyrics-color: #ff5fa2; --lyrics-color-rgb: 255,95,162; }
+:root[data-lyrics-color="mono"]   { --lyrics-color: #d8d8d8; --lyrics-color-rgb: 216,216,216; }
+
 * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; transition-timing-function: cubic-bezier(.22,.9,.32,1); }
 button, .track-card, .icon-btn, .hover-play, .btn-solid, .btn-outline, .btn-play-big, .nav li, .side-lib-item, .genre-card, .filter-pill, .pb-btn, .pb-action, .user-chip, .mobile-nav li {
     transition: transform .15s cubic-bezier(.22,.9,.32,1), background .18s, color .18s, opacity .2s, box-shadow .2s, filter .2s;
@@ -247,7 +287,39 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
 .btn-solid:disabled { opacity: 0.6; transform: none; cursor: wait; }
 .form-msg { text-align: center; font-weight: 600; font-size: 0.88rem; min-height: 1.2em; }
 .form-msg.ok { color: #43d17c; } .form-msg.err { color: var(--danger); }
-.profile-hero { text-align: center; margin-top: 44px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.profile-hero { text-align: center; margin-top: 24px; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 420px; margin-left: auto; margin-right: auto; }
+.account-mini-row { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 380px; text-align: left; margin-bottom: 8px; }
+.account-mini-meta { flex: 1; min-width: 0; }
+.account-mini-meta h2 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-row.mini { display: flex; gap: 16px; margin-top: 3px; }
+.stat-row.mini b { font-size: 0.95rem; }
+.stat-row.mini span { font-size: 0.7rem; }
+.settings-section-title {
+    width: 100%; max-width: 380px; text-align: left; font-size: 0.72rem; font-weight: 800;
+    letter-spacing: 1px; text-transform: uppercase; color: var(--dim); margin-top: 20px; margin-bottom: 2px;
+}
+.accent-swatch-row { display: flex; gap: 10px; padding: 2px 2px 4px; }
+.accent-swatch, .lyrics-color-swatch {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--sw); border: 2px solid transparent;
+    cursor: pointer; flex-shrink: 0; transition: transform .15s, border-color .15s;
+}
+.accent-swatch.active, .lyrics-color-swatch.active { border-color: var(--text); transform: scale(1.14); }
+.accent-swatch:hover, .lyrics-color-swatch:hover { transform: scale(1.08); }
+.lyrics-color-swatch[data-lyrics-color="white"] { box-shadow: inset 0 0 0 1px rgba(128,128,128,0.35); } /* white-on-white needs a hairline so it doesn't disappear against light surfaces */
+.preset-theme-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.preset-theme-btn {
+    display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 8px; background: var(--elev-2);
+    border: 1px solid transparent; border-radius: 30px; color: var(--text); font-size: 0.82rem; font-weight: 700;
+    cursor: pointer; transition: transform .15s, border-color .15s;
+}
+.preset-theme-btn:hover { transform: scale(1.03); border-color: var(--accent); }
+.preset-swatch { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; }
+.settings-danger-zone {
+    display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 380px;
+    margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(128,128,128,0.18);
+}
+.danger-outline { color: var(--danger); border-color: rgba(241,94,108,0.4); }
+.danger-outline:hover { background: rgba(241,94,108,0.1); }
 .settings-row {
     display: flex; align-items: center; justify-content: space-between; gap: 24px; width: 100%; max-width: 380px;
     padding: 14px 18px; background: var(--elev); border-radius: 12px;
@@ -273,6 +345,7 @@ main { flex: 1; background: var(--panel); border-radius: var(--radius); overflow
     display: flex; align-items: center; justify-content: center; font-size: 3.4rem; color: #fff; font-weight: 900;
     box-shadow: 0 14px 40px rgba(255,107,26,0.25);
 }
+.profile-hero .big-avatar.small { width: 52px; height: 52px; font-size: 1.3rem; flex-shrink: 0; box-shadow: none; }
 .stat-row { display: flex; gap: 34px; margin-top: 6px; }
 .stat-row div { text-align: center; }
 .stat-row b { font-size: 1.5rem; font-weight: 800; display: block; }
@@ -414,20 +487,30 @@ input[type=range].slider.vertical {
 }
 .lyric-line:hover { opacity: .85; }
 .lyric-line.active {
-    color: #fff; opacity: 1; transform: scale(1.045);
-    text-shadow: rgba(255,255,255,0.4) 0 0 14px;
+    color: var(--lyrics-color, #fff); opacity: 1; transform: scale(1.045);
+    text-shadow: rgba(var(--lyrics-color-rgb, 255,255,255), 0.4) 0 0 14px;
 }
 .lyric-line[dir="rtl"] { transform-origin: right center; }
 
 /* Word-by-word karaoke wipe: each word is its own gradient-filled span.
    --w (0→1) is driven from JS in sync with playback and animates the fill
    boundary smoothly via the @property above, instead of a hard on/off
-   per-word switch. */
+   per-word switch. The lit color follows --lyrics-color (Settings ->
+   Appearance -> Lyrics color) instead of being hardcoded to white. */
 .lyric-word {
     --w: 0;
-    background-image: linear-gradient(90deg, #fff calc(var(--w) * 100%), rgba(255,255,255,0.34) calc(var(--w) * 100%));
+    background-image: linear-gradient(90deg, var(--lyrics-color, #fff) calc(var(--w) * 100%), rgba(255,255,255,0.34) calc(var(--w) * 100%));
     -webkit-background-clip: text; background-clip: text; color: transparent;
     transition: --w .12s linear;
+}
+/* The numeric gradient angle above is NOT direction-aware — dir="rtl" only
+   reorders the words/text layout, it doesn't flip a linear-gradient's own
+   coordinate system. Without this override every word still filled left-to-
+   right internally even though Arabic reads right-to-left, which is exactly
+   why the wipe felt mismatched/less smooth on Arabic lyrics. Mirroring the
+   angle here makes each word fill in the same direction the line is read. */
+.lyric-line[dir="rtl"] .lyric-word {
+    background-image: linear-gradient(270deg, var(--lyrics-color, #fff) calc(var(--w) * 100%), rgba(255,255,255,0.34) calc(var(--w) * 100%));
 }
 .lyric-line.sung .lyric-word { --w: 1; transition: none; }
 .lyric-line:not(.active):not(.sung) .lyric-word { --w: 0; transition: none; }
@@ -1685,38 +1768,81 @@ body.liquid-glass {
                 radial-gradient(circle at 85% 100%, rgba(255,140,60,0.10), transparent 50%),
                 #060606;
 }
+/* IMPORTANT — this replaces an earlier version of this file that forced
+   `position: relative; z-index: 0;` onto every one of these selectors. That
+   was the actual bug: several of them already have their OWN load-bearing
+   position/z-index that the app depends on to function at all —
+   .main-topbar is `position: sticky; z-index: 500` (keeps it pinned while
+   scrolling), .row-sheet is `position: fixed; z-index: 23001` (the ⋮ menu
+   sheet), .mini-player is `position: fixed` on mobile, .suggestions-box is
+   `position: absolute` (the search dropdown). Overriding those with a flat
+   `relative`/`0` broke sticky scrolling, made the bottom-sheet and dropdown
+   render inline in the wrong place, and scrambled stacking order everywhere
+   — exactly the "order of things changed, stuff disappears" breakage.
+   The fix: don't touch position or z-index AT ALL. Every element below
+   already has an adequate positioning context for its own children (either
+   its own existing position, or none of its descendants need one) — so the
+   glass background + blur can just be applied directly, safely, with zero
+   side effects on layout or stacking. */
 body.liquid-glass .sidebar,
 body.liquid-glass .main-topbar,
 body.liquid-glass .mini-player,
-body.liquid-glass .fs-overlay,
-body.liquid-glass .lyrics-overlay,
 body.liquid-glass .modal-content,
 body.liquid-glass .bottom-sheet-overlay .modal-content,
 body.liquid-glass .row-sheet,
-body.liquid-glass .search-box,
+body.liquid-glass .search-wrap,
 body.liquid-glass .settings-row,
 body.liquid-glass .track-card,
 body.liquid-glass .genre-card,
 body.liquid-glass .suggestions-box {
-    background: rgba(30,30,30,0.46) !important;
-    backdrop-filter: blur(22px) saturate(160%);
-    -webkit-backdrop-filter: blur(22px) saturate(160%);
-    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(30,30,30,0.55) !important;
+    backdrop-filter: blur(24px) saturate(170%) brightness(1.04);
+    -webkit-backdrop-filter: blur(24px) saturate(170%) brightness(1.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14), 0 10px 28px rgba(0,0,0,0.3);
 }
-body.liquid-glass .fs-overlay { background: linear-gradient(to bottom, rgba(58,36,19,0.55), rgba(12,12,12,0.75) 65%) !important; }
-body.liquid-glass .lyrics-overlay { background: linear-gradient(to bottom, rgba(32,26,20,0.6), rgba(0,0,0,0.8) 55%) !important; }
+/* The two fullscreen overlays keep their own tinted gradient background
+   (matching the art/lyrics mood) instead of the flat neutral panel color
+   above — just adding blur on top of it. */
+body.liquid-glass .fs-overlay {
+    background: linear-gradient(to bottom, rgba(58,36,19,0.55), rgba(12,12,12,0.78) 65%) !important;
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+}
+body.liquid-glass .lyrics-overlay {
+    background: linear-gradient(to bottom, rgba(32,26,20,0.6), rgba(0,0,0,0.82) 55%) !important;
+    backdrop-filter: blur(24px) saturate(170%);
+    -webkit-backdrop-filter: blur(24px) saturate(170%);
+}
 body.liquid-glass .icon-btn,
 body.liquid-glass .filter-pill,
 body.liquid-glass .btn-outline,
 body.liquid-glass .switch {
-    background: rgba(255,255,255,0.07) !important;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.09);
+    background: rgba(255,255,255,0.08) !important;
+    backdrop-filter: blur(14px) saturate(150%);
+    -webkit-backdrop-filter: blur(14px) saturate(150%);
+    border: 1px solid rgba(255,255,255,0.11);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.14);
 }
 body.liquid-glass .btn-play-big,
 body.liquid-glass .switch.on {
     background: linear-gradient(135deg, var(--accent), var(--accent-hover)) !important;
-    box-shadow: 0 4px 18px rgba(255,107,26,0.35);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 4px 20px var(--accent-soft);
 }
-body.liquid-glass ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
+body.liquid-glass ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); }
+/* Light mode + Liquid Glass together: soften the tint rather than reusing
+   the dark-tuned values verbatim on a bright background. */
+:root[data-theme="light"] body.liquid-glass .sidebar,
+:root[data-theme="light"] body.liquid-glass .main-topbar,
+:root[data-theme="light"] body.liquid-glass .mini-player,
+:root[data-theme="light"] body.liquid-glass .modal-content,
+:root[data-theme="light"] body.liquid-glass .row-sheet,
+:root[data-theme="light"] body.liquid-glass .search-wrap,
+:root[data-theme="light"] body.liquid-glass .settings-row,
+:root[data-theme="light"] body.liquid-glass .track-card,
+:root[data-theme="light"] body.liquid-glass .genre-card,
+:root[data-theme="light"] body.liquid-glass .suggestions-box {
+    background: rgba(255,255,255,0.6) !important;
+    border-color: rgba(0,0,0,0.08);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 10px 28px rgba(0,0,0,0.12);
+}

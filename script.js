@@ -19,7 +19,7 @@ const PLAYLIST_ART = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd8
 let globalUser = localStorage.getItem("hub_active_user") || null;
 let sessionSynced = false;   // true once executeLogin actually got a profile back from the server
 let globalPass = localStorage.getItem("hub_active_pass") || null;
-let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: false };
+let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white' };
 
 let activeTrackData = null;
 let activeBlobUrl = null; // object URL for the currently-playing downloaded track, revoked on track change
@@ -209,18 +209,38 @@ function invalidateOfflineThumbCache(id) {
 // it. This tries that same offline copy first, so a downloaded song's art
 // shows up everywhere it's used (home, library, "now playing"…), not just
 // in the Downloads list.
+//
+// If there's no offline copy either (never downloaded, or downloaded without
+// artwork), it falls back to the same canonical network thumbnail URL the
+// rest of the app already derives from a track's id (see getTrackThumbnail /
+// the wsrv.nl+i.ytimg.com pattern) — instead of just giving up. This is what
+// was missing before: a stored thumb can go stale (e.g. a dead blob: URL left
+// over from a download that's since been deleted) with no path back to a
+// working image, which is exactly the "some songs show as a blank icon"
+// symptom, most visible on Home's Recently Played since that's the one shelf
+// that renders from a STORED thumb value instead of a freshly-fetched one.
 async function handleThumbError(imgEl, id, fallbackClass) {
     if (!imgEl || !imgEl.isConnected) return;
-    if (imgEl.dataset.offlineTried) { // already tried the offline copy once — give up
-        imgEl.outerHTML = `<div class="${fallbackClass}"><i class="ri-music-2-line"></i></div>`;
+    if (!imgEl.dataset.offlineTried) {
+        imgEl.dataset.offlineTried = '1';
+        if (isDownloaded(id)) {
+            const url = await getOfflineThumbUrl(id);
+            if (url && imgEl.isConnected) { imgEl.src = url; return; }
+        }
+    }
+    if (!imgEl.dataset.networkTried && id) {
+        imgEl.dataset.networkTried = '1';
+        imgEl.src = canonicalThumbUrl(id); // one more real attempt before giving up
         return;
     }
-    imgEl.dataset.offlineTried = '1';
-    if (isDownloaded(id)) {
-        const url = await getOfflineThumbUrl(id);
-        if (url && imgEl.isConnected) { imgEl.src = url; return; }
-    }
     if (imgEl.isConnected) imgEl.outerHTML = `<div class="${fallbackClass}"><i class="ri-music-2-line"></i></div>`;
+}
+// The same fallback thumbnail URL this app already derives from a track id
+// elsewhere (getTrackThumbnail's default, the playlist-import default, etc.)
+// — reused here so a repaired thumbnail looks exactly like it would if the
+// track had simply been fetched fresh, "like we do for all songs".
+function canonicalThumbUrl(id) {
+    return `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${id}/mqdefault.webp`;
 }
 
 function createTrackCardHTML(track, opts = {}) {
@@ -559,17 +579,21 @@ async function toggleTrackDownload(key) {
     else await downloadTrackForOffline(track);
 }
 
-// Sequential (not parallel) so we don't hammer the backend or device storage
-// at once. Progress is shown live in the triggering button's own label.
+// Concurrent batches of 4 (not fully parallel — that would hammer the
+// backend/CDNs and device storage all at once with dozens of simultaneous
+// requests) so a big playlist finishes much faster than strictly one-by-one,
+// while still bounded. Progress is shown live in the triggering button.
+const DOWNLOAD_BATCH_SIZE = 4;
 async function downloadPlaylistTracks(tracks, buttonEl) {
     const todo = (tracks || []).filter(t => t?.id && !isDownloaded(t.id));
     if (!todo.length) { showToast("Everything here is already downloaded"); return; }
     const setLabel = (html) => { if (buttonEl) buttonEl.innerHTML = html; };
     let done = 0;
     setLabel(`<i class="ri-loader-4-line animate-spin"></i> 0/${todo.length}`);
-    for (const t of todo) {
-        await downloadTrackForOffline(t, { silent: true });
-        done++;
+    for (let i = 0; i < todo.length; i += DOWNLOAD_BATCH_SIZE) {
+        const batch = todo.slice(i, i + DOWNLOAD_BATCH_SIZE);
+        await Promise.all(batch.map(t => downloadTrackForOffline(t, { silent: true })));
+        done += batch.length;
         setLabel(`<i class="ri-loader-4-line animate-spin"></i> ${done}/${todo.length}`);
     }
     setLabel(`<i class="ri-checkbox-circle-fill"></i> Downloaded`);
@@ -819,10 +843,22 @@ async function executeLogin(user, pass, auto = false) {
                 recentlyPlayed: data.profile.recentlyPlayed || [],
                 dataSaver: !!data.profile.dataSaver,
                 downloadLyricsOffline: !!data.profile.downloadLyricsOffline,
-                liquidGlass: !!data.profile.liquidGlass
+                // undefined = this account has never touched the setting (brand new,
+                // or predates it) -> use the new default (on). An explicit past
+                // choice (true or false) is always respected either way.
+                liquidGlass: data.profile.liquidGlass === undefined ? true : !!data.profile.liquidGlass,
+                theme: data.profile.theme === 'light' ? 'light' : 'dark',
+                accentColor: data.profile.accentColor || 'orange',
+                lyricsColor: data.profile.lyricsColor || 'white'
             };
+            // The server copy above can be stale (e.g. you toggled a setting
+            // and refreshed before the debounced save reached it) — the
+            // device's own settings always win over that for this device.
+            loadDeviceSettings();
             applyIdentityUI(userProfile.username);
             applyLiquidGlassTheme();
+            applyThemePreference();
+            cacheProfileLocally();
             populateLibraryUI();
             loadHomeRecommendations();
             switchPane('home');
@@ -841,7 +877,7 @@ async function executeLogin(user, pass, auto = false) {
 function applyIdentityUI(name) {
     const loggedIn = !!name;
     $('topbar-greeting').textContent = loggedIn ? `${timeGreeting()}, ${name}` : timeGreeting();
-    $('user-chip-name').textContent = loggedIn ? name : "Log in";
+    $('user-chip-name').textContent = "Settings";
     $('auth-portal-form').style.display = loggedIn ? "none" : "flex";
     $('active-profile-details').style.display = loggedIn ? "flex" : "none";
     if (loggedIn) {
@@ -856,6 +892,10 @@ function applyIdentityUI(name) {
         if (lyToggle) lyToggle.classList.toggle('on', !!userProfile.downloadLyricsOffline);
         const lgToggle = $('liquid-glass-toggle');
         if (lgToggle) lgToggle.classList.toggle('on', !!userProfile.liquidGlass);
+        const themeToggle = $('theme-mode-toggle');
+        if (themeToggle) themeToggle.classList.toggle('on', userProfile.theme === 'light');
+        document.querySelectorAll('.accent-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.accent === (userProfile.accentColor || 'orange')));
+        document.querySelectorAll('.lyrics-color-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.lyricsColor === (userProfile.lyricsColor || 'white')));
     }
 }
 
@@ -863,7 +903,10 @@ function logoutFriend(silent = false) {
     localStorage.removeItem("hub_active_user");
     localStorage.removeItem("hub_active_pass");
     globalUser = null; globalPass = null;
-    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: false };
+    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white' };
+    loadDeviceSettings(); // these are device prefs, not account data — logging out shouldn't reset them
+    applyLiquidGlassTheme();
+    applyThemePreference();
     $('btn-admin').style.display = "none";
     $('friend-password').value = "";
     applyIdentityUI(null);
@@ -1026,11 +1069,52 @@ async function deleteUser(username) {
     }
 }
 
+/* ---- Device-level settings (separate from the account-synced profile) ----
+   These 5 toggles are saved to a dedicated localStorage key that has NOTHING
+   to do with login at all — no network round-trip, no debounce, no account.
+   Previously they only lived inside userProfile, which meant: toggle a
+   setting -> refresh before the debounced /api/save-profile finishes ->
+   login re-fetches the OLD server copy and silently overwrites the toggle
+   you just made. This store can never lose that race, because nothing about
+   applying it depends on login succeeding, or even being attempted. Account
+   sync still happens too (via syncProfile, further down) so settings follow
+   you to another device when that works — but THIS device always wins for
+   THIS device, instantly, regardless of network. */
+const DEVICE_SETTINGS_KEY = 'mouzika_device_settings';
+function saveDeviceSettings() {
+    try {
+        localStorage.setItem(DEVICE_SETTINGS_KEY, JSON.stringify({
+            dataSaver: !!userProfile.dataSaver,
+            downloadLyricsOffline: !!userProfile.downloadLyricsOffline,
+            liquidGlass: !!userProfile.liquidGlass,
+            theme: userProfile.theme === 'light' ? 'light' : 'dark',
+            accentColor: userProfile.accentColor || 'orange',
+            lyricsColor: userProfile.lyricsColor || 'white'
+        }));
+    } catch (e) {}
+}
+function loadDeviceSettings() {
+    try {
+        const raw = localStorage.getItem(DEVICE_SETTINGS_KEY);
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        if (!s || typeof s !== 'object') return false;
+        userProfile.dataSaver = !!s.dataSaver;
+        userProfile.downloadLyricsOffline = !!s.downloadLyricsOffline;
+        userProfile.liquidGlass = !!s.liquidGlass;
+        userProfile.theme = s.theme === 'light' ? 'light' : 'dark';
+        userProfile.accentColor = s.accentColor || 'orange';
+        userProfile.lyricsColor = s.lyricsColor || 'white';
+        return true;
+    } catch (e) { return false; }
+}
+
 function toggleDataSaver() {
     userProfile.dataSaver = !userProfile.dataSaver;
     const el = $('data-saver-toggle');
     if (el) el.classList.toggle('on', userProfile.dataSaver);
     showToast(userProfile.dataSaver ? "Data Saver on — new downloads will use a smaller file size" : "Data Saver off — downloads use full quality");
+    saveDeviceSettings();
     syncProfile();
 }
 
@@ -1039,6 +1123,7 @@ function toggleLyricsOffline() {
     const el = $('lyrics-offline-toggle');
     if (el) el.classList.toggle('on', userProfile.downloadLyricsOffline);
     showToast(userProfile.downloadLyricsOffline ? "New downloads will also save lyrics for offline" : "Lyrics won't be saved with new downloads");
+    saveDeviceSettings();
     syncProfile();
 }
 
@@ -1047,17 +1132,111 @@ function toggleLiquidGlass() {
     const el = $('liquid-glass-toggle');
     if (el) el.classList.toggle('on', userProfile.liquidGlass);
     applyLiquidGlassTheme();
+    saveDeviceSettings();
     syncProfile();
 }
 function applyLiquidGlassTheme() {
     document.body.classList.toggle('liquid-glass', !!userProfile.liquidGlass);
 }
 
+/* ---- Appearance: light/dark mode + accent color ----
+   Both are pure CSS-variable overrides keyed off attributes on <html>, so
+   every existing component (which already reads var(--bg)/var(--accent)/etc
+   throughout) picks them up automatically with no per-component changes. */
+function applyThemePreference() {
+    document.documentElement.setAttribute('data-theme', userProfile.theme === 'light' ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-accent', userProfile.accentColor || 'orange');
+    document.documentElement.setAttribute('data-lyrics-color', userProfile.lyricsColor || 'white');
+}
+function toggleThemeMode() {
+    userProfile.theme = userProfile.theme === 'light' ? 'dark' : 'light';
+    const el = $('theme-mode-toggle');
+    if (el) el.classList.toggle('on', userProfile.theme === 'light');
+    applyThemePreference();
+    showToast(userProfile.theme === 'light' ? "Light mode on" : "Dark mode on");
+    saveDeviceSettings();
+    syncProfile();
+}
+function setAccentColor(key) {
+    userProfile.accentColor = key;
+    document.querySelectorAll('.accent-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.accent === key));
+    applyThemePreference();
+    saveDeviceSettings();
+    syncProfile();
+}
+function setLyricsColor(key) {
+    userProfile.lyricsColor = key;
+    document.querySelectorAll('.lyrics-color-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.lyricsColor === key));
+    applyThemePreference();
+    saveDeviceSettings();
+    syncProfile();
+}
+function applyPresetTheme(preset) {
+    // One-tap bundles across every appearance dimension at once.
+    const presets = {
+        classic:   { liquidGlass: false, accentColor: 'orange', lyricsColor: 'white',  theme: 'dark'  },
+        glass:     { liquidGlass: true,  accentColor: 'orange', lyricsColor: 'white',  theme: 'dark'  },
+        monochrome:{ liquidGlass: false, accentColor: 'mono',   lyricsColor: 'mono',   theme: 'dark'  },
+        daylight:  { liquidGlass: false, accentColor: 'blue',   lyricsColor: 'white',  theme: 'light' }
+    };
+    const p = presets[preset];
+    if (!p) return;
+    userProfile.liquidGlass = p.liquidGlass;
+    userProfile.accentColor = p.accentColor;
+    userProfile.lyricsColor = p.lyricsColor;
+    userProfile.theme = p.theme;
+    applyLiquidGlassTheme();
+    applyThemePreference();
+    applyIdentityUI(globalUser === 'admin' ? 'admin' : (userProfile.username || null));
+    saveDeviceSettings();
+    syncProfile();
+    showToast(`"${preset[0].toUpperCase() + preset.slice(1)}" theme applied`);
+}
+
+function confirmClearSettings() {
+    openConfirmModal("Reset settings?", "Data Saver, offline lyrics, Liquid Glass, and the theme/accent will go back to their defaults. Your liked songs, playlists, and downloads are not affected.", () => {
+        userProfile.dataSaver = false;
+        userProfile.downloadLyricsOffline = false;
+        userProfile.liquidGlass = false;
+        userProfile.theme = 'dark';
+        userProfile.accentColor = 'orange';
+        userProfile.lyricsColor = 'white';
+        applyLiquidGlassTheme();
+        applyThemePreference();
+        applyIdentityUI(globalUser === 'admin' ? 'admin' : (userProfile.username || null));
+        saveDeviceSettings();
+        syncProfile();
+        showToast("Settings reset to default", true);
+    });
+}
+
 let profileSyncTimer = null;
+// Cached alongside the server copy so playlists/likes are available the
+// INSTANT the app opens — even fully offline, before (or instead of) the
+// network login round-trip. Keyed per-account so switching users on the same
+// device doesn't cross-contaminate data. (The 5 appearance/download settings
+// above are handled separately via DEVICE_SETTINGS_KEY — see the comment on
+// saveDeviceSettings — since those need to survive independently of login.)
+function cacheProfileLocally() {
+    if (!globalUser || globalUser === 'admin') return;
+    try { localStorage.setItem('mouzika_profile_cache_' + globalUser, JSON.stringify(userProfile)); } catch (e) {}
+}
+function restoreProfileFromCache(username) {
+    if (!username || username === 'admin') return false;
+    try {
+        const cached = localStorage.getItem('mouzika_profile_cache_' + username);
+        if (!cached) return false;
+        const parsed = JSON.parse(cached);
+        if (!parsed || typeof parsed !== 'object') return false;
+        userProfile = { ...userProfile, ...parsed };
+        return true;
+    } catch (e) { return false; }
+}
 function syncProfile() {
     populateLibraryUI();
     applyIdentityUI(globalUser === 'admin' ? 'admin' : (userProfile.username || null));
     if (!globalUser || globalUser === 'admin') return;
+    cacheProfileLocally();
     // Debounced so rapid like/unlike doesn't spam the Worker (KV writes are slow)
     clearTimeout(profileSyncTimer);
     profileSyncTimer = setTimeout(() => {
@@ -1554,9 +1733,10 @@ async function refreshDownloadsCountLabels() {
     try {
         const all = await listDownloads();
         const label = `${all.length} track${all.length === 1 ? '' : 's'} · ${formatBytes(all.reduce((s, d) => s + (d.sizeBytes || 0), 0))}`;
-        const a = $('downloads-count-label'), b = $('downloads-count-label-side');
+        const a = $('downloads-count-label'), b = $('downloads-count-label-side'), c = $('settings-downloads-size');
         if (a) a.textContent = label;
         if (b) b.textContent = `Playlist · ${label}`;
+        if (c) c.textContent = label;
     } catch (e) {}
 }
 
@@ -3166,16 +3346,27 @@ async function renderRecentlyPlayed() {
     shelf.style.display = 'block';
 
     const items = hist.slice(0, 6).map(t => ({ ...t }));
-    // A history entry's thumb can be missing, or (from before the fix in
-    // rememberListen) a dead blob: URL left over from an earlier session —
-    // for any track that's downloaded (or was downloaded when it was
-    // played), resolve the current offline copy up front instead of
-    // painting a broken/placeholder image and waiting for a click to fix it.
+    // A history entry's thumb can be missing, or a dead blob: URL left over
+    // from a download that's since been deleted (blob: URLs don't survive a
+    // page reload even when the download is still around, and definitely
+    // don't resolve to anything once it's gone) — this is why Recently
+    // Played specifically could show a blank icon for a song that displays
+    // fine everywhere else: every other view either renders a freshly
+    // resolved thumb from a live lookup, or is the Downloads screen itself
+    // reading straight from IndexedDB, while this shelf renders from a
+    // STORED thumb value that can go stale between plays.
+    // Fix: for a broken/missing thumb, try the offline copy first if the
+    // track is still downloaded, and if that's not available either — not
+    // downloaded (anymore), or downloaded without artwork — fall back to
+    // the same canonical network thumbnail URL every other song list uses,
+    // instead of leaving it broken until (or unless) onerror ever fires.
     await Promise.all(items.map(async t => {
-        if ((!t.thumb || t.thumb.startsWith('blob:')) && isDownloaded(t.id)) {
+        if (t.thumb && !t.thumb.startsWith('blob:')) return; // already has a normal, presumably-live URL
+        if (isDownloaded(t.id)) {
             const url = await getOfflineThumbUrl(t.id);
-            if (url) t.thumb = url;
+            if (url) { t.thumb = url; return; }
         }
+        t.thumb = canonicalThumbUrl(t.id);
     }));
     $('recent-grid').innerHTML = items.map(t => createTrackCardHTML({ ...t, type: 'song' })).join('');
 }
@@ -3542,6 +3733,21 @@ function initSwipeGestures() {
     applyVolume(Number(localStorage.getItem('hub_volume') ?? 50), false);
     paintSlider($('pb-seek'), 0);
     paintSlider($('fs-seek'), 0);
+
+    // Device-level settings (Data Saver, offline lyrics, Liquid Glass, theme,
+    // accent/lyrics color) load FIRST and unconditionally — no login, no
+    // network, no online/offline branching involved at all. This is what
+    // makes them survive an immediate refresh no matter what.
+    loadDeviceSettings();
+    applyLiquidGlassTheme();
+    applyThemePreference();
+
+    // Restore whatever was last synced for this account (likes/playlists) so
+    // the library isn't empty offline — settings themselves are already
+    // handled above regardless of this succeeding.
+    if (globalUser && globalUser !== 'admin') restoreProfileFromCache(globalUser);
+    loadDeviceSettings(); // re-assert: the per-account cache above must never override the device's own settings
+
     populateLibraryUI();
     renderRecentlyPlayed();
     initBackButtonHandling();             // hardware/browser Back = in-app back, never exits
