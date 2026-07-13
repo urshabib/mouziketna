@@ -30,6 +30,8 @@
 </head>
 <body>
 
+<input type="file" id="playlist-cover-input" accept="image/*" style="display:none;" onchange="handlePlaylistCoverUpload(event)">
+
 <!-- ============ LOGIN GATE (must sign in before using the app) ============ -->
 <div id="auth-gate">
     <div class="auth-gate-card">
@@ -72,9 +74,12 @@
                 <div class="main-topbar">
                     <div class="logo mobile-only-logo"><i class="ri-pulse-fill"></i><span class="logo-textblock">MOUZIKETNA<span class="logo-signature">by habib</span></span></div>
                     <span class="topbar-title" id="topbar-greeting">Good evening</span>
-                    <div class="user-chip" onclick="switchPane('account')" id="user-chip" title="Settings">
-                        <div class="avatar"><i class="ri-settings-3-line"></i></div>
-                        <span id="user-chip-name">Settings</span>
+                    <div class="dl-progress-pill" id="global-dl-pill" style="display:none;" onclick="openCollection('downloads')" title="Downloading">
+                        <i class="ri-loader-4-line animate-spin"></i><span id="global-dl-pill-text">0/0</span>
+                    </div>
+                    <div class="user-chip" onclick="switchPane('account')" id="user-chip" title="Profile">
+                        <div class="avatar"><i class="ri-user-3-line"></i></div>
+                        <span id="user-chip-name">Log in</span>
                     </div>
                 </div>
 
@@ -196,16 +201,30 @@
                                     <div><b id="stat-artists">0</b><span>Artists</span></div>
                                 </div>
                             </div>
-                            <button class="btn-outline" style="padding:9px 20px;" onclick="logoutFriend()">Log out</button>
+                            <button class="icon-btn" title="Settings" onclick="switchPane('settings')"><i class="ri-settings-3-line"></i></button>
                         </div>
+                        <button class="btn-outline" style="margin-top:20px; padding:9px 24px;" onclick="logoutFriend()">Log out</button>
+                    </div>
+                </div>
 
-                        <h3 class="settings-section-title">Settings</h3>
-                        <div class="settings-row" style="margin-top:6px;">
+                <!-- SETTINGS -->
+                <div id="pane-settings" class="view-pane">
+                    <div class="settings-page-head">
+                        <button class="icon-btn" title="Back" onclick="switchPane('account')"><i class="ri-arrow-left-line"></i></button>
+                        <h2>Settings</h2>
+                    </div>
+                    <div class="profile-hero">
+                        <h3 class="settings-section-title" style="margin-top:0;">Settings</h3>
+                        <div class="settings-row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:10px;">
                             <div class="settings-row-label">
                                 <h5>Data Saver</h5>
-                                <p>Downloads use a lower-bitrate stream to save space and data.</p>
+                                <p>Lowers the bitrate of new downloads to save space and mobile data. Ultra shrinks it as far as possible while staying clearly listenable.</p>
                             </div>
-                            <button class="switch" id="data-saver-toggle" onclick="toggleDataSaver()" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+                            <div class="segmented-control">
+                                <button class="data-saver-option active" data-level="off" onclick="setDataSaverLevel('off')">Off</button>
+                                <button class="data-saver-option" data-level="saver" onclick="setDataSaverLevel('saver')">Saver</button>
+                                <button class="data-saver-option" data-level="ultra" onclick="setDataSaverLevel('ultra')">Ultra</button>
+                            </div>
                         </div>
                         <div class="settings-row" style="margin-top:10px;">
                             <div class="settings-row-label">
@@ -255,10 +274,16 @@
                         <div class="settings-row" style="margin-top:10px; flex-direction:column; align-items:stretch; gap:10px;">
                             <div class="settings-row-label"><h5>Preset themes</h5><p>One tap sets Liquid Glass, accent, and lyrics color together.</p></div>
                             <div class="preset-theme-row">
-                                <button class="preset-theme-btn" onclick="applyPresetTheme('classic')"><span class="preset-swatch" style="background:linear-gradient(135deg,#ff6b1a,#121212);"></span>Classic</button>
-                                <button class="preset-theme-btn" onclick="applyPresetTheme('glass')"><span class="preset-swatch" style="background:linear-gradient(135deg,#ff8b47,rgba(255,255,255,0.25));"></span>Liquid Glass</button>
-                                <button class="preset-theme-btn" onclick="applyPresetTheme('monochrome')"><span class="preset-swatch" style="background:linear-gradient(135deg,#d8d8d8,#1a1a1a);"></span>Monochrome</button>
-                                <button class="preset-theme-btn" onclick="applyPresetTheme('daylight')"><span class="preset-swatch" style="background:linear-gradient(135deg,#3b9dff,#f6f6f8);"></span>Daylight</button>
+                                <button class="preset-theme-btn" data-preset="classic" onclick="applyPresetTheme('classic')"><span class="preset-swatch" style="background:linear-gradient(135deg,#ff6b1a,#121212);"></span>Classic</button>
+                                <button class="preset-theme-btn" data-preset="glass" onclick="applyPresetTheme('glass')"><span class="preset-swatch" style="background:linear-gradient(135deg,#ff8b47,rgba(255,255,255,0.25));"></span>Liquid Glass</button>
+                                <button class="preset-theme-btn" data-preset="monochrome" onclick="applyPresetTheme('monochrome')"><span class="preset-swatch" style="background:linear-gradient(135deg,#d8d8d8,#1a1a1a);"></span>Monochrome</button>
+                                <button class="preset-theme-btn" data-preset="daylight" onclick="applyPresetTheme('daylight')"><span class="preset-swatch" style="background:linear-gradient(135deg,#3b9dff,#f6f6f8);"></span>Daylight</button>
+                                <button class="preset-theme-btn" data-preset="gold" onclick="applyPresetTheme('gold')"><span class="preset-swatch" style="background:linear-gradient(135deg,#d4af37,#2a1f08);"></span>Gold</button>
+                                <button class="preset-theme-btn" data-preset="midnight" onclick="applyPresetTheme('midnight')"><span class="preset-swatch" style="background:linear-gradient(135deg,#a259ff,#120a24);"></span>Midnight</button>
+                                <button class="preset-theme-btn" data-preset="ocean" onclick="applyPresetTheme('ocean')"><span class="preset-swatch" style="background:linear-gradient(135deg,#06b6d4,#05202c);"></span>Ocean</button>
+                                <button class="preset-theme-btn" data-preset="emerald" onclick="applyPresetTheme('emerald')"><span class="preset-swatch" style="background:linear-gradient(135deg,#10b981,#062018);"></span>Emerald</button>
+                                <button class="preset-theme-btn" data-preset="crimson" onclick="applyPresetTheme('crimson')"><span class="preset-swatch" style="background:linear-gradient(135deg,#e11d48,#1c0208);"></span>Crimson</button>
+                                <button class="preset-theme-btn" data-preset="sunset" onclick="applyPresetTheme('sunset')"><span class="preset-swatch" style="background:linear-gradient(135deg,#fb7185,#fb923c);"></span>Sunset</button>
                             </div>
                         </div>
 
