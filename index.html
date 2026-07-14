@@ -31,6 +31,7 @@
 <body>
 
 <input type="file" id="playlist-cover-input" accept="image/*" style="display:none;" onchange="handlePlaylistCoverUpload(event)">
+<input type="file" id="profile-pic-input" accept="image/*" style="display:none;" onchange="handleProfilePicUpload(event)">
 
 <!-- ============ LOGIN GATE (must sign in before using the app) ============ -->
 <div id="auth-gate">
@@ -55,7 +56,7 @@
                 <ul class="nav">
                     <li onclick="switchPane('home')" id="btn-home" class="active"><i class="ri-home-5-fill"></i> Home</li>
                     <li onclick="switchPane('search')" id="btn-search"><i class="ri-search-line"></i> Search</li>
-                    <li onclick="switchPane('account')" id="btn-account"><i class="ri-user-3-line"></i> Profile</li>
+                    <li onclick="switchPane('settings')" id="btn-settings"><i class="ri-settings-3-line"></i> Settings</li>
                     <li onclick="switchPane('admin')" id="btn-admin" style="display:none; color: var(--danger);"><i class="ri-shield-star-line"></i> Admin</li>
                 </ul>
             </div>
@@ -78,7 +79,7 @@
                         <i class="ri-loader-4-line animate-spin"></i><span id="global-dl-pill-text">0/0</span>
                     </div>
                     <div class="user-chip" onclick="switchPane('account')" id="user-chip" title="Profile">
-                        <div class="avatar"><i class="ri-user-3-line"></i></div>
+                        <div class="avatar" id="user-chip-avatar"><i class="ri-user-3-line"></i></div>
                         <span id="user-chip-name">Log in</span>
                     </div>
                 </div>
@@ -193,7 +194,10 @@
                     </div>
                     <div class="profile-hero" id="active-profile-details" style="display:none;">
                         <div class="account-mini-row">
-                            <div class="big-avatar small" id="profile-avatar-letter">?</div>
+                            <div class="avatar-edit-wrap">
+                                <div class="big-avatar small" id="profile-avatar-letter">?</div>
+                                <button class="avatar-edit-btn" title="Change photo" onclick="$('profile-pic-input').click()"><i class="ri-camera-fill"></i></button>
+                            </div>
                             <div class="account-mini-meta">
                                 <h2 id="logged-in-name" style="font-size:1.15rem; font-weight:800;"></h2>
                                 <div class="stat-row mini">
@@ -211,7 +215,7 @@
                 <!-- SETTINGS -->
                 <div id="pane-settings" class="view-pane">
                     <div class="settings-page-head">
-                        <button class="icon-btn" title="Back" onclick="switchPane('account')"><i class="ri-arrow-left-line"></i></button>
+                        <button class="icon-btn" title="Back" onclick="switchPane('home')"><i class="ri-arrow-left-line"></i></button>
                         <h2>Settings</h2>
                     </div>
                     <div class="profile-hero">
@@ -243,7 +247,13 @@
                         </div>
 
                         <h3 class="settings-section-title">Appearance</h3>
-                        <div class="settings-row" style="margin-top:6px;">
+                        <div class="settings-row" style="margin-top:6px; flex-direction:column; align-items:stretch; gap:12px;">
+                            <div class="settings-row-label"><h5>App logo</h5><p>Your logo's icon color and background follow the accent color and light/dark mode below — change either and the logo updates everywhere in the app.</p></div>
+                            <div class="logo-preview-card">
+                                <div class="logo"><i class="ri-pulse-fill"></i><span class="logo-textblock">MOUZIKA</span></div>
+                            </div>
+                        </div>
+                        <div class="settings-row" style="margin-top:10px;">
                             <div class="settings-row-label">
                                 <h5>Light mode</h5>
                                 <p>Switch between the dark (default) and light look.</p>
@@ -380,7 +390,7 @@
         <li onclick="switchPane('home')" id="btn-m-home" class="active"><i class="ri-home-5-fill"></i>Home</li>
         <li onclick="switchPane('search')" id="btn-m-search"><i class="ri-search-line"></i>Search</li>
         <li onclick="switchPane('library')" id="btn-m-library"><i class="ri-album-line"></i>Library</li>
-        <li onclick="switchPane('account')" id="btn-m-account"><i class="ri-user-3-line"></i>Profile</li>
+        <li onclick="switchPane('settings')" id="btn-m-settings"><i class="ri-settings-3-line"></i>Settings</li>
     </ul>
 
     <!-- FULLSCREEN PLAYER -->
@@ -422,36 +432,42 @@
                 <i class="ri-fullscreen-line" id="fs-landscape-btn" title="Full-screen landscape view" onclick="toggleLandscapeFullscreen()"></i>
             </div>
         </div>
-        <div class="fs-art-wrap" id="fs-art-wrap">
-            <img class="fs-art" id="fs-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
-            <div class="fs-video-wrap" id="fs-video-wrap">
-                <div id="yt-video-player"></div>
+        <div class="fs-main-col" id="fs-main-col">
+            <div class="fs-art-wrap" id="fs-art-wrap">
+                <img class="fs-art" id="fs-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
+                <div class="fs-video-wrap" id="fs-video-wrap">
+                    <div id="yt-video-player"></div>
+                </div>
+            </div>
+            <div class="fs-bottom">
+                <div class="fs-title-row">
+                    <div class="txt">
+                        <h2 id="fs-title">Nothing playing</h2>
+                        <p id="fs-artist">Pick a song to start</p>
+                    </div>
+                    <i class="ri-heart-line" id="fs-heart" onclick="togglePlayerHeart(event)"></i>
+                </div>
+                <div class="fs-timeline">
+                    <input type="range" class="slider" id="fs-seek" min="0" max="100" value="0" step="0.1">
+                    <div class="fs-times">
+                        <span id="fs-current-time">0:00</span>
+                        <span id="fs-total-duration">0:00</span>
+                    </div>
+                </div>
+                <div class="fs-controls">
+                    <i class="ri-shuffle-line side" id="fs-shuffle" onclick="toggleShuffle()"></i>
+                    <i class="ri-skip-back-fill" onclick="playPrevTrack()"></i>
+                    <span class="fs-seek-btn" title="Back 10 seconds" onclick="seekBy(-10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></span>
+                    <i class="ri-play-circle-fill fs-play" id="fs-play-icon" onclick="togglePlayback()"></i>
+                    <span class="fs-seek-btn" title="Forward 10 seconds" onclick="seekBy(10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(24,0) scale(-1,1)"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/></g><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></span>
+                    <i class="ri-skip-forward-fill" onclick="playNextTrack()"></i>
+                    <i class="ri-repeat-line side" id="fs-loop" onclick="toggleAudioLoop()"></i>
+                </div>
             </div>
         </div>
-        <div class="fs-bottom">
-            <div class="fs-title-row">
-                <div class="txt">
-                    <h2 id="fs-title">Nothing playing</h2>
-                    <p id="fs-artist">Pick a song to start</p>
-                </div>
-                <i class="ri-heart-line" id="fs-heart" onclick="togglePlayerHeart(event)"></i>
-            </div>
-            <div class="fs-timeline">
-                <input type="range" class="slider" id="fs-seek" min="0" max="100" value="0" step="0.1">
-                <div class="fs-times">
-                    <span id="fs-current-time">0:00</span>
-                    <span id="fs-total-duration">0:00</span>
-                </div>
-            </div>
-            <div class="fs-controls">
-                <i class="ri-shuffle-line side" id="fs-shuffle" onclick="toggleShuffle()"></i>
-                <i class="ri-skip-back-fill" onclick="playPrevTrack()"></i>
-                <span class="fs-seek-btn" title="Back 10 seconds" onclick="seekBy(-10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></span>
-                <i class="ri-play-circle-fill fs-play" id="fs-play-icon" onclick="togglePlayback()"></i>
-                <span class="fs-seek-btn" title="Forward 10 seconds" onclick="seekBy(10)"><svg class="ico-seek" viewBox="0 0 24 24" aria-hidden="true"><g transform="translate(24,0) scale(-1,1)"><path d="M12 5V1L7 6l5 5V7c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5H5c0 3.87 3.13 7 7 7s7-3.13 7-7-3.13-7-7-7z"/></g><text x="12" y="16" text-anchor="middle" font-size="7.2" font-weight="800" fill="currentColor">10</text></svg></span>
-                <i class="ri-skip-forward-fill" onclick="playNextTrack()"></i>
-                <i class="ri-repeat-line side" id="fs-loop" onclick="toggleAudioLoop()"></i>
-            </div>
+        <div class="fs-lyrics-inline" id="fs-lyrics-inline">
+            <div class="fs-lyrics-inline-head">Lyrics</div>
+            <div class="lyrics-body lyrics-body-target" id="fs-lyrics-body"></div>
         </div>
     </div>
 
