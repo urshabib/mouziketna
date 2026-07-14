@@ -118,6 +118,7 @@
                     <div class="search-wrap">
                         <i class="ri-search-line"></i>
                         <input type="text" class="search-bar" id="search-box-field" placeholder="What do you want to listen to?" autocomplete="off">
+                        <i class="ri-mic-fill search-mic-btn" id="search-mic-btn" title="Listen to identify a song" onclick="openAudioRecognition()"></i>
                         <i class="ri-close-line search-clear" id="search-clear" onclick="clearSearch()"></i>
                         <div class="suggestions-box" id="suggestions-box"></div>
                     </div>
@@ -413,9 +414,20 @@
                     </div>
                 </div>
                 <i class="ri-play-list-add-line" onclick="openPlaylistModalFromPlayer()"></i>
+                <i class="ri-film-line" id="fs-video-toggle" title="Video mode" onclick="toggleVideoMode()"></i>
+                <div class="fs-quality-wrap" id="fs-quality-wrap" style="display:none;">
+                    <i class="ri-hd-line" id="fs-quality-icon" title="Video quality" onclick="toggleQualityPopup(event)"></i>
+                    <div class="fs-quality-popup" id="fs-quality-popup"></div>
+                </div>
+                <i class="ri-fullscreen-line" id="fs-landscape-btn" title="Full-screen landscape view" onclick="toggleLandscapeFullscreen()"></i>
             </div>
         </div>
-        <img class="fs-art" id="fs-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
+        <div class="fs-art-wrap" id="fs-art-wrap">
+            <img class="fs-art" id="fs-image" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="">
+            <div class="fs-video-wrap" id="fs-video-wrap">
+                <div id="yt-video-player"></div>
+            </div>
+        </div>
         <div class="fs-bottom">
             <div class="fs-title-row">
                 <div class="txt">
@@ -508,6 +520,17 @@
                 <button class="btn-outline" onclick="closeConfirmModal()">Cancel</button>
                 <button class="btn-solid" style="background:var(--danger); color:#fff;" id="confirm-action-btn">Delete</button>
             </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Listen to identify (Shazam-style audio recognition) -->
+    <div class="modal-overlay" id="audio-recognition-modal">
+        <div class="modal-content" style="text-align:center;">
+            <div class="modal-head" style="text-align:left;"><span>Listen to identify</span><i class="ri-close-line" onclick="closeAudioRecognitionModal()"></i></div>
+            <div class="listen-pulse" id="listen-pulse"><i class="ri-mic-fill"></i></div>
+            <h3 id="listen-status-title" style="margin-bottom:6px; font-size:1.15rem;">Listening…</h3>
+            <p class="status-note" id="listen-status-sub" style="color:var(--dim); font-size:0.9rem;">Hold your phone near the music source</p>
+            <div id="listen-result-box" style="display:none;"></div>
         </div>
     </div>
 

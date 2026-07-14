@@ -8,6 +8,7 @@
 ===================================================================== */
 const NEW_HUB_BACKEND = "https://new-music-space-api.urshabib.workers.dev";
 const STREAM_MIRRORS = [
+    `${NEW_HUB_BACKEND}/api/stream-proxy/`, // free — our own InnerTube resolver, no third-party keys
     "https://yt.omada.cafe/api/v1/videos/",
     "https://invidious.schenkel.eti.br/api/v1/videos/",
     "https://invidious.kemonomimi.nl/api/v1/videos/"
@@ -1994,6 +1995,7 @@ function updateNowPlayingUI() {
     refreshHeartIcons();
     highlightActiveTrackCard();
     document.title = `${t.title} · ${t.artist} — MusicSpace`;
+    if (videoModeActive) initYtPlayerForCurrentTrack();
 }
 
 // Same offline-thumb-first idea as handleThumbError, but for the persistent
@@ -2612,11 +2614,23 @@ async function resolveMirrorStreams(id) {
             
             let streamUrl = audio[0].url;
             
+            // The origin-rewrite below only makes sense for Invidious-style
+            // mirrors, which proxy the actual media bytes through their own
+            // domain at the same path/query — so pointing the <audio> tag at
+            // "mirror origin + googlevideo path" works. Our own stream-proxy
+            // endpoint (added above) is different: it hands back a real,
+            // direct googlevideo.com URL meant to be used as-is (playback
+            // doesn't need CORS, only reading raw bytes does), and doesn't
+            // proxy media bytes itself — rewriting it here would point at a
+            // path our worker doesn't serve and 404 instead of playing.
+            const isOwnBackend = base.startsWith(NEW_HUB_BACKEND);
             try {
-                const mirrorUrl = new URL(base);
-                const parsedStream = new URL(streamUrl);
-                if (parsedStream.hostname.includes('googlevideo.com')) {
-                    streamUrl = mirrorUrl.origin + parsedStream.pathname + parsedStream.search;
+                if (!isOwnBackend) {
+                    const mirrorUrl = new URL(base);
+                    const parsedStream = new URL(streamUrl);
+                    if (parsedStream.hostname.includes('googlevideo.com')) {
+                        streamUrl = mirrorUrl.origin + parsedStream.pathname + parsedStream.search;
+                    }
                 }
             } catch(e) {}
             
@@ -2626,35 +2640,94 @@ async function resolveMirrorStreams(id) {
     return settled.filter(r => r.status === 'fulfilled').map(r => r.value);
 }
 
-function tryPlayCandidates(candidates, myToken, resumeAt) {
+// Quickly checks whether a candidate stream URL actually starts buffering,
+// using a separate throwaway <audio> probe. Browsers don't need CORS
+// headers to buffer/play media (only to read its raw bytes via WebAudio or
+// canvas) — so unlike a fetch()-based HEAD check, this doesn't get blocked
+// by CORS against googlevideo.com / Invidious / Saavn's CDN, which don't
+// send Access-Control-Allow-Origin for arbitrary sites.
+function probeStreamPlayable(url, timeoutMs = 6000) {
     return new Promise(resolve => {
-        let i = 0;
-        function attemptNext() {
-            if (myToken !== playToken) { resolve(false); return; }
-            if (i >= candidates.length) { resolve(false); return; }
-            const url = candidates[i++];
-            let settled = false;
+        const probe = new Audio();
+        probe.preload = 'auto';
+        probe.muted = true;
+        probe.volume = 0;
+        let done = false;
+        const finish = (ok) => {
+            if (done) return;
+            done = true;
+            probe.removeEventListener('canplay', onOk);
+            probe.removeEventListener('loadedmetadata', onOk);
+            probe.removeEventListener('error', onErr);
+            probe.removeEventListener('stalled', onErr);
+            clearTimeout(timer);
+            try { probe.src = ''; probe.load(); } catch (e) {}
+            resolve(ok ? url : null);
+        };
+        const onOk = () => finish(true);
+        const onErr = () => finish(false);
+        probe.addEventListener('canplay', onOk, { once: true });
+        probe.addEventListener('loadedmetadata', onOk, { once: true });
+        probe.addEventListener('error', onErr, { once: true });
+        probe.addEventListener('stalled', onErr, { once: true });
+        const timer = setTimeout(() => finish(false), timeoutMs);
+        try { probe.src = url; probe.load(); } catch (e) { finish(false); }
+    });
+}
 
-            const finish = (ok) => {
+// Races every candidate's liveness probe AT ONCE instead of trying them one
+// at a time against the real <audio> element with a full ~9s wait each —
+// that sequential wait per dead link was the actual cause of the freezes.
+// Whichever candidates prove playable get tried against the real audio
+// element in the order they responded; if a "winner" turns out to be a
+// false positive once real playback starts, this falls through to the next
+// one instead of giving up (same safety net as before, just much faster).
+async function tryPlayCandidates(candidates, myToken, resumeAt) {
+    if (!candidates.length) return false;
+    if (myToken !== playToken) return false;
+
+    const ranked = await new Promise(resolveRanked => {
+        const order = [];
+        let remaining = candidates.length;
+        candidates.forEach(url => {
+            probeStreamPlayable(url).then(result => {
+                if (result) order.push(result);
+                remaining--;
+                if (remaining === 0) resolveRanked(order);
+            });
+        });
+    });
+
+    // If literally none passed the probe, still try the original candidates
+    // in order — a slow-but-real source beats giving up outright.
+    const playOrder = ranked.length ? ranked : candidates;
+
+    for (const url of playOrder) {
+        if (myToken !== playToken) return false;
+        const ok = await new Promise(resolve => {
+            let settled = false;
+            const finish = (result) => {
                 if (settled) return;
                 settled = true;
                 audioEngine.removeEventListener('playing', onPlaying);
                 audioEngine.removeEventListener('error', onError);
                 audioEngine.removeEventListener('stalled', onError);
                 clearTimeout(watchdog);
-                if (ok) resolve(true); else attemptNext();
+                resolve(result);
             };
             const onPlaying = () => finish(true);
             const onError = () => finish(false);
-            const watchdog = setTimeout(() => finish(false), 9000);
+            // This candidate already proved it can buffer, so a much shorter
+            // watchdog is enough here — no more stacked 9s waits per source.
+            const watchdog = setTimeout(() => finish(false), 5000);
 
             audioEngine.addEventListener('playing', onPlaying, { once: true });
             audioEngine.addEventListener('error', onError, { once: true });
             audioEngine.addEventListener('stalled', onError, { once: true });
 
             audioEngine.pause();
-            audioEngine.removeAttribute('src'); 
-            audioEngine.load(); 
+            audioEngine.removeAttribute('src');
+            audioEngine.load();
             audioEngine.src = url;
 
             if (resumeAt > 0) {
@@ -2663,9 +2736,10 @@ function tryPlayCandidates(candidates, myToken, resumeAt) {
             }
             const p = audioEngine.play();
             if (p) p.catch(() => finish(false));
-        }
-        attemptNext();
-    });
+        });
+        if (ok) return true;
+    }
+    return false;
 }
 
 async function initializeTrackStream(track, opts = {}) {
@@ -2979,7 +3053,262 @@ function toggleShuffle() {
     saveSessionState(true);
 }
 function toggleFullScreenPlayer() {
-    $('full-player-overlay').classList.toggle('active');
+    const overlay = $('full-player-overlay');
+    const wasActive = overlay.classList.contains('active');
+    overlay.classList.toggle('active');
+    if (wasActive && landscapeModeActive) exitLandscapeFullscreen();
+}
+
+/* ============ VIDEO MODE ============
+   A chromeless, muted YouTube iframe (same video id as the audio track,
+   since that id IS the YouTube video id already) laid over the album art.
+   It never provides sound — audioEngine stays the single source of audio —
+   it's just kept in step with it, so seeking/pausing the audio drives the
+   video too. */
+let ytPlayer = null;
+let ytApiReady = false;
+let ytApiLoading = false;
+let videoModeActive = false;
+let ytSyncInterval = null;
+
+function loadYouTubeIframeAPI() {
+    if (window.YT && window.YT.Player) { ytApiReady = true; return; }
+    if (ytApiLoading) return;
+    ytApiLoading = true;
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+}
+window.onYouTubeIframeAPIReady = function () {
+    ytApiReady = true;
+    if (videoModeActive && activeTrackData) initYtPlayerForCurrentTrack();
+};
+
+function initYtPlayerForCurrentTrack() {
+    if (!activeTrackData || !activeTrackData.id) return;
+    if (!ytApiReady) { loadYouTubeIframeAPI(); return; }
+    if (ytPlayer && ytPlayer.loadVideoById) {
+        try { ytPlayer.loadVideoById(activeTrackData.id); ytPlayer.mute(); } catch (e) {}
+        return;
+    }
+    if (ytPlayer) return; // already constructing
+    ytPlayer = new YT.Player('yt-video-player', {
+        videoId: activeTrackData.id,
+        playerVars: { controls: 0, disablekb: 1, modestbranding: 1, rel: 0, fs: 0, iv_load_policy: 3, playsinline: 1, mute: 1 },
+        events: {
+            onReady: (e) => { e.target.mute(); populateQualityOptions(); startVideoSyncLoop(); },
+            onStateChange: () => { try { ytPlayer.mute(); } catch (e) {} }
+        }
+    });
+}
+
+function startVideoSyncLoop() {
+    clearInterval(ytSyncInterval);
+    ytSyncInterval = setInterval(() => {
+        if (!videoModeActive || !ytPlayer || !ytPlayer.getCurrentTime || typeof ytPlayer.getPlayerState !== 'function') return;
+        try {
+            const audioT = audioEngine.currentTime;
+            const videoT = ytPlayer.getCurrentTime();
+            if (Math.abs(audioT - videoT) > 0.4) ytPlayer.seekTo(audioT, true);
+            const state = ytPlayer.getPlayerState();
+            if (audioEngine.paused) { if (state === YT.PlayerState.PLAYING) ytPlayer.pauseVideo(); }
+            else { if (state !== YT.PlayerState.PLAYING) ytPlayer.playVideo(); }
+        } catch (e) {}
+    }, 500);
+}
+
+function toggleVideoMode() {
+    if (!activeTrackData) { showToast("Play a song first", true); return; }
+    videoModeActive = !videoModeActive;
+    $('fs-video-toggle').classList.toggle('on', videoModeActive);
+    $('fs-video-wrap').classList.toggle('active', videoModeActive);
+    $('fs-art-wrap').classList.toggle('video-active', videoModeActive);
+    $('fs-quality-wrap').style.display = videoModeActive ? 'flex' : 'none';
+    if (videoModeActive) {
+        loadYouTubeIframeAPI();
+        if (ytApiReady) initYtPlayerForCurrentTrack();
+    } else {
+        clearInterval(ytSyncInterval);
+        if (ytPlayer && ytPlayer.pauseVideo) { try { ytPlayer.pauseVideo(); } catch (e) {} }
+        $('fs-quality-popup').classList.remove('open');
+    }
+}
+
+const YT_QUALITY_LABELS = { hd2160: '2160p (4K)', hd1440: '1440p', hd1080: '1080p', hd720: '720p', large: '480p', medium: '360p', small: '240p', tiny: '144p', auto: 'Auto' };
+function populateQualityOptions() {
+    if (!ytPlayer || !ytPlayer.getAvailableQualityLevels) return;
+    const box = $('fs-quality-popup');
+    const levels = ytPlayer.getAvailableQualityLevels() || [];
+    if (!levels.length) { box.innerHTML = '<div class="quality-title">Video quality</div><button disabled>Auto</button>'; return; }
+    const current = ytPlayer.getPlaybackQuality ? ytPlayer.getPlaybackQuality() : null;
+    box.innerHTML = '<div class="quality-title">Video quality</div>' + levels.map(l =>
+        `<button data-q="${l}" class="${l === current ? 'active' : ''}" onclick="setVideoQuality('${l}')">${YT_QUALITY_LABELS[l] || l}</button>`
+    ).join('');
+}
+function setVideoQuality(level) {
+    if (!ytPlayer) return;
+    try { ytPlayer.setPlaybackQuality(level); } catch (e) {}
+    $('fs-quality-popup').querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.q === level));
+    $('fs-quality-popup').classList.remove('open');
+}
+function toggleQualityPopup(e) {
+    e.stopPropagation();
+    $('fs-quality-popup').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+    if (!e.target.closest('.fs-quality-wrap')) { const p = $('fs-quality-popup'); if (p) p.classList.remove('open'); }
+});
+
+/* ============ FULL-SCREEN LANDSCAPE VIEW ============
+   Locks the device to landscape via the Screen Orientation API and puts the
+   now-playing overlay into a desktop-style horizontal layout (art on one
+   side, transport on the other). The orientation lock is best-effort — it's
+   only available on some mobile browsers and typically requires the page to
+   already be in the Fullscreen API's fullscreen state — so this also falls
+   back to a CSS `orientation: landscape` media query that kicks in whenever
+   the phone is physically turned sideways, lock or no lock. */
+let landscapeModeActive = false;
+async function toggleLandscapeFullscreen() {
+    if (landscapeModeActive) { exitLandscapeFullscreen(); return; }
+    const overlay = $('full-player-overlay');
+    try {
+        if (overlay.requestFullscreen) await overlay.requestFullscreen();
+        else if (overlay.webkitRequestFullscreen) overlay.webkitRequestFullscreen();
+    } catch (e) { /* fullscreen denied/unsupported — CSS orientation query still applies the layout */ }
+    try {
+        if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
+    } catch (e) { /* lock unsupported/blocked on this device */ }
+    overlay.classList.add('landscape-mode');
+    landscapeModeActive = true;
+    $('fs-landscape-btn').classList.add('on');
+}
+function exitLandscapeFullscreen() {
+    landscapeModeActive = false;
+    $('fs-landscape-btn').classList.remove('on');
+    $('full-player-overlay').classList.remove('landscape-mode');
+    try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) {}
+    if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (e) {} }
+}
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && landscapeModeActive) exitLandscapeFullscreen();
+});
+
+/* ============ LISTEN TO IDENTIFY (Shazam-style, via AudD.io) ============
+   Records a short mic sample and sends it to AudD's recognition API.
+   Get a free API token at https://dashboard.audd.io and paste it below —
+   without one this clearly tells the person to add it, instead of silently
+   failing. */
+const AUDD_API_TOKEN = "YOUR_AUDD_API_TOKEN"; // <-- put your AudD.io token here
+let listenMediaRecorder = null;
+let listenChunks = [];
+let listenStream = null;
+
+async function openAudioRecognition() {
+    $('audio-recognition-modal').classList.add('open');
+    const pulse = $('listen-pulse');
+    pulse.className = 'listen-pulse';
+    pulse.innerHTML = '<i class="ri-mic-fill"></i>';
+    $('listen-status-title').textContent = 'Listening…';
+    const sub = $('listen-status-sub');
+    sub.style.display = 'block';
+    sub.textContent = 'Hold your phone near the music source';
+    const box = $('listen-result-box');
+    box.style.display = 'none'; box.innerHTML = '';
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        failAudioRecognition("Microphone access isn't supported in this browser.");
+        return;
+    }
+    try {
+        listenStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (e) {
+        failAudioRecognition("Microphone permission was denied.");
+        return;
+    }
+    listenChunks = [];
+    let mimeType = '';
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm')) mimeType = 'audio/webm';
+    try {
+        listenMediaRecorder = new MediaRecorder(listenStream, mimeType ? { mimeType } : undefined);
+    } catch (e) {
+        failAudioRecognition("Recording isn't supported on this device.");
+        if (listenStream) { listenStream.getTracks().forEach(t => t.stop()); listenStream = null; }
+        return;
+    }
+    listenMediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) listenChunks.push(e.data); };
+    listenMediaRecorder.onstop = onListenRecordingStop;
+    listenMediaRecorder.start();
+    setTimeout(() => { if (listenMediaRecorder && listenMediaRecorder.state === 'recording') listenMediaRecorder.stop(); }, 6000);
+}
+
+function closeAudioRecognitionModal() {
+    $('audio-recognition-modal').classList.remove('open');
+    if (listenMediaRecorder && listenMediaRecorder.state === 'recording') { try { listenMediaRecorder.stop(); } catch (e) {} }
+    if (listenStream) { listenStream.getTracks().forEach(t => t.stop()); listenStream = null; }
+}
+
+async function onListenRecordingStop() {
+    if (listenStream) { listenStream.getTracks().forEach(t => t.stop()); listenStream = null; }
+    if (!$('audio-recognition-modal').classList.contains('open')) return; // cancelled mid-recording
+    const pulse = $('listen-pulse');
+    pulse.classList.add('thinking');
+    pulse.innerHTML = '<i class="ri-loader-4-line"></i>';
+    $('listen-status-title').textContent = 'Identifying…';
+    $('listen-status-sub').textContent = "Matching against AudD's catalog";
+
+    if (!listenChunks.length) { failAudioRecognition("Didn't catch any audio — try again closer to the source."); return; }
+    if (!AUDD_API_TOKEN || AUDD_API_TOKEN === "YOUR_AUDD_API_TOKEN") {
+        failAudioRecognition("Add your AudD.io API token in script.js (AUDD_API_TOKEN) to enable recognition.");
+        return;
+    }
+    try {
+        const blob = new Blob(listenChunks, { type: listenChunks[0].type || 'audio/webm' });
+        const form = new FormData();
+        form.append('api_token', AUDD_API_TOKEN);
+        form.append('file', blob, 'sample.webm');
+        form.append('return', 'spotify');
+        const res = await fetchWithTimeout('https://api.audd.io/', 15000, { method: 'POST', body: form });
+        const data = await res.json();
+        if (data && data.status === 'success' && data.result) {
+            showAudioRecognitionResult(data.result);
+        } else {
+            failAudioRecognition("Couldn't recognize that — try getting closer to the speaker.");
+        }
+    } catch (e) {
+        failAudioRecognition("Recognition service is unreachable right now.");
+    }
+}
+
+function failAudioRecognition(msg) {
+    const pulse = $('listen-pulse');
+    pulse.className = 'listen-pulse err';
+    pulse.innerHTML = '<i class="ri-error-warning-line"></i>';
+    $('listen-status-title').textContent = "No match";
+    $('listen-status-sub').textContent = msg;
+}
+
+function showAudioRecognitionResult(result) {
+    const pulse = $('listen-pulse');
+    pulse.className = 'listen-pulse done';
+    pulse.innerHTML = '<i class="ri-check-line"></i>';
+    $('listen-status-title').textContent = 'Got it!';
+    $('listen-status-sub').style.display = 'none';
+    const box = $('listen-result-box');
+    box.style.display = 'block';
+    const title = result.title || 'Unknown title';
+    const artist = result.artist || 'Unknown artist';
+    box.innerHTML = `<div class="listen-result-card" onclick="searchAndPlayRecognized(${JSON.stringify(title)}, ${JSON.stringify(artist)})">
+        <div class="listen-result-meta"><h5>${escapeHtml(title)}</h5><p>${escapeHtml(artist)}</p></div>
+        <i class="ri-play-circle-fill"></i>
+    </div>`;
+}
+
+function searchAndPlayRecognized(title, artist) {
+    closeAudioRecognitionModal();
+    switchPane('search');
+    const q = `${title} ${artist}`.trim();
+    $('search-box-field').value = q;
+    executeSearch(q);
 }
 
 function paintSlider(slider, pct) {
@@ -3908,7 +4237,7 @@ function initSwipeGestures() {
     const fs = $('full-player-overlay');
     if (fs) makeSwipeDismissable(fs, {
         // Don't hijack seek/volume slider drags or the volume popup.
-        canStart: (e) => !e.target.closest('input, .fs-vol-popup, .fs-sleep-popup, .fs-timer-wrap'),
+        canStart: (e) => !e.target.closest('input, .fs-vol-popup, .fs-sleep-popup, .fs-timer-wrap, .fs-quality-wrap, .fs-video-wrap'),
         close: () => fs.classList.remove('active')
     });
 
