@@ -12,5 +12,8 @@
   "type": "commonjs",
   "devDependencies": {
     "wrangler": "^4.107.0"
+  },
+  "dependencies": {
+    "youtubei.js": "17.0.1"
   }
 }

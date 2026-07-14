@@ -1,6 +1,10 @@
 name = "new-music-space-api"
 main = "index.js"
 compatibility_date = "2026-03-05"
+# Required by youtubei.js (the free InnerTube-based stream resolver below) —
+# its dependencies expect a few Node built-ins that Workers only provides
+# under this flag.
+compatibility_flags = ["nodejs_compat"]
 
 # OPTIONAL — makes playlist import bulletproof (official YouTube Data API):
 # run this once from this folder, then paste your friend's API key when asked:

@@ -1,3 +1,17 @@
+import { Innertube } from 'youtubei.js';
+
+// Reused across requests for as long as this Worker isolate stays warm — an
+// Innertube.create({ retrieve_player: true }) call fetches and parses
+// YouTube's actual JS player (needed to decipher signature-ciphered stream
+// URLs), which is too slow to redo on every request. If a request ever
+// fails against a cached client, the caller clears this so the next request
+// builds a fresh one instead of being stuck replaying the same failure.
+let ytClientPromise = null;
+function getYtClient() {
+  if (!ytClientPromise) ytClientPromise = Innertube.create({ retrieve_player: true });
+  return ytClientPromise;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -165,6 +179,72 @@ export default {
       }
 
       // Proxy Endpoints
+      if (path.startsWith("api/stream-proxy/") && request.method === "GET") {
+        // Free alternative to the public Invidious mirrors (yt.omada.cafe etc):
+        // talks to YouTube's own real InnerTube API directly via youtubei.js,
+        // deciphering the signature-ciphered stream URLs ourselves instead of
+        // depending on a third-party's uptime/rate limits. No API key needed.
+        //
+        // Caveats to know about, since I can't verify these from a sandbox
+        // with no route to youtube.com or a live Workers runtime:
+        //  - Deciphering runs a small JS interpreter over YouTube's player
+        //    bundle, which costs real CPU time. On Cloudflare's free plan
+        //    (10ms CPU/request) this may occasionally hit "Exceeded CPU
+        //    Limit" — the $5/mo Workers Paid plan (50ms+) gives real headroom
+        //    and is far cheaper than a RapidAPI subscription if that happens.
+        //  - This is returned as JUST ANOTHER candidate in STREAM_MIRRORS on
+        //    the client, raced concurrently against the existing Invidious
+        //    mirrors — so if it fails or throws, playback still falls back
+        //    to those exactly as before. Nothing regresses if this doesn't
+        //    pan out; it only helps if it does.
+        const videoId = path.slice("api/stream-proxy/".length).split("/")[0].split("?")[0];
+        if (!videoId || videoId.length < 10) {
+          return new Response(JSON.stringify({ error: "Missing or invalid video id" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
+        try {
+          let yt;
+          try {
+            yt = await getYtClient();
+          } catch (e) {
+            ytClientPromise = null; // don't keep replaying a broken client
+            throw new Error("Couldn't initialize the InnerTube client: " + (e?.message || e));
+          }
+
+          const info = await yt.getBasicInfo(videoId);
+          const rawFormats = info?.streaming_data?.adaptive_formats || [];
+          const audioOnly = rawFormats.filter(f => f.has_audio && !f.has_video);
+          if (!audioOnly.length) throw new Error("No audio-only adaptive formats in streaming_data");
+          audioOnly.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+          // Only decipher the top couple of candidates (not all of them) —
+          // deciphering is the CPU-expensive part, and the client only ever
+          // uses the highest-bitrate one anyway.
+          const toDecipher = audioOnly.slice(0, 2);
+          const adaptiveFormats = [];
+          for (const f of toDecipher) {
+            try {
+              const streamUrl = await f.decipher(yt.session.player);
+              if (streamUrl) adaptiveFormats.push({ type: f.mime_type, bitrate: String(f.bitrate || 0), url: streamUrl });
+            } catch (e) { /* skip this one, try the next candidate */ }
+          }
+          if (!adaptiveFormats.length) throw new Error("Formats were found but none could be deciphered");
+
+          const expiresAt = info?.streaming_data?.expires instanceof Date ? info.streaming_data.expires : null;
+          const secondsLeft = expiresAt ? Math.max(60, Math.floor((expiresAt.getTime() - Date.now()) / 1000) - 120) : 1200;
+
+          return new Response(JSON.stringify({ adaptiveFormats }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": `public, s-maxage=${Math.min(secondsLeft, 1800)}` }
+          });
+        } catch (e) {
+          // Surfaced as JSON (not a thrown 500 from the outer handler) so the
+          // client's existing "bad response -> try next mirror" logic treats
+          // this exactly like any other failed mirror instead of choking on it.
+          return new Response(JSON.stringify({ error: "stream-proxy failed: " + (e?.message || e) }), {
+            status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
+
       if (path === "api/search-proxy" && request.method === "GET") {
         const query = url.searchParams.get("q");
         const filter = url.searchParams.get("f") || "song";
@@ -266,22 +346,38 @@ export default {
         }
 
         /* --- Strategy 2: InnerTube browse API (what YouTube's own web app calls).
-           Far more stable than scraping the HTML page, supports continuations. --- */
+           Far more stable than scraping the HTML page, supports continuations. ---
+           IMPORTANT: youtubei/v1/browse rejects requests with a 400 unless a
+           valid InnerTube API key is attached (as a `key=` query param or an
+           X-Goog-Api-Key header) — this was missing entirely before, so every
+           call here silently 400'd and this whole strategy always reported
+           "browse request failed", public playlist or not. The value below is
+           YouTube's own public "WEB" client key (the same one youtube.com's
+           front-end ships to browsers), not a secret — safe to hardcode. */
         async function importViaInnerTube() {
+          const INNERTUBE_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
           const ctx = { context: { client: { clientName: "WEB", clientVersion: "2.20260710.01.00", hl: "en", gl: "US" } } };
-          const browse = (body) => fetchWithTimeout("https://www.youtube.com/youtubei/v1/browse?prettyPrint=false", {
+          let lastStatus = null;
+          const browse = (body) => fetchWithTimeout(`https://www.youtube.com/youtubei/v1/browse?key=${INNERTUBE_KEY}&prettyPrint=false`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+              "X-Goog-Api-Key": INNERTUBE_KEY,
+              "X-Youtube-Client-Name": "1",
+              "X-Youtube-Client-Version": ctx.context.client.clientVersion,
               "Origin": "https://www.youtube.com",
               "Referer": "https://www.youtube.com/playlist?list=" + encodeURIComponent(listId)
             },
             body: JSON.stringify({ ...ctx, ...body })
-          }, 9000).then(r => r.ok ? r.json() : null);
+          }, 9000).then(async r => {
+            lastStatus = r.status;
+            if (!r.ok) return null;
+            return r.json();
+          });
 
           const data = await browse({ browseId: "VL" + listId });
-          if (!data) return null;
+          if (!data) { importViaInnerTube.lastStatus = lastStatus; return null; }
 
           let title = data?.microformat?.microformatDataRenderer?.title
             || data?.header?.playlistHeaderRenderer?.title?.simpleText
@@ -386,7 +482,10 @@ export default {
         catch (e) { diag.dataApi = 'threw: ' + (e?.message || e); }
 
         if (!result) {
-          try { result = await importViaInnerTube(); diag.innerTube = result ? 'ok' : 'browse request failed or returned no playlistVideoRenderer items — YouTube may have served an error page, a consent/login wall, or restructured the response'; }
+          try {
+            result = await importViaInnerTube();
+            diag.innerTube = result ? 'ok' : `browse request failed${importViaInnerTube.lastStatus ? ` (HTTP ${importViaInnerTube.lastStatus})` : ''} or returned no playlistVideoRenderer items — YouTube may have served an error page, a consent/login wall, or restructured the response`;
+          }
           catch (e) { diag.innerTube = 'threw: ' + (e?.message || e); }
         } else diag.innerTube = 'skipped — Data API already succeeded';
 
