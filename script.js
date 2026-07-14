@@ -20,7 +20,7 @@ const PLAYLIST_ART = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd8
 let globalUser = localStorage.getItem("hub_active_user") || null;
 let sessionSynced = false;   // true once executeLogin actually got a profile back from the server
 let globalPass = localStorage.getItem("hub_active_pass") || null;
-let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass' };
+let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass', avatarUrl: null };
 
 let activeTrackData = null;
 let activeBlobUrl = null; // object URL for the currently-playing downloaded track, revoked on track change
@@ -345,8 +345,7 @@ function createMiniTrackRowHTML(track, opts = {}) {
 // compact rows each — the YouTube-Music-style shelf layout (small square
 // art, list of 4, swipe right for the next 4) instead of one long list or a
 // grid of big cards.
-function renderCarouselShelf(containerId, items, regTrackOpts = {}) {
-    const perPage = 4;
+function renderCarouselShelf(containerId, items, regTrackOpts = {}, perPage = 4) {
     const el = $(containerId);
     if (!el) return;
     if (!items.length) { el.innerHTML = ''; return; }
@@ -524,6 +523,30 @@ async function compressUploadedImageToDataUrl(file, maxSize = 500, quality = 0.8
         canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
         return canvas.toDataURL('image/jpeg', quality);
     } catch (e) { return null; }
+}
+
+/* ---- Profile picture upload ----
+   Same pattern as the playlist cover upload above: native file picker,
+   client-side downscale + re-encode before it ever leaves the device. Kept
+   deliberately small (160px) since this is just a small round avatar shown
+   at a handful of tiny sizes — no reason for it to cost more than a couple
+   KB in the synced profile. */
+async function handleProfilePicUpload(event) {
+    const file = event.target.files?.[0];
+    event.target.value = ''; // so choosing the same file again still fires 'change' next time
+    if (!file) return;
+    if (!globalUser || globalUser === 'admin') { showToast("Log in to set a profile picture", true); return; }
+    showToast("Updating photo…", true);
+    try {
+        const dataUrl = await compressUploadedImageToDataUrl(file, 160, 0.78);
+        if (!dataUrl) throw new Error("compress failed");
+        userProfile.avatarUrl = dataUrl;
+        applyIdentityUI(userProfile.username);
+        syncProfile();
+        showToast("Profile picture updated");
+    } catch (e) {
+        showToast("Couldn't update your photo — try a different image", true);
+    }
 }
 
 async function saveDownload(track, audioBlob, thumbBlob, quality, lyricsData = null) {
@@ -975,7 +998,8 @@ async function executeLogin(user, pass, auto = false) {
                 accentColor: data.profile.accentColor || 'orange',
                 lyricsColor: data.profile.lyricsColor || 'white',
                 presetTint: data.profile.presetTint || 'none',
-                activePreset: data.profile.activePreset === undefined ? 'glass' : data.profile.activePreset
+                activePreset: data.profile.activePreset === undefined ? 'glass' : data.profile.activePreset,
+                avatarUrl: data.profile.avatarUrl || null
             };
             // The server copy above can be stale (e.g. you toggled a setting
             // and refreshed before the debounced save reached it) — the
@@ -1000,15 +1024,28 @@ async function executeLogin(user, pass, auto = false) {
     }
 }
 
-function applyIdentityUI(name) {
-    const loggedIn = !!name;
+// Shows the custom uploaded photo if the account has one, otherwise falls
+// back to the existing colored-circle-with-initial look. Used for both the
+// profile page's big avatar and the topbar's small chip avatar.
+function renderAvatarInto(elId, name) {
+    const el = $(elId);
+    if (!el) return;
+    if (userProfile.avatarUrl) {
+        el.innerHTML = `<img src="${userProfile.avatarUrl}" alt="">`;
+    } else {
+        el.textContent = name.charAt(0).toUpperCase();
+    }
+}
+
+function applyIdentityUI(name) {    const loggedIn = !!name;
     $('topbar-greeting').textContent = loggedIn ? `${timeGreeting()}, ${name}` : timeGreeting();
     $('user-chip-name').textContent = loggedIn ? name : "Log in";
     $('auth-portal-form').style.display = loggedIn ? "none" : "flex";
     $('active-profile-details').style.display = loggedIn ? "flex" : "none";
     if (loggedIn) {
         $('logged-in-name').textContent = name;
-        $('profile-avatar-letter').textContent = name.charAt(0).toUpperCase();
+        renderAvatarInto('profile-avatar-letter', name);
+        renderAvatarInto('user-chip-avatar', name);
         $('stat-liked').textContent = userProfile.likedSongs?.length || 0;
         $('stat-playlists').textContent = userProfile.customPlaylists?.length || 0;
         $('stat-artists').textContent = userProfile.favouriteArtists?.length || 0;
@@ -1030,7 +1067,7 @@ function logoutFriend(silent = false) {
     localStorage.removeItem("hub_active_user");
     localStorage.removeItem("hub_active_pass");
     globalUser = null; globalPass = null;
-    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass' };
+    userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass', avatarUrl: null };
     loadDeviceSettings(); // these are device prefs, not account data — logging out shouldn't reset them
     applyLiquidGlassTheme();
     applyThemePreference();
@@ -2080,6 +2117,31 @@ function rememberListen(t) {
         syncProfile();
     }
     renderRecentlyPlayed();
+    maybeAutoRefreshRecommendations();
+}
+
+// Home's recommendations previously only ever refreshed on page load/login —
+// leave the app open across a long listening session and they'd just sit
+// there unchanged no matter how much taste data piled up, even though
+// tapping Refresh manually always produced good, current picks. This gives
+// them that same refresh automatically, tied to actual listening activity
+// (not a timer) so it lands right after taste data has actually moved.
+const RECS_AUTO_REFRESH_EVERY = 10; // songs played
+function getSongsSinceRecsRefresh() { return parseInt(localStorage.getItem('recs_songs_since_refresh') || '0', 10) || 0; }
+function setSongsSinceRecsRefresh(n) { localStorage.setItem('recs_songs_since_refresh', String(n)); }
+function maybeAutoRefreshRecommendations() {
+    const count = getSongsSinceRecsRefresh() + 1;
+    if (count < RECS_AUTO_REFRESH_EVERY) { setSongsSinceRecsRefresh(count); return; }
+    setSongsSinceRecsRefresh(0);
+    // Same fetch loadHomeRecommendations's background step does — just quiet:
+    // no skeleton repaint over content already on screen, no "Refreshed" toast
+    // (that one's reserved for the explicit button tap).
+    const myToken = ++recsToken;
+    buildRecommendations().then(({ songs, playlists }) => {
+        if (myToken !== recsToken) return;
+        renderRecGrids(songs, playlists);
+        localStorage.setItem('home_recs_cache', JSON.stringify({ songs: songs.slice(0, 12), playlists: playlists.slice(0, 8), at: Date.now() }));
+    }).catch(() => { /* keep showing whatever's already there — Refresh still works manually */ });
 }
 
 /* =====================================================================
@@ -2375,17 +2437,18 @@ function retryLyrics() {
 }
 
 function renderLyricsOverlay() {
-    const body = $('lyrics-body');
-    if (!body) return;
+    const targets = document.querySelectorAll('.lyrics-body-target');
+    if (!targets.length) return;
     lastHighlightedLyricIndex = -1;
+    let html;
     if (currentLyricsMode === 'loading') {
-        body.innerHTML = `<p class="status-note" style="text-align:center; margin-top:60px;">Finding lyrics…</p>`;
+        html = `<p class="status-note" style="text-align:center; margin-top:60px;">Finding lyrics…</p>`;
     } else if (currentLyricsMode === 'error') {
-        body.innerHTML = `<p class="status-note err" style="text-align:center; margin-top:60px;">Couldn't load lyrics right now.<br><span style="text-decoration:underline; cursor:pointer; color:#fff;" onclick="retryLyrics()">Try again</span></p>`;
+        html = `<p class="status-note err" style="text-align:center; margin-top:60px;">Couldn't load lyrics right now.<br><span style="text-decoration:underline; cursor:pointer; color:#fff;" onclick="retryLyrics()">Try again</span></p>`;
     } else if (currentLyricsMode === 'plain' && currentLyricsLines) {
-        body.innerHTML = `<pre class="lyrics-plain">${escapeHtml(currentLyricsLines)}</pre>`;
+        html = `<pre class="lyrics-plain">${escapeHtml(currentLyricsLines)}</pre>`;
     } else if (currentLyricsMode === 'synced' && currentLyricsLines) {
-        body.innerHTML = currentLyricsLines.map((l, i) => {
+        html = currentLyricsLines.map((l, i) => {
             const words = (l.text || '♪').split(/\s+/).filter(Boolean);
             const wordsHtml = words.map(w => `<span class="lyric-word">${escapeHtml(w)}</span>`).join(' ');
             const isRtl = /[\u0600-\u06FF\u0750-\u077F]/.test(l.text || ''); // Arabic/Arabic-supplement script
@@ -2393,8 +2456,9 @@ function renderLyricsOverlay() {
         }).join('');
         activeWordSpans = null;
     } else {
-        body.innerHTML = `<p class="status-note" style="text-align:center; margin-top:60px;">No lyrics found for this song.<br><span style="text-decoration:underline; cursor:pointer; color:#fff;" onclick="retryLyrics()">Search again</span></p>`;
+        html = `<p class="status-note" style="text-align:center; margin-top:60px;">No lyrics found for this song.<br><span style="text-decoration:underline; cursor:pointer; color:#fff;" onclick="retryLyrics()">Search again</span></p>`;
     }
+    targets.forEach(body => { body.innerHTML = html; });
 }
 
 function seekToLyric(i) {
@@ -2428,9 +2492,18 @@ function computeActiveWordSpans(lineEl, line, nextTime) {
     });
 }
 
+// True whenever lyrics are actually on screen somewhere — either the
+// toggleable full-screen overlay, or the always-visible inline panel that
+// sits next to the album art in the landscape full-screen layout.
+function isLyricsVisibleSomewhere() {
+    if ($('lyrics-overlay')?.classList.contains('open')) return true;
+    const inline = $('fs-lyrics-inline');
+    return !!(inline && inline.offsetParent !== null);
+}
+
 function updateLyricsHighlight() {
     if (currentLyricsMode !== 'synced' || !Array.isArray(currentLyricsLines)) return;
-    if (!$('lyrics-overlay').classList.contains('open')) return;
+    if (!isLyricsVisibleSomewhere()) return;
     const t = audioEngine.currentTime;
     let idx = -1;
     for (let i = 0; i < currentLyricsLines.length; i++) {
@@ -2438,18 +2511,21 @@ function updateLyricsHighlight() {
     }
     if (idx === lastHighlightedLyricIndex) return;
     lastHighlightedLyricIndex = idx;
-    const body = $('lyrics-body');
-    body.querySelectorAll('.lyric-line').forEach(el => {
-        const i = +el.dataset.idx;
-        el.classList.toggle('active', i === idx);
+    document.querySelectorAll('.lyrics-body-target').forEach(body => {
+        body.querySelectorAll('.lyric-line').forEach(el => {
+            const i = +el.dataset.idx;
+            el.classList.toggle('active', i === idx);
+        });
     });
     activeWordSpans = null;
     if (idx >= 0) {
-        const el = body.querySelector(`.lyric-line[data-idx="${idx}"]`);
-        if (el) {
-            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            activeWordSpans = computeActiveWordSpans(el, currentLyricsLines[idx], currentLyricsLines[idx + 1]?.time);
-        }
+        document.querySelectorAll('.lyrics-body-target').forEach(body => {
+            const el = body.querySelector(`.lyric-line[data-idx="${idx}"]`);
+            if (el) {
+                el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                if (!activeWordSpans) activeWordSpans = computeActiveWordSpans(el, currentLyricsLines[idx], currentLyricsLines[idx + 1]?.time);
+            }
+        });
     }
 }
 
@@ -2459,8 +2535,7 @@ function updateLyricsHighlight() {
 function lyricsWordFrame() {
     requestAnimationFrame(lyricsWordFrame);
     if (!activeWordSpans || currentLyricsMode !== 'synced') return;
-    const overlay = $('lyrics-overlay');
-    if (!overlay || !overlay.classList.contains('open')) return;
+    if (!isLyricsVisibleSomewhere()) return;
     const t = audioEngine.currentTime;
     for (const s of activeWordSpans) {
         const w = s.dur > 0 ? Math.min(1, Math.max(0, (t - s.start) / s.dur)) : (t >= s.start ? 1 : 0);
@@ -3060,16 +3135,70 @@ function toggleFullScreenPlayer() {
 }
 
 /* ============ VIDEO MODE ============
-   A chromeless, muted YouTube iframe (same video id as the audio track,
-   since that id IS the YouTube video id already) laid over the album art.
-   It never provides sound — audioEngine stays the single source of audio —
-   it's just kept in step with it, so seeking/pausing the audio drives the
-   video too. */
+   A chromeless, muted YouTube iframe laid over the album art. It never
+   provides sound — audioEngine stays the single source of audio — it's just
+   kept in step with it, so seeking/pausing the audio drives the video too.
+
+   The audio's own YouTube id is very often an audio-only upload (a "- Topic"
+   channel track, or a static-cover-art video) rather than a real music
+   video — artists on YouTube Music frequently ship those separately from
+   the actual video. So before loading anything, this searches plain
+   YouTube (not YouTube Music) for "<title> <artist> official music video"
+   and prefers that result — falling back to the audio's own id only if
+   nothing plausible turns up. */
 let ytPlayer = null;
 let ytApiReady = false;
 let ytApiLoading = false;
 let videoModeActive = false;
 let ytSyncInterval = null;
+let videoSearchToken = 0;
+const realVideoIdCache = new Map(); // trackId -> resolved YouTube video id, or null if no good match found
+
+function parseDurationToSeconds(text) {
+    if (!text || typeof text !== 'string') return null;
+    const parts = text.split(':').map(n => parseInt(n, 10));
+    if (!parts.length || parts.some(isNaN)) return null;
+    return parts.reduce((acc, n) => acc * 60 + n, 0);
+}
+
+// Best-effort match for the real official video, with a sanity check
+// against the track's actual duration so a same-named-but-different video
+// (a full concert, a compilation, a cover) doesn't get picked just because
+// it ranked first.
+async function findRealMusicVideoId(track) {
+    if (!track || !track.title) return track?.id || null;
+    if (realVideoIdCache.has(track.id)) return realVideoIdCache.get(track.id) ?? track.id;
+
+    const cleanArtist = (track.artist || '').split(',')[0].trim();
+    const q = `${track.title} ${cleanArtist} official music video`.trim();
+    try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(q)}&f=relevance`, 8000);
+        if (!res.ok) throw new Error('video search failed');
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : (data.items || data.contents || []);
+        const knownDuration = (audioEngine.duration && isFinite(audioEngine.duration)) ? audioEngine.duration : null;
+
+        let best = null;
+        for (const r of results) {
+            const id = r.id || r.videoId;
+            if (!id) continue;
+            const titleLower = (r.title || '').toLowerCase();
+            if (/\b(lyric|lyrics|audio only|full album|reaction)\b/.test(titleLower)) continue;
+            const durSec = parseDurationToSeconds(r.duration);
+            if (knownDuration && durSec) {
+                const tolerance = Math.max(20, knownDuration * 0.25);
+                if (Math.abs(durSec - knownDuration) > tolerance) continue; // likely a different cut entirely
+            }
+            best = id;
+            break; // results already relevance-ranked
+        }
+        realVideoIdCache.set(track.id, best);
+        return best || track.id;
+    } catch (e) {
+        realVideoIdCache.set(track.id, null);
+        return track.id;
+    }
+}
 
 function loadYouTubeIframeAPI() {
     if (window.YT && window.YT.Player) { ytApiReady = true; return; }
@@ -3084,16 +3213,23 @@ window.onYouTubeIframeAPIReady = function () {
     if (videoModeActive && activeTrackData) initYtPlayerForCurrentTrack();
 };
 
-function initYtPlayerForCurrentTrack() {
+async function initYtPlayerForCurrentTrack() {
     if (!activeTrackData || !activeTrackData.id) return;
     if (!ytApiReady) { loadYouTubeIframeAPI(); return; }
+
+    const myToken = ++videoSearchToken;
+    const trackAtStart = activeTrackData;
+    const videoId = await findRealMusicVideoId(trackAtStart);
+    // Bail if the track (or video-mode itself) moved on while we were searching.
+    if (myToken !== videoSearchToken || !videoModeActive || activeTrackData !== trackAtStart) return;
+
     if (ytPlayer && ytPlayer.loadVideoById) {
-        try { ytPlayer.loadVideoById(activeTrackData.id); ytPlayer.mute(); } catch (e) {}
+        try { ytPlayer.loadVideoById(videoId); ytPlayer.mute(); } catch (e) {}
         return;
     }
     if (ytPlayer) return; // already constructing
     ytPlayer = new YT.Player('yt-video-player', {
-        videoId: activeTrackData.id,
+        videoId: videoId,
         playerVars: { controls: 0, disablekb: 1, modestbranding: 1, rel: 0, fs: 0, iv_load_policy: 3, playsinline: 1, mute: 1 },
         events: {
             onReady: (e) => { e.target.mute(); populateQualityOptions(); startVideoSyncLoop(); },
@@ -3181,6 +3317,7 @@ async function toggleLandscapeFullscreen() {
     overlay.classList.add('landscape-mode');
     landscapeModeActive = true;
     $('fs-landscape-btn').classList.add('on');
+    retryLyricsMissForInlinePanel();
 }
 function exitLandscapeFullscreen() {
     landscapeModeActive = false;
@@ -3191,6 +3328,23 @@ function exitLandscapeFullscreen() {
 }
 document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && landscapeModeActive) exitLandscapeFullscreen();
+});
+
+// The lyrics panel next to the album art in landscape mode is always
+// visible (no toggle needed) — so a cached "no lyrics found" deserves the
+// same one-time retry toggleLyricsOverlay() already gives a manually-opened
+// panel, on the chance it was just a momentarily rate-limited provider.
+function retryLyricsMissForInlinePanel() {
+    if (!activeTrackData) return;
+    const isMiss = currentLyricsMode === 'none' || currentLyricsMode === 'error';
+    if (isMiss) loadLyricsForTrack(activeTrackData, { userOpened: true });
+}
+// Covers turning the phone sideways without touching the landscape button —
+// the CSS orientation-query fallback kicks in on its own, so this just makes
+// sure a stale "miss" gets one retry then too.
+const landscapeMQ = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
+landscapeMQ.addEventListener?.('change', (e) => {
+    if (e.matches && $('full-player-overlay')?.classList.contains('active')) retryLyricsMissForInlinePanel();
 });
 
 /* ============ LISTEN TO IDENTIFY (Shazam-style, via AudD.io) ============
@@ -3874,7 +4028,7 @@ async function renderRecentlyPlayed() {
     if (!hist.length) { shelf.style.display = 'none'; return; }
     shelf.style.display = 'block';
 
-    const items = hist.slice(0, 6).map(t => ({ ...t }));
+    const items = hist.slice(0, 9).map(t => ({ ...t }));
     // A history entry's thumb can be missing, or a dead blob: URL left over
     // from a download that's since been deleted (blob: URLs don't survive a
     // page reload even when the download is still around, and definitely
@@ -3898,7 +4052,7 @@ async function renderRecentlyPlayed() {
         t.thumb = canonicalThumbUrl(t.id);
     }));
     $('recent-grid').className = 'home-carousel';
-    renderCarouselShelf('recent-grid', items.map(t => ({ ...t, type: 'song' })));
+    renderCarouselShelf('recent-grid', items.map(t => ({ ...t, type: 'song' })), {}, 3);
 }
 
 function renderRecGrids(songs, playlists) {
