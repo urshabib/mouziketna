@@ -171,7 +171,8 @@ export default {
             accentColor: typeof body.accentColor === 'string' ? body.accentColor : (existingUser.accentColor || 'orange'),
             lyricsColor: typeof body.lyricsColor === 'string' ? body.lyricsColor : (existingUser.lyricsColor || 'white'),
             presetTint: typeof body.presetTint === 'string' ? body.presetTint : (existingUser.presetTint || 'none'),
-            activePreset: ('activePreset' in body) ? (body.activePreset || null) : (existingUser.activePreset === undefined ? 'glass' : existingUser.activePreset)
+            activePreset: ('activePreset' in body) ? (body.activePreset || null) : (existingUser.activePreset === undefined ? 'glass' : existingUser.activePreset),
+            avatarUrl: typeof body.avatarUrl === 'string' ? body.avatarUrl : (existingUser.avatarUrl || null)
         };
         await env.NEW_USER_STORE.put(key, JSON.stringify(profileData));
 
@@ -301,6 +302,95 @@ export default {
           return null;
         }
 
+        /* --- Shared parsers for YouTube MUSIC's own response format ---
+           Captured from a real browser session on music.youtube.com (HAR,
+           July 2026): playlist pages now use a two-column layout where the
+           tracks live in twoColumnBrowseResultsRenderer → secondaryContents
+           → sectionListRenderer → musicPlaylistShelfRenderer →
+           musicResponsiveListItemRenderer (each row: flexColumns[0] = title
+           + watchEndpoint videoId, flexColumns[1] = artist runs,
+           flexColumns[2] = duration, plus playlistItemData.videoId and a
+           musicThumbnailRenderer). This is a completely different node tree
+           from regular YouTube's playlistVideoRenderer — which is exactly
+           why every existing strategy started missing on YTM links. Found
+           recursively, so the next wrapper reshuffle doesn't break it. */
+        function parseYtmItems(root) {
+          // Scope to the playlist shelf when one exists: the page can also
+          // carry a lazily-loaded "suggested tracks" section built from the
+          // same row renderer, and those songs are NOT in the playlist.
+          // (Continuation responses use musicPlaylistShelfContinuation.)
+          const scope = findYtmShelf(root) || root;
+          const items = [];
+          const walk = (node) => {
+            if (!node || typeof node !== "object") return;
+            if (node.musicResponsiveListItemRenderer) {
+              const r = node.musicResponsiveListItemRenderer;
+              const cols = r.flexColumns || [];
+              const runs = (i) => cols[i]?.musicResponsiveListItemFlexColumnRenderer?.text?.runs || [];
+              const titleRun = runs(0)[0];
+              const vid = r.playlistItemData?.videoId || titleRun?.navigationEndpoint?.watchEndpoint?.videoId;
+              const title = titleRun?.text;
+              if (vid && title && title !== "Private video" && title !== "Deleted video") {
+                const artist = runs(1).map(x => x?.text || "").join("").trim();
+                const thumbs = r.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails || [];
+                items.push({
+                  id: vid,
+                  title,
+                  artist: cleanArtist(artist),
+                  thumb: thumbs.length ? thumbs[thumbs.length - 1].url : null
+                });
+              }
+              return; // rows don't nest — no need to walk their menus/endpoints
+            }
+            if (Array.isArray(node)) { node.forEach(walk); return; }
+            for (const k of Object.keys(node)) walk(node[k]);
+          };
+          walk(scope);
+          return items;
+        }
+        function findYtmShelf(root) {
+          let shelf = null;
+          const walk = (node) => {
+            if (shelf || !node || typeof node !== "object") return;
+            if (node.musicPlaylistShelfRenderer) { shelf = node.musicPlaylistShelfRenderer; return; }
+            if (node.musicPlaylistShelfContinuation) { shelf = node.musicPlaylistShelfContinuation; return; }
+            if (Array.isArray(node)) { node.forEach(walk); return; }
+            for (const k of Object.keys(node)) walk(node[k]);
+          };
+          walk(root);
+          return shelf;
+        }
+        function findYtmTitle(root) {
+          let found = null;
+          const walk = (node) => {
+            if (found || !node || typeof node !== "object") return;
+            if (node.musicResponsiveHeaderRenderer?.title?.runs?.[0]?.text) { found = node.musicResponsiveHeaderRenderer.title.runs[0].text; return; }
+            if (node.musicDetailHeaderRenderer?.title?.runs?.[0]?.text) { found = node.musicDetailHeaderRenderer.title.runs[0].text; return; }
+            if (Array.isArray(node)) { node.forEach(walk); return; }
+            for (const k of Object.keys(node)) walk(node[k]);
+          };
+          walk(root);
+          return found || root?.microformat?.microformatDataRenderer?.title || null;
+        }
+        function findYtmContinuation(root) {
+          // Only the playlist shelf's OWN continuation counts. The
+          // surrounding sectionListRenderer also carries one, but that one
+          // loads the "suggested tracks" section — following it would import
+          // songs that aren't actually in the playlist.
+          const scope = findYtmShelf(root);
+          if (!scope) return null;
+          let token = null;
+          const walk = (node) => {
+            if (token || !node || typeof node !== "object") return;
+            if (node.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token) { token = node.continuationItemRenderer.continuationEndpoint.continuationCommand.token; return; }
+            if (node.nextContinuationData?.continuation) { token = node.nextContinuationData.continuation; return; }
+            if (Array.isArray(node)) { node.forEach(walk); return; }
+            for (const k of Object.keys(node)) walk(node[k]);
+          };
+          walk(scope);
+          return token;
+        }
+
         /* --- Strategy 1: official YouTube Data API v3 (most reliable) ---
            Enable it by adding a key:  npx wrangler secret put YT_API_KEY  */
         async function importViaDataApi() {
@@ -345,7 +435,151 @@ export default {
           return { title: title || "Imported playlist", items };
         }
 
-        /* --- Strategy 2: InnerTube browse API (what YouTube's own web app calls).
+        /* --- Strategy 2: YouTube Music's InnerTube browse surface, called
+           directly — the exact request the music.youtube.com web app makes
+           for a playlist page (client WEB_REMIX, its own dedicated public
+           API key, both taken from a captured real-browser session in July
+           2026). No library in between to fall out of date. --- */
+        async function importViaYTMBrowse() {
+          const YTM_KEY = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30"; // music.youtube.com's own public WEB_REMIX key (shipped to every browser) — not a secret
+          const ctx = { context: { client: { clientName: "WEB_REMIX", clientVersion: "1.20260712.05.00", hl: "en", gl: "US" } } };
+          let lastStatus = null;
+          const browse = (body) => fetchWithTimeout(`https://music.youtube.com/youtubei/v1/browse?key=${YTM_KEY}&prettyPrint=false`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+              "X-Goog-Api-Key": YTM_KEY,
+              "X-Youtube-Client-Name": "67",
+              "X-Youtube-Client-Version": ctx.context.client.clientVersion,
+              "Origin": "https://music.youtube.com",
+              "Referer": "https://music.youtube.com/playlist?list=" + encodeURIComponent(listId),
+              "Cookie": "CONSENT=YES+1; PREF=hl=en&gl=US; SOCS=CAI"
+            },
+            body: JSON.stringify({ ...ctx, ...body })
+          }, 9000).then(async r => {
+            lastStatus = r.status;
+            if (!r.ok) return null;
+            return r.json();
+          });
+
+          const data = await browse({ browseId: "VL" + listId.replace(/^VL/i, "") });
+          if (!data) { importViaYTMBrowse.lastStatus = lastStatus; return null; }
+
+          const title = findYtmTitle(data) || "Imported playlist";
+          let items = parseYtmItems(data);
+          // Follow continuations for long playlists (cap ~400 tracks / 3 extra pages)
+          let token = findYtmContinuation(data);
+          for (let page = 0; token && page < 3 && items.length < 400; page++) {
+            const next = await browse({ continuation: token });
+            if (!next) break;
+            const more = parseYtmItems(next);
+            if (!more.length) break;
+            items = items.concat(more);
+            token = findYtmContinuation(next);
+          }
+          if (!items.length) return null;
+          return { title, items };
+        }
+
+        /* --- Strategy 3: scrape the music.youtube.com playlist page itself.
+           YTM inlines the same browse response into the HTML as
+           initialData.push({path: '\/browse', ..., data: '<hex-escaped
+           JSON>'}) — decode that string and feed it through the same
+           parser. Works even if the browse endpoint starts rejecting
+           server-side callers, since this is literally the page a logged-out
+           browser gets. --- */
+        async function importViaYTMHtml() {
+          const res = await fetchWithTimeout(`https://music.youtube.com/playlist?list=${encodeURIComponent(listId)}&hl=en`, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+              "Accept-Language": "en-US,en;q=0.9",
+              "Cookie": "CONSENT=YES+1; PREF=hl=en&gl=US; SOCS=CAI"
+            }
+          }, 12000);
+          const html = await res.text();
+          const m = html.match(/initialData\.push\(\{path:\s*'\\\/browse'[\s\S]*?data:\s*'((?:[^'\\]|\\.)*)'/);
+          if (!m) return null;
+          // The payload is a JS string literal full of \xNN escapes; JSON only
+          // understands \uNNNN, so convert, then unescape the literal, then
+          // parse the JSON document inside it.
+          const raw = m[1]
+            .replace(/\\x([0-9a-fA-F]{2})/g, (_, h) => "\\u00" + h)
+            .replace(/\\'/g, "'");
+          let data;
+          try { data = JSON.parse(JSON.parse('"' + raw + '"')); } catch (e) { return null; }
+          const items = parseYtmItems(data);
+          if (!items.length) return null;
+          return { title: findYtmTitle(data) || "Imported playlist", items };
+        }
+
+        /* --- Strategy 4: YouTube Music's own client (youtubei.js) ---
+           music.youtube.com is NOT the same InnerTube surface as regular
+           YouTube — a real browser session shows it uses a completely
+           different client ("WEB_REMIX", with its own dedicated API key),
+           and its playlist items come back as musicResponsiveListItemRenderer
+           nodes, not the playlistVideoRenderer nodes the generic WEB-client
+           strategy below expects. That client/node mismatch is exactly why
+           this app's playlist imports — which are YouTube MUSIC playlist
+           links — kept failing "browse request failed" even after the WEB
+           client got its own API key fixed: it was always the wrong client
+           for this specific link type. youtubei.js's yt.music.getPlaylist()
+           talks to that surface correctly instead of us hand-parsing it. */
+        async function importViaYTMusic() {
+          let yt;
+          try {
+            yt = await getYtClient();
+          } catch (e) {
+            ytClientPromise = null;
+            throw new Error("Couldn't initialize the InnerTube client: " + (e?.message || e));
+          }
+
+          let playlist;
+          try {
+            playlist = await yt.music.getPlaylist(listId);
+          } catch (e) {
+            throw new Error("yt.music.getPlaylist threw: " + (e?.message || e));
+          }
+
+          let title = playlist?.header?.title?.toString?.() || playlist?.header?.title || "Imported playlist";
+
+          const items = [];
+          const pushFrom = (list) => {
+            (list || []).forEach(node => {
+              // Only real tracks — skip continuation markers and any
+              // non-song shelf items (artist/album cards) that occasionally
+              // ride along in the same content array.
+              if (!node || node.type === 'ContinuationItem') return;
+              const id = node.id;
+              if (!id || !node.title) return;
+              const artistName = Array.isArray(node.artists) && node.artists.length
+                ? node.artists.map(a => a.name).filter(Boolean).join(', ')
+                : (node.author?.name || node.authors?.[0]?.name);
+              const thumbs = node.thumbnails || [];
+              items.push({
+                id,
+                title: node.title,
+                artist: cleanArtist(artistName),
+                thumb: thumbs.length ? thumbs[thumbs.length - 1].url : null
+              });
+            });
+          };
+
+          pushFrom(playlist.contents);
+          // Follow continuations for long playlists (cap ~400 tracks / 3 extra pages)
+          let current = playlist;
+          for (let page = 0; current?.has_continuation && page < 3 && items.length < 400; page++) {
+            try {
+              current = await current.getContinuation();
+              pushFrom(current.contents);
+            } catch (e) { break; }
+          }
+
+          if (!items.length) return null;
+          return { title, items };
+        }
+
+        /* --- Strategy 5: InnerTube browse API (what YouTube's own web app calls).
            Far more stable than scraping the HTML page, supports continuations. ---
            IMPORTANT: youtubei/v1/browse rejects requests with a 400 unless a
            valid InnerTube API key is attached (as a `key=` query param or an
@@ -424,7 +658,7 @@ export default {
           return { title, items: items.filter(t => t.id) };
         }
 
-        /* --- Strategy 3: legacy HTML scrape (last resort) --- */
+        /* --- Strategy 6: legacy HTML scrape of www.youtube.com (last resort) --- */
         async function importViaScrape() {
           const ytRes = await fetchWithTimeout(`https://www.youtube.com/playlist?list=${encodeURIComponent(listId)}&hl=en&persist_hl=1&gl=US`, {
             headers: {
@@ -476,10 +710,30 @@ export default {
         }
 
         let result = null;
-        const diag = { dataApi: env.YT_API_KEY ? 'not tried yet' : 'skipped (no YT_API_KEY secret set)', innerTube: 'not tried yet', scrape: 'not tried yet' };
+        const diag = { dataApi: env.YT_API_KEY ? 'not tried yet' : 'skipped (no YT_API_KEY secret set)', ytmBrowse: 'not tried yet', ytmHtml: 'not tried yet', ytMusic: 'not tried yet', innerTube: 'not tried yet', scrape: 'not tried yet' };
 
         try { result = await importViaDataApi(); diag.dataApi = result ? 'ok' : (env.YT_API_KEY ? 'returned no items (private/empty/404 on first page)' : diag.dataApi); }
         catch (e) { diag.dataApi = 'threw: ' + (e?.message || e); }
+
+        // The two strategies built from the July 2026 browser capture run
+        // first among the free ones — they speak YTM's *current* format.
+        if (!result) {
+          try {
+            result = await importViaYTMBrowse();
+            diag.ytmBrowse = result ? 'ok' : `WEB_REMIX browse ${importViaYTMBrowse.lastStatus ? `failed (HTTP ${importViaYTMBrowse.lastStatus})` : 'returned no musicResponsiveListItemRenderer items'} — key/clientVersion may have rotated, or the playlist is private`;
+          }
+          catch (e) { diag.ytmBrowse = 'threw: ' + (e?.message || e); }
+        } else diag.ytmBrowse = 'skipped — an earlier strategy already succeeded';
+
+        if (!result) {
+          try { result = await importViaYTMHtml(); diag.ytmHtml = result ? 'ok' : 'fetched the music.youtube.com page but found no initialData/tracks in it — likely a consent interstitial, a private playlist, or a markup change'; }
+          catch (e) { diag.ytmHtml = 'threw: ' + (e?.message || e); }
+        } else diag.ytmHtml = 'skipped — an earlier strategy already succeeded';
+
+        if (!result) {
+          try { result = await importViaYTMusic(); diag.ytMusic = result ? 'ok' : 'youtubei.js returned no track items for this playlist'; }
+          catch (e) { diag.ytMusic = 'threw: ' + (e?.message || e); }
+        } else diag.ytMusic = 'skipped — an earlier strategy already succeeded';
 
         if (!result) {
           try {
@@ -487,7 +741,7 @@ export default {
             diag.innerTube = result ? 'ok' : `browse request failed${importViaInnerTube.lastStatus ? ` (HTTP ${importViaInnerTube.lastStatus})` : ''} or returned no playlistVideoRenderer items — YouTube may have served an error page, a consent/login wall, or restructured the response`;
           }
           catch (e) { diag.innerTube = 'threw: ' + (e?.message || e); }
-        } else diag.innerTube = 'skipped — Data API already succeeded';
+        } else diag.innerTube = 'skipped — an earlier strategy already succeeded';
 
         if (!result) {
           try { result = await importViaScrape(); diag.scrape = result ? 'ok' : 'fetched the HTML page but found no ytInitialData / no video items in it — likely a consent interstitial or a markup change'; }
