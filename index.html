@@ -424,7 +424,8 @@
                     </div>
                 </div>
                 <i class="ri-play-list-add-line" onclick="openPlaylistModalFromPlayer()"></i>
-                <i class="ri-film-line" id="fs-video-toggle" title="Video mode" onclick="toggleVideoMode()"></i>
+                <i class="ri-film-line" id="fs-video-toggle" title="Video mode" style="display:none;" onclick="toggleVideoMode()"></i>
+                <i class="ri-file-text-line on" id="fs-lyrics-inline-toggle" title="Hide lyrics" onclick="toggleInlineLyricsPanel()"></i>
                 <div class="fs-quality-wrap" id="fs-quality-wrap" style="display:none;">
                     <i class="ri-hd-line" id="fs-quality-icon" title="Video quality" onclick="toggleQualityPopup(event)"></i>
                     <div class="fs-quality-popup" id="fs-quality-popup"></div>
@@ -481,7 +482,7 @@
             </div>
             <span style="width:28px;"></span>
         </div>
-        <div class="lyrics-body" id="lyrics-body"></div>
+        <div class="lyrics-body lyrics-body-target" id="lyrics-body"></div>
         <div class="lyrics-credit">Lyrics via <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a> &amp; Lyrics+</div>
     </div>
 

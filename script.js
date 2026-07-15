@@ -2032,6 +2032,7 @@ function updateNowPlayingUI() {
     refreshHeartIcons();
     highlightActiveTrackCard();
     document.title = `${t.title} · ${t.artist} — MusicSpace`;
+    resolveVideoButtonForTrack(t); // quietly find out (in the background) whether this song has a real video — the film button only shows if it does
     if (videoModeActive) initYtPlayerForCurrentTrack();
 }
 
@@ -2459,6 +2460,11 @@ function renderLyricsOverlay() {
         html = `<p class="status-note" style="text-align:center; margin-top:60px;">No lyrics found for this song.<br><span style="text-decoration:underline; cursor:pointer; color:#fff;" onclick="retryLyrics()">Search again</span></p>`;
     }
     targets.forEach(body => { body.innerHTML = html; });
+    // Landscape view: when there simply are no lyrics, drop the empty right
+    // column entirely and let the song sit centered instead of hugging the
+    // left with a blank panel beside it.
+    const fsOverlay = $('full-player-overlay');
+    if (fsOverlay) fsOverlay.classList.toggle('no-lyrics', currentLyricsMode === 'none' || currentLyricsMode === 'error');
 }
 
 function seekToLyric(i) {
@@ -2517,13 +2523,23 @@ function updateLyricsHighlight() {
             el.classList.toggle('active', i === idx);
         });
     });
-    activeWordSpans = null;
+    // One of these targets is the karaoke word-wipe's actual home — but which
+    // one depends on which panel the person is currently looking at (the
+    // fullscreen inline panel and the lyrics sheet both exist in the DOM at
+    // all times, just hidden/shown by CSS/class). Grabbing whichever came
+    // first in document order used to silently animate an invisible panel
+    // while the one actually on screen never got its --w updates — this
+    // instead computes spans separately for every *visible* target, so
+    // whichever one the person opened gets the glow.
+    activeWordSpans = [];
     if (idx >= 0) {
         document.querySelectorAll('.lyrics-body-target').forEach(body => {
+            if (body.offsetParent === null && !body.closest('.lyrics-overlay.open')) return; // not actually visible
             const el = body.querySelector(`.lyric-line[data-idx="${idx}"]`);
             if (el) {
                 el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                if (!activeWordSpans) activeWordSpans = computeActiveWordSpans(el, currentLyricsLines[idx], currentLyricsLines[idx + 1]?.time);
+                const spans = computeActiveWordSpans(el, currentLyricsLines[idx], currentLyricsLines[idx + 1]?.time);
+                if (spans) activeWordSpans.push(...spans);
             }
         });
     }
@@ -2557,6 +2573,11 @@ function toggleLyricsOverlay() {
         const alreadyLoading = currentLyricsMode === 'loading' && lyricsAbort; // an in-flight preload will fill it in
         if (!haveLyrics && !alreadyLoading) {
             loadLyricsForTrack(activeTrackData, { userOpened: true });
+        } else if (haveLyrics) {
+            // Repaint unconditionally: guarantees the sheet body actually has
+            // the lyrics in it when it slides up, even if an earlier render
+            // happened before this DOM was ready or got wiped since.
+            renderLyricsOverlay();
         }
         updateLyricsHighlight();
     } else {
@@ -3152,7 +3173,8 @@ let ytApiLoading = false;
 let videoModeActive = false;
 let ytSyncInterval = null;
 let videoSearchToken = 0;
-const realVideoIdCache = new Map(); // trackId -> resolved YouTube video id, or null if no good match found
+const realVideoIdCache = new Map(); // trackId -> resolved YouTube video id, or null if no good match found (kept for back-compat)
+const videoCandidatesCache = new Map(); // trackId -> [candidate video ids, best first] ([] = nothing usable found)
 
 function parseDurationToSeconds(text) {
     if (!text || typeof text !== 'string') return null;
@@ -3161,13 +3183,20 @@ function parseDurationToSeconds(text) {
     return parts.reduce((acc, n) => acc * 60 + n, 0);
 }
 
-// Best-effort match for the real official video, with a sanity check
+// Best-effort match for the real official video. Instead of committing to a
+// single id, this returns a ranked LIST of plausible candidates so that when
+// one turns out to be embed-blocked (the gray "Video unavailable" box —
+// YouTube error 101/150, enforced by the video's owner, not fixable client
+// side) the player can simply move on to the next one instead of dying.
+// It also skips auto-generated audio-only uploads ("<artist> - Topic"
+// channels / "(Official Audio)" titles) — those are the "video" that's just
+// the cover image sitting still — and sanity-checks candidate durations
 // against the track's actual duration so a same-named-but-different video
 // (a full concert, a compilation, a cover) doesn't get picked just because
 // it ranked first.
-async function findRealMusicVideoId(track) {
-    if (!track || !track.title) return track?.id || null;
-    if (realVideoIdCache.has(track.id)) return realVideoIdCache.get(track.id) ?? track.id;
+async function findRealMusicVideoCandidates(track) {
+    if (!track || !track.title || !track.id) return [];
+    if (videoCandidatesCache.has(track.id)) return videoCandidatesCache.get(track.id);
 
     const cleanArtist = (track.artist || '').split(',')[0].trim();
     const q = `${track.title} ${cleanArtist} official music video`.trim();
@@ -3178,26 +3207,48 @@ async function findRealMusicVideoId(track) {
         const results = Array.isArray(data) ? data : (data.items || data.contents || []);
         const knownDuration = (audioEngine.duration && isFinite(audioEngine.duration)) ? audioEngine.duration : null;
 
-        let best = null;
-        for (const r of results) {
-            const id = r.id || r.videoId;
-            if (!id) continue;
-            const titleLower = (r.title || '').toLowerCase();
-            if (/\b(lyric|lyrics|audio only|full album|reaction)\b/.test(titleLower)) continue;
-            const durSec = parseDurationToSeconds(r.duration);
-            if (knownDuration && durSec) {
-                const tolerance = Math.max(20, knownDuration * 0.25);
-                if (Math.abs(durSec - knownDuration) > tolerance) continue; // likely a different cut entirely
+        const collect = (strict) => {
+            const out = [];
+            for (const r of results) {
+                const id = r.id || r.videoId;
+                if (!id || out.includes(id)) continue;
+                const titleLower = (r.title || '').toLowerCase();
+                const uploader = (r.author || r.uploaderName || r.uploader || r.channelTitle || r.channelName || r.artist || '').toString();
+                // Never useful as a *video*: audio-only auto uploads and non-video content.
+                if (/\s-\s*Topic\s*$/i.test(uploader)) continue;
+                if (/\b(official audio|audio only|full album|reaction|visualizer|visualiser)\b/.test(titleLower)) continue;
+                if (strict && /\b(lyric|lyrics)\b/.test(titleLower)) continue;
+                const durSec = parseDurationToSeconds(r.duration);
+                if (knownDuration && durSec) {
+                    const tolerance = Math.max(20, knownDuration * 0.25);
+                    if (Math.abs(durSec - knownDuration) > tolerance) continue; // likely a different cut entirely
+                }
+                out.push(id);
+                if (out.length >= 5) break; // results already relevance-ranked
             }
-            best = id;
-            break; // results already relevance-ranked
-        }
-        realVideoIdCache.set(track.id, best);
-        return best || track.id;
+            return out;
+        };
+
+        // Strict pass first (real music videos only); if that finds nothing,
+        // allow lyric videos too — still an actual moving video, and far
+        // better than a dead gray box or a static cover image.
+        let candidates = collect(true);
+        if (!candidates.length) candidates = collect(false);
+
+        videoCandidatesCache.set(track.id, candidates);
+        realVideoIdCache.set(track.id, candidates[0] || null); // keep the old cache coherent for anything still reading it
+        return candidates;
     } catch (e) {
-        realVideoIdCache.set(track.id, null);
-        return track.id;
+        // Network hiccup — do NOT cache the miss, so the next attempt retries.
+        return [];
     }
+}
+
+// Back-compat wrapper (old call sites expected a single id, falling back to
+// the track's own id when nothing better was found).
+async function findRealMusicVideoId(track) {
+    const candidates = await findRealMusicVideoCandidates(track);
+    return candidates[0] || track?.id || null;
 }
 
 function loadYouTubeIframeAPI() {
@@ -3213,15 +3264,62 @@ window.onYouTubeIframeAPIReady = function () {
     if (videoModeActive && activeTrackData) initYtPlayerForCurrentTrack();
 };
 
+// Per-track memory of "we already tried the fallback id and it also
+// failed" — so re-toggling video mode for the same still-broken track
+// doesn't repeat the same failed attempt every single time.
+const videoModeGaveUpFor = new Set();
+let videoCandidateIndex = 0; // which entry of the current track's candidate list is loaded
+
+/* ---- Video button visibility ----
+   The film icon only appears once a real, plausible video has actually been
+   found for the current track — resolved quietly in the background whenever
+   the track changes. If the search turns up nothing usable, the button
+   simply never shows for that song (no dead gray YouTube box to fall into). */
+async function resolveVideoButtonForTrack(track) {
+    const btn = $('fs-video-toggle');
+    if (!btn) return;
+    btn.style.display = 'none';
+    if (!track || !track.id || videoModeGaveUpFor.has(track.id)) return;
+    const candidates = await findRealMusicVideoCandidates(track);
+    if (activeTrackData !== track) return; // track moved on while searching
+    if (candidates.length && !videoModeGaveUpFor.has(track.id)) btn.style.display = '';
+}
+
 async function initYtPlayerForCurrentTrack() {
     if (!activeTrackData || !activeTrackData.id) return;
     if (!ytApiReady) { loadYouTubeIframeAPI(); return; }
+    if (videoModeGaveUpFor.has(activeTrackData.id)) {
+        videoModeActive = false;
+        $('fs-video-toggle').classList.remove('on');
+        $('fs-video-wrap').classList.remove('active');
+        $('fs-art-wrap').classList.remove('video-active');
+        $('fs-quality-wrap').style.display = 'none';
+        showToast("No embeddable video found for this song", true);
+        return;
+    }
 
     const myToken = ++videoSearchToken;
     const trackAtStart = activeTrackData;
-    const videoId = await findRealMusicVideoId(trackAtStart);
+    const candidates = await findRealMusicVideoCandidates(trackAtStart);
     // Bail if the track (or video-mode itself) moved on while we were searching.
     if (myToken !== videoSearchToken || !videoModeActive || activeTrackData !== trackAtStart) return;
+
+    if (!candidates.length) {
+        // Nothing plausible on YouTube — don't load the track's own id just to
+        // show a static cover image or a gray "unavailable" box.
+        videoModeGaveUpFor.add(trackAtStart.id);
+        videoModeActive = false;
+        $('fs-video-toggle').classList.remove('on');
+        $('fs-video-wrap').classList.remove('active');
+        $('fs-art-wrap').classList.remove('video-active');
+        $('fs-quality-wrap').style.display = 'none';
+        $('fs-video-toggle').style.display = 'none';
+        showToast("No video found for this song", true);
+        return;
+    }
+
+    videoCandidateIndex = 0;
+    const videoId = candidates[0];
 
     if (ytPlayer && ytPlayer.loadVideoById) {
         try { ytPlayer.loadVideoById(videoId); ytPlayer.mute(); } catch (e) {}
@@ -3233,9 +3331,54 @@ async function initYtPlayerForCurrentTrack() {
         playerVars: { controls: 0, disablekb: 1, modestbranding: 1, rel: 0, fs: 0, iv_load_policy: 3, playsinline: 1, mute: 1 },
         events: {
             onReady: (e) => { e.target.mute(); populateQualityOptions(); startVideoSyncLoop(); },
-            onStateChange: () => { try { ytPlayer.mute(); } catch (e) {} }
+            onStateChange: () => { try { ytPlayer.mute(); } catch (e) {} },
+            onError: (e) => handleYtPlayerError(e, trackAtStart, videoId)
         }
     });
+}
+
+// YouTube error codes: 100 = video removed/private/not found, 101 & 150 =
+// the video's owner has disabled playback on other websites (this is the
+// single biggest reason official-label music videos "go unavailable" here —
+// it's a restriction YouTube enforces on their end, not something any
+// client-side fix can get around). 2 = bad video id, 5 = HTML5 player error.
+// NOTE: the YT.Player events are registered ONCE at construction, so the
+// closed-over track/id args can be stale after loadVideoById() swaps —
+// everything below judges against the *current* state instead.
+function handleYtPlayerError(e, track, failedVideoId) {
+    if (!videoModeActive || !activeTrackData) return;
+    const cur = activeTrackData;
+    const candidates = videoCandidatesCache.get(cur.id) || [];
+
+    // Walk down the ranked candidate list — an embed-blocked official upload
+    // very often has a perfectly embeddable alternative right below it.
+    if (videoCandidateIndex + 1 < candidates.length) {
+        videoCandidateIndex++;
+        try { ytPlayer.loadVideoById(candidates[videoCandidateIndex]); ytPlayer.mute(); return; } catch (err) {}
+    }
+    // Last resort: the audio's own video id, tried once — some
+    // auto-generated/Topic uploads allow embedding even when the official
+    // upload doesn't, and vice versa.
+    if (candidates[videoCandidateIndex] !== cur.id && !videoModeGaveUpFor.has(cur.id + ':tried-own')) {
+        videoModeGaveUpFor.add(cur.id + ':tried-own');
+        try { ytPlayer.loadVideoById(cur.id); ytPlayer.mute(); return; } catch (err) {}
+    }
+    // Nothing left to try — stop pretending video mode is working, and say
+    // why in terms that are actually true instead of leaving a dead black
+    // box with YouTube's own "Video unavailable" placeholder in it.
+    videoModeGaveUpFor.add(cur.id);
+    clearInterval(ytSyncInterval);
+    videoModeActive = false;
+    $('fs-video-toggle').classList.remove('on');
+    $('fs-video-wrap').classList.remove('active');
+    $('fs-art-wrap').classList.remove('video-active');
+    $('fs-quality-wrap').style.display = 'none';
+    $('fs-video-toggle').style.display = 'none'; // this track has no working video — don't offer the button anymore
+    const code = e?.data;
+    const msg = (code === 101 || code === 150)
+        ? "This video's owner has disabled it from playing outside YouTube"
+        : "No embeddable video found for this song";
+    showToast(msg, true);
 }
 
 function startVideoSyncLoop() {
@@ -3259,7 +3402,9 @@ function toggleVideoMode() {
     $('fs-video-toggle').classList.toggle('on', videoModeActive);
     $('fs-video-wrap').classList.toggle('active', videoModeActive);
     $('fs-art-wrap').classList.toggle('video-active', videoModeActive);
-    $('fs-quality-wrap').style.display = videoModeActive ? 'flex' : 'none';
+    // The HD quality picker stays hidden: it cluttered the header and the
+    // quality functions below still exist if it's ever wanted back.
+    $('fs-quality-wrap').style.display = 'none';
     if (videoModeActive) {
         loadYouTubeIframeAPI();
         if (ytApiReady) initYtPlayerForCurrentTrack();
@@ -3308,8 +3453,17 @@ async function toggleLandscapeFullscreen() {
     if (landscapeModeActive) { exitLandscapeFullscreen(); return; }
     const overlay = $('full-player-overlay');
     try {
-        if (overlay.requestFullscreen) await overlay.requestFullscreen();
-        else if (overlay.webkitRequestFullscreen) overlay.webkitRequestFullscreen();
+        // Fullscreen the document root, NOT the overlay element itself.
+        // Fullscreening the overlay put it in the browser's "top layer",
+        // above everything that lives outside it — including the lyrics
+        // sheet, which is a *sibling* of the overlay in the DOM. That's why
+        // the lyrics button silently stopped doing anything visible once
+        // landscape mode existed: the sheet was opening, just permanently
+        // underneath the top-layer element. Fullscreening the root keeps
+        // every overlay stacked exactly as in normal browsing.
+        const target = document.documentElement;
+        if (target.requestFullscreen) await target.requestFullscreen();
+        else if (target.webkitRequestFullscreen) target.webkitRequestFullscreen();
     } catch (e) { /* fullscreen denied/unsupported — CSS orientation query still applies the layout */ }
     try {
         if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape');
@@ -3329,6 +3483,20 @@ function exitLandscapeFullscreen() {
 document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && landscapeModeActive) exitLandscapeFullscreen();
 });
+
+// Small "hide the lyrics" switch for the landscape view: lyrics are shown by
+// default, this collapses the panel so only the song (art + controls,
+// centered, CarPlay-style) remains. Purely visual — nothing about lyrics
+// loading/highlighting changes state here.
+function toggleInlineLyricsPanel() {
+    const overlay = $('full-player-overlay');
+    const hidden = overlay.classList.toggle('lyrics-hidden');
+    const btn = $('fs-lyrics-inline-toggle');
+    if (btn) {
+        btn.classList.toggle('on', !hidden);
+        btn.title = hidden ? 'Show lyrics' : 'Hide lyrics';
+    }
+}
 
 // The lyrics panel next to the album art in landscape mode is always
 // visible (no toggle needed) — so a cached "no lyrics found" deserves the
@@ -3907,7 +4075,7 @@ async function importFromYoutubeMusic(listId) {
         // actually lets a failure get diagnosed and fixed for good, instead of
         // guessing again next time.
         const d = data.diagnostics;
-        const detail = d ? `\n\n(Data API: ${d.dataApi}\nInnerTube: ${d.innerTube}\nScrape: ${d.scrape})` : '';
+        const detail = d ? `\n\n(Data API: ${d.dataApi}\nYTM browse: ${d.ytmBrowse}\nYTM page: ${d.ytmHtml}\nyoutubei.js: ${d.ytMusic}\nInnerTube: ${d.innerTube}\nScrape: ${d.scrape})` : '';
         throw new Error(data.error + detail);
     }
 

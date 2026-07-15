@@ -518,7 +518,7 @@ input[type=range].slider::-moz-range-thumb { width: 12px; height: 12px; border-r
     align-items: center; padding: max(20px, env(safe-area-inset-top)) 24px max(34px, env(safe-area-inset-bottom));
 }
 .fs-overlay.active { transform: translateY(0); }
-.fs-head { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; color: #fff; }
+.fs-head { width: 100%; max-width: 420px; display: flex; justify-content: space-between; align-items: center; color: #fff; margin-bottom: 22px; }
 .fs-head i { font-size: 1.9rem; cursor: pointer; }
 .fs-head span { font-size: 0.72rem; font-weight: 800; letter-spacing: 1.5px; color: var(--dim); }
 .fs-art { width: 100%; max-width: 340px; aspect-ratio: 1; border-radius: 20px; object-fit: cover; background: var(--elev); box-shadow: 0 24px 60px rgba(0,0,0,0.7); margin: auto 0; transition: opacity .25s ease; }
@@ -536,7 +536,7 @@ input[type=range].slider::-moz-range-thumb { width: 12px; height: 12px; border-r
 .fs-controls i.side { font-size: 1.45rem; color: var(--dim); position: relative; }
 .fs-controls i.side.on { color: var(--accent); }
 .fs-controls .fs-play { font-size: 4.3rem; }
-.fs-head-actions { display: flex; align-items: center; gap: 18px; }
+.fs-head-actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; justify-content: flex-end; row-gap: 10px; }
 .fs-head-actions > i { font-size: 1.5rem; color: #fff; cursor: pointer; }
 .fs-vol-wrap { position: relative; }
 .fs-vol-popup {
@@ -604,10 +604,10 @@ input[type=range].slider.vertical {
     position: absolute; top: 16px; left: 28px; right: 28px; width: auto; max-width: none;
 }
 .fs-overlay.landscape-mode .fs-main-col {
-    display: flex; flex-direction: column; flex-shrink: 0;
+    display: flex; flex-direction: column; flex-shrink: 0; justify-content: center;
 }
 .fs-overlay.landscape-mode .fs-art-wrap {
-    max-width: 240px; margin: 0 0 auto; flex-shrink: 0;
+    max-width: 240px; margin: 26px 0 22px; flex-shrink: 0;
 }
 .fs-overlay.landscape-mode .fs-bottom {
     max-width: 340px; margin: 0;
@@ -616,16 +616,42 @@ input[type=range].slider.vertical {
     display: flex; flex-direction: column; flex: 1 1 auto; align-self: stretch; max-width: 440px;
     max-height: 76vh; overflow-y: auto; padding: 8px 8px 8px 28px; border-left: 1px solid rgba(255,255,255,0.09);
 }
+/* CarPlay-style clean-up while in the landscape view: no "NOW PLAYING"
+   label, no lyrics-sheet button (lyrics are already inline here), and only
+   previous / play / next in the transport row — loop & shuffle come back the
+   moment landscape is exited, nothing is lost. */
+.fs-overlay.landscape-mode .fs-head > span { display: none; }
+.fs-overlay.landscape-mode .fs-head-actions .lyrics-toggle { display: none; }
+.fs-overlay.landscape-mode .fs-controls i.side { display: none; }
+.fs-overlay.landscape-mode .fs-controls { justify-content: center; gap: 30px; }
+/* The lyrics panel is on by default; the toggle (or a "no lyrics found"
+   result) collapses it, and the flex container then centers the song on its
+   own — no half-empty right column. */
+.fs-overlay.landscape-mode.lyrics-hidden .fs-lyrics-inline,
+.fs-overlay.landscape-mode.no-lyrics .fs-lyrics-inline { display: none; }
+/* The hide/show-lyrics button only exists in the landscape view. */
+#fs-lyrics-inline-toggle { display: none; }
+.fs-overlay.landscape-mode #fs-lyrics-inline-toggle { display: inline-block; }
+#fs-lyrics-inline-toggle.on { color: var(--accent); }
 @media (orientation: landscape) and (max-height: 520px) {
     .fs-overlay.active { flex-direction: row; align-items: center; justify-content: center; gap: 30px; padding: 14px 30px; }
     .fs-overlay.active .fs-head { position: absolute; top: 10px; left: 22px; right: 22px; width: auto; max-width: none; }
-    .fs-overlay.active .fs-main-col { display: flex; flex-direction: column; flex-shrink: 0; }
-    .fs-overlay.active .fs-art-wrap { max-width: 180px; margin: 0 0 auto; flex-shrink: 0; }
+    .fs-overlay.active .fs-main-col { display: flex; flex-direction: column; flex-shrink: 0; justify-content: center; }
+    .fs-overlay.active .fs-art-wrap { max-width: 180px; margin: 20px 0 16px; flex-shrink: 0; }
     .fs-overlay.active .fs-bottom { max-width: 300px; margin: 0; gap: 8px; }
     .fs-overlay.active .fs-lyrics-inline {
         display: flex; flex-direction: column; flex: 1 1 auto; align-self: stretch; max-width: 400px;
         max-height: 86vh; overflow-y: auto; padding: 4px 4px 4px 22px; border-left: 1px solid rgba(255,255,255,0.09);
     }
+    /* Same clean-up when landscape is entered just by rotating the phone
+       (no button, no orientation lock) — the layout should match. */
+    .fs-overlay.active .fs-head > span { display: none; }
+    .fs-overlay.active .fs-head-actions .lyrics-toggle { display: none; }
+    .fs-overlay.active .fs-controls i.side { display: none; }
+    .fs-overlay.active .fs-controls { justify-content: center; gap: 26px; }
+    .fs-overlay.active.lyrics-hidden .fs-lyrics-inline,
+    .fs-overlay.active.no-lyrics .fs-lyrics-inline { display: none; }
+    .fs-overlay.active #fs-lyrics-inline-toggle { display: inline-block; }
 }
 .fs-lyrics-inline-head { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.6px; color: var(--dim); text-transform: uppercase; padding: 2px 2px 10px; flex-shrink: 0; }
 .fs-lyrics-inline .lyrics-body { position: static; padding: 0; height: auto; }
