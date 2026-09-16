@@ -4029,8 +4029,13 @@ function openImportPlaylistModal() {
 function closeImportModal() { $('import-playlist-modal').classList.remove('open'); }
 
 function extractYtmPlaylistId(url) {
+    url = String(url || '').trim();
+    // Normal share link: ?list=... or &list=...
     const m = url.match(/[?&]list=([\w-]+)/);
-    return m ? m[1] : null;
+    if (m) return m[1];
+    // Someone pasted just the raw playlist ID instead of a link
+    if (/^(PL|OL|RD|UL|FL|LL|UU)[A-Za-z0-9_-]{6,}$/.test(url)) return url;
+    return null;
 }
 function extractSpotifyPlaylistUrl(url) {
     return /open\.spotify\.com\/playlist\//.test(url) ? url.split('?')[0] : null;
@@ -4065,34 +4070,123 @@ async function submitImportPlaylist() {
     btn.disabled = false;
 }
 
+/* ---- Client-side fallback playlist resolvers ----
+YouTube often answers datacenter IPs (the Worker) with "private"/empty for
+perfectly public playlists. So if the worker importer comes back with
+nothing, we also try public Invidious/Piped APIs straight from the browser
+(they send CORS headers, and from a normal connection YouTube answers). */
+function invidiousOrigins() {
+    const origins = [];
+    STREAM_MIRRORS.forEach(m => {
+        if (m.startsWith(NEW_HUB_BACKEND)) return; // our own worker has no playlist endpoint
+        try { origins.push(new URL(m).origin); } catch (e) {}
+    });
+    return origins;
+}
+
+const PIPED_MIRRORS = [
+    'https://pipedapi.kavin.rocks',
+    'https://pipedapi.adminforge.de',
+    'https://api.piped.private.coffee'
+];
+
+function videoIdFromUrl(u) {
+    const s = String(u || '');
+    const m = s.match(/[?&]v=([\w-]{11})/) || s.match(/youtu\.be\/([\w-]{11})/);
+    return m ? m[1] : null;
+}
+
+async function fetchPlaylistFromInvidious(listId) {
+    const results = await Promise.allSettled(invidiousOrigins().map(async origin => {
+        const res = await fetchWithTimeout(`${origin}/api/v1/playlists/${encodeURIComponent(listId)}`, 9000);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const videos = Array.isArray(data.videos) ? data.videos : [];
+        if (!videos.length) throw new Error('empty');
+        return {
+            title: data.title || null,
+            items: videos.map(v => ({
+                id: v.videoId || v.id,
+                title: v.title,
+                artist: v.author || 'Unknown Artist',
+                thumb: (Array.isArray(v.videoThumbnails) && v.videoThumbnails.length)
+                    ? v.videoThumbnails[v.videoThumbnails.length - 1].url
+                    : `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${v.videoId || v.id}/mqdefault.webp`
+            })).filter(t => t.id && t.title)
+        };
+    }));
+    for (const r of results) if (r.status === 'fulfilled' && r.value.items.length) return r.value;
+    return null;
+}
+
+async function fetchPlaylistFromPiped(listId) {
+    const results = await Promise.allSettled(PIPED_MIRRORS.map(async origin => {
+        const res = await fetchWithTimeout(`${origin}/playlists/${encodeURIComponent(listId)}`, 9000);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const streams = (Array.isArray(data.relatedStreams) ? data.relatedStreams : [])
+            .filter(s => s.type === 'stream');
+        if (!streams.length) throw new Error('empty');
+        return {
+            title: data.name || null,
+            items: streams.map(s => ({
+                id: videoIdFromUrl(s.url) || s.id,
+                title: s.title,
+                artist: s.uploaderName || 'Unknown Artist',
+                thumb: s.thumbnail || null
+            })).filter(t => t.id && t.title)
+        };
+    }));
+    for (const r of results) if (r.status === 'fulfilled' && r.value.items.length) return r.value;
+    return null;
+}
+
 async function importFromYoutubeMusic(listId) {
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/playlist-import-proxy?id=${encodeURIComponent(listId)}`, 18000);
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data) throw new Error(data?.error || "Couldn't reach the playlist importer.");
-    if (data.error) {
-        // Surface exactly which strategy failed and why (Data API / InnerTube /
-        // HTML scrape) instead of a single opaque message — this is what
-        // actually lets a failure get diagnosed and fixed for good, instead of
-        // guessing again next time.
-        const d = data.diagnostics;
-        const detail = d ? `\n\n(Data API: ${d.dataApi}\nYTM browse: ${d.ytmBrowse}\nYTM page: ${d.ytmHtml}\nyoutubei.js: ${d.ytMusic}\nInnerTube: ${d.innerTube}\nScrape: ${d.scrape})` : '';
-        throw new Error(data.error + detail);
+    let items = [];
+    let plName = null;
+    let workerNote = '';
+
+    // 1) Dedicated worker importer — unchanged first attempt
+    try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/playlist-import-proxy?id=${encodeURIComponent(listId)}`, 18000);
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data) throw new Error(data?.error || "Couldn't reach the playlist importer.");
+        if (data.error) {
+            const d = data.diagnostics;
+            const detail = d ? `\n\n(Data API: ${d.dataApi}\nYTM browse: ${d.ytmBrowse}\nYTM page: ${d.ytmHtml}\nyoutubei.js: ${d.ytMusic}\nInnerTube: ${d.innerTube}\nScrape: ${d.scrape})` : '';
+            workerNote = data.error + detail;
+        } else {
+            items = Array.isArray(data.items) ? data.items : [];
+            plName = data.title || null;
+        }
+    } catch (e) { workerNote = e.message || 'worker failed'; }
+
+    // 2) Worker gave nothing → resolve from the browser via public mirrors,
+    // so YouTube's datacenter-IP "private" block doesn't get the final word.
+    if (!items.length) {
+        const fb = await fetchPlaylistFromInvidious(listId) || await fetchPlaylistFromPiped(listId);
+        if (fb) { items = fb.items; plName = plName || fb.title; }
     }
 
-    const items = Array.isArray(data.items) ? data.items : [];
-    if (!items.length) throw new Error("This playlist looks empty, private, or couldn't be read.");
-
-    const plName = data.title || "Imported playlist";
     const tracks = items.filter(t => t.id && t.title).map(t => ({
         id: t.id, title: t.title, artist: t.artist || "Unknown Artist",
-        thumb: t.thumb || `https://wsrv.nl?url=https://i.ytimg.com/vi_webp/${t.id}/mqdefault.webp`,
+        thumb: t.thumb || `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${t.id}/mqdefault.webp`,
         type: 'song'
     }));
-    const pl = { id: 'pl_' + Date.now(), name: plName, tracks, source: 'YouTube Music', thumb: tracks[0]?.thumb || null };
+
+    if (!tracks.length) {
+        throw new Error(
+            "Couldn't read that playlist from any source." +
+            (workerNote ? `\n\nImporter said: ${workerNote}` : '') +
+            "\n\nMake sure the playlist is set to Public (not Unlisted/Private) and try again."
+        );
+    }
+
+    const pl = { id: 'pl_' + Date.now(), name: plName || "Imported playlist", tracks, source: 'YouTube Music', thumb: tracks[0]?.thumb || null };
     userProfile.customPlaylists.push(pl);
     syncProfile();
     closeImportModal();
-    showToast(`Imported "${plName}" — ${tracks.length} track${tracks.length === 1 ? '' : 's'}`);
+    showToast(`Imported "${pl.name}" — ${tracks.length} track${tracks.length === 1 ? '' : 's'}`);
 }
 
 async function importFromSpotify(playlistUrl) {
