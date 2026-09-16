@@ -393,6 +393,7 @@
         </div>
         <button class="pb-action" id="mini-heart" onclick="togglePlayerHeart(event)"><i class="ri-heart-line"></i></button>
         <button class="pb-action" onclick="event.stopPropagation(); togglePlayback()"><i class="ri-play-fill" id="mini-play-icon"></i></button>
+                <button class="pb-action" title="Queue" onclick="event.stopPropagation(); openQueuePanel()"><i class="ri-play-list-2-line"></i></button>
         <div class="mini-progress"><div id="mini-progress-fill"></div></div>
     </div>
 
@@ -434,6 +435,7 @@
                         <button class="sleep-off" onclick="cancelSleepTimer(true)">Turn off</button>
                     </div>
                 </div>
+                <i class="ri-play-list-2-line" title="Queue" onclick="openQueuePanel()"></i>
                 <i class="ri-play-list-add-line" onclick="openPlaylistModalFromPlayer()"></i>
                 <i class="ri-film-line" id="fs-video-toggle" title="Video mode" style="display:none;" onclick="toggleVideoMode()"></i>
                 <i class="ri-file-text-line on" id="fs-lyrics-inline-toggle" title="Hide lyrics" onclick="toggleInlineLyricsPanel()"></i>

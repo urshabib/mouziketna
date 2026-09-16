@@ -290,6 +290,7 @@ function createTrackCardHTML(track, opts = {}) {
             <div class="card-icons">
                 ${trash}
                 ${dlBtn}
+                ${track.type === 'song' ? `<button class="icon-btn row-menu-btn" data-act="rowmenu" data-key="${key}" title="More" aria-label="More"><i class="ri-more-2-fill"></i></button>` : ''}
                 <button class="icon-btn ${liked ? 'liked' : ''}" data-act="fav" data-key="${key}" title="Save">
                     <i class="ri-heart-${liked ? 'fill' : 'line'}"></i>
                 </button>
@@ -685,38 +686,56 @@ function scheduleAutoCachePlayed(track) {
 }
 
 async function downloadTrackForOffline(track, opts = {}) {
-    const { silent = false } = opts;
+    const { silent = false, retries = 3 } = opts;
     if (!track?.id) return false;
     if (isDownloaded(track.id)) { if (!silent) showToast("Already downloaded"); return true; }
     ensurePersistentStorageOnce();
     if (!silent) showToast(`Downloading "${track.title}"…`);
-    try {
-        // 'off' -> 320kbps (full quality), 'saver' -> 96kbps, 'ultra' -> 48kbps
-        // (JioSaavn's lowest standard-quality tier — still clearly listenable,
-        // just the smallest file size available).
-        const level = userProfile.dataSaverLevel || (userProfile.dataSaver ? 'saver' : 'off');
-        const quality = level === 'ultra' ? '48' : level === 'saver' ? '96' : '320';
-        const cleanedArtist = cleanArtistName(track.artist);
-        let streamUrl = null;
-        try { streamUrl = await resolveSaavnStream(cleanTitleForLyrics(track.title) || track.title, cleanedArtist, quality, track.title, track.artist); }
-        catch (e) {
-            const mirrors = await resolveMirrorStreams(track.id).catch(() => []);
-            streamUrl = mirrors[0] || null; // mirrors have no quality tiers — Data Saver only applies via Saavn
+
+    const level = userProfile.dataSaverLevel || (userProfile.dataSaver ? 'saver' : 'off');
+    const quality = level === 'ultra' ? '48' : level === 'saver' ? '96' : '320';
+    const cleanedArtist = cleanArtistName(track.artist);
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            // Resolve a fresh URL on every retry. CDN stream URLs can expire, so
+            // retrying the exact same URL is much less reliable.
+            let streamUrl = null;
+            try {
+                streamUrl = await resolveSaavnStream(
+                    cleanTitleForLyrics(track.title) || track.title,
+                    cleanedArtist,
+                    quality,
+                    track.title,
+                    track.artist
+                );
+            } catch (e) {
+                const mirrors = await resolveMirrorStreams(track.id).catch(() => []);
+                streamUrl = mirrors[0] || null;
+            }
+            if (!streamUrl) throw new Error("no source");
+
+            const audioRes = await fetchWithTimeout(streamUrl, 30000);
+            if (!audioRes.ok) throw new Error(`audio fetch failed (${audioRes.status})`);
+            const audioBlob = await audioRes.blob();
+            if (!audioBlob || !audioBlob.size) throw new Error("empty audio");
+
+            const thumbBlob = level !== 'off'
+                ? await fetchAndCompressThumb(track.thumb)
+                : await fetchThumbFullQuality(track.thumb);
+            const lyricsData = userProfile.downloadLyricsOffline ? await fetchLyricsForDownload(track) : null;
+
+            await saveDownload(track, audioBlob, thumbBlob, quality, lyricsData);
+            refreshDownloadBadges(track.id);
+            if (!silent) showToast(`Downloaded "${track.title}"`);
+            return true;
+        } catch (e) {
+            if (attempt < retries) await new Promise(r => setTimeout(r, 450 * attempt));
         }
-        if (!streamUrl) throw new Error("no source");
-        const audioRes = await fetch(streamUrl);
-        if (!audioRes.ok) throw new Error("audio fetch failed");
-        const audioBlob = await audioRes.blob();
-        const thumbBlob = level !== 'off' ? await fetchAndCompressThumb(track.thumb) : await fetchThumbFullQuality(track.thumb);
-        const lyricsData = userProfile.downloadLyricsOffline ? await fetchLyricsForDownload(track) : null;
-        await saveDownload(track, audioBlob, thumbBlob, quality, lyricsData);
-        refreshDownloadBadges(track.id);
-        if (!silent) showToast(`Downloaded "${track.title}"`);
-        return true;
-    } catch (e) {
-        if (!silent) showToast(`Couldn't download "${track.title}" — try again`, true);
-        return false;
     }
+
+    if (!silent) showToast(`Couldn't download "${track.title}" — tap download to retry`, true);
+    return false;
 }
 
 async function toggleTrackDownload(key) {
@@ -727,20 +746,11 @@ async function toggleTrackDownload(key) {
     else await downloadTrackForOffline(track);
 }
 
-// Concurrent batches of 4 (not fully parallel — that would hammer the
-// backend/CDNs and device storage all at once with dozens of simultaneous
-// requests) so a big playlist finishes much faster than strictly one-by-one,
-// while still bounded. Progress is shown live in the triggering button.
-const DOWNLOAD_BATCH_SIZE = 4;
-// Global, persistent progress — NOT tied to the button that started the
-// download. Previously progress was written straight into that specific
-// button's innerHTML, so navigating away (the button gets torn down when its
-// view unmounts) made progress invisible until you came back, and coming
-// back rendered a brand-new button that had no idea a download was already
-// running. The download itself was never actually interrupted — only the
-// display was broken. This tracks progress globally so the topbar pill (and
-// the button, if you're still looking at it) both stay live regardless.
-let activeBulkDownload = null; // { done, total, token }
+// Bounded worker pool. Unlike the old chunk counter, every individual job is
+// tracked as success/failure, so the displayed number can never claim that a
+// failed song was downloaded. Failed jobs are retried once by the manager.
+const DOWNLOAD_CONCURRENCY = 3;
+let activeBulkDownload = null; // { done, success, failed, total, token, label }
 let bulkDownloadToken = 0;
 
 function renderBulkDownloadProgress() {
@@ -748,41 +758,87 @@ function renderBulkDownloadProgress() {
     if (!activeBulkDownload) { if (pill) pill.style.display = 'none'; return; }
     if (pill) pill.style.display = 'flex';
     if (pillText) pillText.textContent = `${activeBulkDownload.done}/${activeBulkDownload.total}`;
-    // If the button that originally started this run is still on-screen
-    // (user never navigated away, or came back to the same collection),
-    // keep it in sync too — but only while a download is actually in flight;
-    // once finished we set its final label directly (see below).
     const btn = $('pl-download-btn');
-    if (btn && btn.isConnected) btn.innerHTML = `<i class="ri-loader-4-line animate-spin"></i> ${activeBulkDownload.done}/${activeBulkDownload.total}`;
+    if (btn && btn.isConnected) {
+        const failed = activeBulkDownload.failed;
+        btn.innerHTML = `<i class="ri-loader-4-line animate-spin"></i> ${activeBulkDownload.done}/${activeBulkDownload.total}${failed ? ` · ${failed} failed` : ''}`;
+    }
+}
+
+async function runDownloadJobs(jobs, concurrency, worker) {
+    let cursor = 0;
+    const runners = Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+        while (cursor < jobs.length) {
+            const index = cursor++;
+            await worker(jobs[index], index);
+        }
+    });
+    await Promise.all(runners);
 }
 
 async function downloadPlaylistTracks(tracks, buttonEl) {
-    const todo = (tracks || []).filter(t => t?.id && !isDownloaded(t.id));
-    if (!todo.length) { showToast("Everything here is already downloaded"); return; }
-    const myToken = ++bulkDownloadToken; // starting a new bulk download supersedes any other in-flight one
-    activeBulkDownload = { done: 0, total: todo.length, token: myToken };
-    renderBulkDownloadProgress();
-    for (let i = 0; i < todo.length; i += DOWNLOAD_BATCH_SIZE) {
-        if (bulkDownloadToken !== myToken) return; // superseded — a newer bulk download took over
-        const batch = todo.slice(i, i + DOWNLOAD_BATCH_SIZE);
-        await Promise.all(batch.map(t => downloadTrackForOffline(t, { silent: true })));
-        if (bulkDownloadToken !== myToken) return;
-        activeBulkDownload.done += batch.length;
-        renderBulkDownloadProgress();
+    if (activeBulkDownload) {
+        showToast(`Download already running: ${activeBulkDownload.done}/${activeBulkDownload.total}`);
+        return;
     }
+
+    // De-duplicate by track id while preserving playlist order.
+    const unique = [];
+    const seen = new Set();
+    for (const t of (tracks || [])) {
+        if (!t?.id || seen.has(t.id)) continue;
+        seen.add(t.id);
+        if (!isDownloaded(t.id)) unique.push(t);
+    }
+    if (!unique.length) { showToast("Everything here is already downloaded"); return; }
+
+    const myToken = ++bulkDownloadToken;
+    activeBulkDownload = { done: 0, success: 0, failed: 0, total: unique.length, token: myToken };
+    renderBulkDownloadProgress();
+
+    const failedTracks = [];
+    await runDownloadJobs(unique, DOWNLOAD_CONCURRENCY, async (track) => {
+        if (bulkDownloadToken !== myToken) return;
+        const ok = await downloadTrackForOffline(track, { silent: true, retries: 3 });
+        if (ok) activeBulkDownload.success++;
+        else { failedTracks.push(track); activeBulkDownload.failed++; }
+        activeBulkDownload.done++;
+        renderBulkDownloadProgress();
+    });
+
+    // A second pass targets only failures. Total stays the original number, but
+    // success/failure counts remain truthful and no song is silently skipped.
+    if (bulkDownloadToken === myToken && failedTracks.length) {
+        const retryList = failedTracks.splice(0);
+        for (const track of retryList) {
+            if (isDownloaded(track.id)) continue;
+            const ok = await downloadTrackForOffline(track, { silent: true, retries: 2 });
+            if (ok) {
+                activeBulkDownload.success++;
+                activeBulkDownload.failed--;
+            }
+            renderBulkDownloadProgress();
+        }
+    }
+
     if (bulkDownloadToken !== myToken) return;
-    const finishedTotal = activeBulkDownload.total, finishedDone = activeBulkDownload.done;
+    const result = { ...activeBulkDownload };
     activeBulkDownload = null;
     renderBulkDownloadProgress();
-    // Whichever button is currently on-screen for this collection (may not be
-    // the same DOM node that kicked this off, if the view was re-rendered
-    // after navigating away and back) gets the finished state.
-    const btn = (buttonEl && buttonEl.isConnected) ? buttonEl : ($('pl-download-btn'));
+
+    const btn = (buttonEl && buttonEl.isConnected) ? buttonEl : $('pl-download-btn');
     if (btn) {
-        btn.innerHTML = `<i class="ri-checkbox-circle-fill"></i> Downloaded`;
-        setTimeout(() => { if (btn.isConnected) btn.innerHTML = `<i class="ri-download-2-line"></i> Download`; }, 2200);
+        if (result.failed > 0) {
+            btn.innerHTML = `<i class="ri-error-warning-line"></i> ${result.success} downloaded · ${result.failed} failed`;
+            btn.title = 'Click to retry the failed songs';
+        } else {
+            btn.innerHTML = `<i class="ri-checkbox-circle-fill"></i> All ${result.success} downloaded`;
+            btn.title = 'All songs are downloaded';
+        }
     }
-    showToast(`Downloaded ${finishedDone}/${finishedTotal} track${finishedTotal === 1 ? '' : 's'}`);
+    showToast(result.failed
+        ? `Downloaded ${result.success}/${result.total}. ${result.failed} failed — try again to retry them.`
+        : `Downloaded all ${result.success} tracks`);
 }
 
 /* ---- 3-dot bottom sheet (Like / Remove) ---- */
@@ -3028,12 +3084,15 @@ async function initializeTrackStream(track, opts = {}) {
 function addToQueue(track, { playNext = false } = {}) {
     if (!track?.id || track.type === 'artist' || track.type === 'playlist') return false;
     const item = { ...track, type: 'song' };
+    // Avoid accidental duplicate queue entries from repeated taps.
+    const existingIndex = playbackQueue.findIndex(t => t.id === item.id);
+    if (existingIndex >= 0) playbackQueue.splice(existingIndex, 1);
+
     if (playNext) {
-        // With a normal one-off song there is no queue index yet; Play next
-        // therefore belongs at position 0. When a collection queue is active,
-        // insert immediately after the current track.
-        const insertAt = currentQueueIndex >= 0 ? Math.min(currentQueueIndex + 1, playbackQueue.length) : 0;
-        playbackQueue.splice(insertAt, 0, item);
+        // If the current track belongs to the queue, insert immediately after it.
+        // Otherwise position 0 is the true next track.
+        const insertAt = currentQueueIndex >= 0 ? currentQueueIndex + 1 : 0;
+        playbackQueue.splice(Math.min(insertAt, playbackQueue.length), 0, item);
         showToast(`Playing next: ${item.title}`);
     } else {
         playbackQueue.push(item);
@@ -3101,6 +3160,7 @@ function renderQueuePanel() {
 function playFromQueueContext(index) {
     if (index >= 0 && index < playbackQueue.length) {
         currentQueueIndex = index;
+        renderQueuePanel();
         initializeTrackStream(playbackQueue[index]);
     }
 }
@@ -3132,6 +3192,9 @@ function playNextTrack(shuffleRetries = 0) {
             if (shuffleRetries >= playbackQueue.length) { playNextAlgorithmSong(); return; }
             currentQueueIndex = Math.floor(Math.random() * playbackQueue.length);
             initializeTrackStream(playbackQueue[currentQueueIndex]).then(ok => { if (!ok) playNextTrack(shuffleRetries + 1); });
+        } else if (currentQueueIndex < 0) {
+            currentQueueIndex = 0;
+            initializeTrackStream(playbackQueue[currentQueueIndex]).then(ok => { if (!ok) playNextTrack(); });
         } else if (currentQueueIndex < playbackQueue.length - 1) {
             currentQueueIndex++;
             initializeTrackStream(playbackQueue[currentQueueIndex]).then(ok => { if (!ok) playNextTrack(); });
