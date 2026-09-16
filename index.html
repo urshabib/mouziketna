@@ -23,6 +23,9 @@
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="MOUZIKA">
 <meta name="twitter:image" content="https://REPLACE-WITH-YOUR-DOMAIN/icon-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
@@ -240,6 +243,13 @@
                         </div>
                         <div class="settings-row" style="margin-top:10px;">
                             <div class="settings-row-label">
+                                <h5>Automatically cache played songs</h5>
+                                <p>Downloads songs you play in the background so they can play instantly and work offline. On by default.</p>
+                            </div>
+                            <button class="switch on" id="auto-cache-toggle" onclick="toggleAutoCachePlayed()" role="switch" aria-checked="true"><span class="switch-knob"></span></button>
+                        </div>
+                        <div class="settings-row" style="margin-top:10px;">
+                            <div class="settings-row-label">
                                 <h5>Liquid Glass theme</h5>
                                 <p>Switches the app to a translucent, frosted-glass look.</p>
                             </div>
@@ -348,6 +358,7 @@
             </div>
             <button class="pb-action" id="pb-heart" title="Like" onclick="togglePlayerHeart(event)"><i class="ri-heart-line"></i></button>
             <button class="pb-action lyrics-toggle" title="Lyrics" onclick="toggleLyricsOverlay()"><svg class="ico-lyrics" viewBox="0 0 24 24" aria-hidden="true"><path style="fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round" d="M4.2 6.1A2.4 2.4 0 0 1 6.6 3.7h10.8a2.4 2.4 0 0 1 2.4 2.4v7.3a2.4 2.4 0 0 1-2.4 2.4H10l-4 3.15a.55.55 0 0 1-.89-.43v-2.72H6.6a2.4 2.4 0 0 1-2.4-2.4V6.1Z"/><rect x="7.1" y="7.35" width="9.8" height="1.55" rx=".78"/><rect x="7.1" y="10.6" width="6.4" height="1.55" rx=".78"/></svg></button>
+            <button class="pb-action" title="Queue" onclick="openQueuePanel()"><i class="ri-play-list-2-line"></i></button>
             <button class="pb-action" title="Add to playlist" onclick="openPlaylistModalFromPlayer()"><i class="ri-play-list-add-line"></i></button>
         </div>
         <div class="pb-center">
@@ -558,6 +569,19 @@
         <div class="row-sheet-head" id="row-sheet-head"></div>
         <div class="row-sheet-body" id="row-sheet-body"></div>
     </div>
+
+    <!-- PLAYBACK QUEUE -->
+    <div class="queue-backdrop" id="queue-backdrop" onclick="closeQueuePanel()"></div>
+    <aside class="queue-panel" id="queue-panel" aria-label="Playback queue">
+        <div class="queue-panel-head">
+            <div><h3>Queue</h3><p id="queue-panel-count">Queue is empty</p></div>
+            <div class="queue-panel-head-actions">
+                <button class="icon-btn" title="Clear queue" onclick="clearPlaybackQueue()"><i class="ri-delete-bin-line"></i></button>
+                <button class="icon-btn" title="Close queue" onclick="closeQueuePanel()"><i class="ri-close-line"></i></button>
+            </div>
+        </div>
+        <div id="queue-panel-body" class="queue-panel-body"></div>
+    </aside>
 
     <div id="toast-zone"></div>
 

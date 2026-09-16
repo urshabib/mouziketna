@@ -2086,3 +2086,20 @@ body.liquid-glass ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18)
     border-color: rgba(0,0,0,0.08);
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 10px 28px rgba(0,0,0,0.12);
 }
+
+/* ===== Playback queue ===== */
+.queue-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.48);opacity:0;pointer-events:none;transition:opacity .2s;z-index:22998}
+.queue-backdrop.open{opacity:1;pointer-events:auto}
+.queue-panel{position:fixed;right:18px;bottom:104px;width:min(420px,calc(100vw - 36px));max-height:min(70vh,640px);display:flex;flex-direction:column;background:var(--panel-2);border:1px solid rgba(255,255,255,.1);border-radius:22px;box-shadow:0 24px 80px rgba(0,0,0,.45);z-index:22999;opacity:0;transform:translateY(12px) scale(.985);pointer-events:none;transition:opacity .2s,transform .2s}
+.queue-panel.open{opacity:1;transform:none;pointer-events:auto}
+.queue-panel-head{display:flex;align-items:center;justify-content:space-between;padding:18px 18px 14px;border-bottom:1px solid var(--elev-2);gap:12px}
+.queue-panel-head h3{font-size:1.05rem;font-weight:850}.queue-panel-head p{font-size:.76rem;color:var(--dim);margin-top:2px}.queue-panel-head-actions{display:flex;gap:6px}
+.queue-panel-body{padding:8px;overflow:auto;min-height:90px}
+.queue-item{display:flex;align-items:center;gap:10px;padding:9px;border-radius:14px;cursor:pointer}.queue-item:hover{background:var(--elev)}.queue-item.current{background:var(--accent-soft)}
+.queue-item>img,.queue-item .queue-art{width:48px;height:48px;flex:0 0 48px;border-radius:10px;object-fit:cover}.queue-item .queue-art{display:grid;place-items:center;background:var(--elev);color:var(--dimmer)}
+.queue-item-meta{min-width:0;flex:1}.queue-item-meta h4{font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.queue-item-meta p{font-size:.75rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}.queue-item-meta span{font-size:.68rem;color:var(--accent);font-weight:800;display:block;margin-top:3px}
+.queue-empty{padding:42px 20px 48px;text-align:center;color:var(--dim)}.queue-empty i{font-size:2.7rem;color:var(--dimmer)}.queue-empty h4{margin-top:12px;color:var(--text);font-size:1rem}.queue-empty p{font-size:.8rem;line-height:1.45;margin-top:6px}
+@media(max-width:760px){.queue-panel{left:10px;right:10px;bottom:88px;width:auto;max-height:68vh;border-radius:20px}.queue-backdrop{z-index:22998}}
+
+/* Rendering performance: large shelves can be skipped until they enter the viewport. */
+.view-pane.active > section { content-visibility: auto; contain-intrinsic-size: 260px; }

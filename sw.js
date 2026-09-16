@@ -7,7 +7,7 @@
 // at all — it just won't have live search results, streams, or suggestions
 // until the connection comes back. Downloaded songs for offline playback are
 // handled separately, in IndexedDB, straight from the page's own JS.
-const SHELL_CACHE = 'mouzika-shell-v1';
+const SHELL_CACHE = 'mouzika-shell-v2';
 const SHELL_ASSETS = [
   './',
   './index.html',

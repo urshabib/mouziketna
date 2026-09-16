@@ -20,7 +20,7 @@ const PLAYLIST_ART = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd8
 let globalUser = localStorage.getItem("hub_active_user") || null;
 let sessionSynced = false;   // true once executeLogin actually got a profile back from the server
 let globalPass = localStorage.getItem("hub_active_pass") || null;
-let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass', avatarUrl: null };
+let userProfile = { username: "", likedSongs: [], customPlaylists: [], favouriteArtists: [], favouriteAlbums: [], recentlyPlayed: [], dataSaver: false, dataSaverLevel: 'off', downloadLyricsOffline: false, autoCachePlayed: true, liquidGlass: true, theme: 'dark', accentColor: 'orange', lyricsColor: 'white', presetTint: 'none', activePreset: 'glass', avatarUrl: null };
 
 let activeTrackData = null;
 let activeBlobUrl = null; // object URL for the currently-playing downloaded track, revoked on track change
@@ -81,7 +81,17 @@ function shuffleArray(arr) {
 function fetchWithTimeout(url, ms, options = {}) {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), ms);
-    return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(t));
+    let onAbort = null;
+    if (options.signal) {
+        onAbort = () => ctrl.abort();
+        if (options.signal.aborted) ctrl.abort();
+        else options.signal.addEventListener('abort', onAbort, { once: true });
+    }
+    const next = { ...options, signal: ctrl.signal };
+    return fetch(url, next).finally(() => {
+        clearTimeout(t);
+        if (options.signal && onAbort) options.signal.removeEventListener('abort', onAbort);
+    });
 }
 /* Retry wrapper with exponential backoff — enough attempts to ride out a flaky
    mirror without the multi-second stalls of the old 8x1.5s loop. */
@@ -255,7 +265,7 @@ function createTrackCardHTML(track, opts = {}) {
     const isPlaying = activeTrackData && activeTrackData.id === track.id && track.type === 'song';
     const artClass = track.type === 'artist' ? 'round' : '';
     const art = track.thumb && track.thumb !== PLAYLIST_ART
-        ? `<img class="${artClass}" src="${escapeHtml(track.thumb)}" loading="lazy" alt="" onerror="handleThumbError(this, '${escapeHtml(track.id || '')}', 'generic-cover ${artClass}')">`
+        ? `<img class="${artClass}" src="${escapeHtml(track.thumb)}" loading="lazy" decoding="async" alt="" onerror="handleThumbError(this, '${escapeHtml(track.id || '')}', 'generic-cover ${artClass}')">`
         : `<div class="generic-cover ${artClass}"><i class="ri-${track.type === 'playlist' ? 'play-list-2' : 'music-2'}-line"></i></div>`;
 
     const trash = opts.collectionId && String(opts.collectionId).startsWith('pl_')
@@ -304,7 +314,7 @@ function createTrackRowHTML(track, opts = {}) {
     const key = regTrack(track, opts);
     const isPlaying = activeTrackData && activeTrackData.id === track.id;
     const art = track.thumb && track.thumb !== PLAYLIST_ART
-        ? `<img class="row-art" src="${escapeHtml(track.thumb)}" loading="lazy" alt="" onerror="handleThumbError(this, '${escapeHtml(track.id || '')}', 'row-art generic-cover')">`
+        ? `<img class="row-art" src="${escapeHtml(track.thumb)}" loading="lazy" decoding="async" alt="" onerror="handleThumbError(this, '${escapeHtml(track.id || '')}', 'row-art generic-cover')">`
         : `<div class="row-art generic-cover"><i class="ri-music-2-line"></i></div>`;
     const downloaded = isDownloaded(track.id);
     return `
@@ -330,7 +340,7 @@ function createMiniTrackRowHTML(track, opts = {}) {
     const key = regTrack(track, opts);
     const isPlaying = activeTrackData && activeTrackData.id === track.id;
     const art = track.thumb && track.thumb !== PLAYLIST_ART
-        ? `<img class="row-art" src="${escapeHtml(track.thumb)}" loading="lazy" alt="" onerror="handleThumbError(this, '${escapeHtml(track.id || '')}', 'row-art generic-cover')">`
+        ? `<img class="row-art" src="${escapeHtml(track.thumb)}" loading="lazy" decoding="async" alt="" onerror="handleThumbError(this, '${escapeHtml(track.id || '')}', 'row-art generic-cover')">`
         : `<div class="row-art generic-cover"><i class="ri-music-2-line"></i></div>`;
     const downloaded = isDownloaded(track.id);
     return `
@@ -646,6 +656,34 @@ async function fetchLyricsForDownload(track) {
     return null;
 }
 
+// Playback cache: intentionally starts AFTER playback has begun so the extra
+// download cannot delay the first audible frame. One background cache job at a
+// time also prevents fast skipping through a playlist from spawning multiple
+// full-file downloads. The existing IndexedDB download format is reused.
+const autoCacheJobs = new Set();
+let autoCacheTimer = null;
+function scheduleAutoCachePlayed(track) {
+    if (!track?.id || userProfile.autoCachePlayed === false || !navigator.onLine) return;
+    if (isDownloaded(track.id) || autoCacheJobs.has(track.id)) return;
+    clearTimeout(autoCacheTimer);
+    autoCacheTimer = setTimeout(() => {
+        if (!activeTrackData || activeTrackData.id !== track.id) return;
+        if (isDownloaded(track.id) || autoCacheJobs.has(track.id) || userProfile.autoCachePlayed === false) return;
+        autoCacheJobs.add(track.id);
+        // Let the player own the network for a little while before downloading
+        // the full blob. This keeps startup/first-play latency unchanged.
+        setTimeout(async () => {
+            try {
+                if (userProfile.autoCachePlayed !== false && navigator.onLine && !isDownloaded(track.id)) {
+                    await downloadTrackForOffline(track, { silent: true });
+                }
+            } catch (e) {}
+            autoCacheJobs.delete(track.id);
+            refreshDownloadBadges(track.id);
+        }, 1200);
+    }, 2500);
+}
+
 async function downloadTrackForOffline(track, opts = {}) {
     const { silent = false } = opts;
     if (!track?.id) return false;
@@ -777,6 +815,8 @@ function openRowSheet(key) {
         <div class="row-sheet-action ${downloaded ? 'on' : ''}" onclick="rowSheetToggleDownload()">
             <i class="ri-download-2-${downloaded ? 'fill' : 'line'}"></i> ${downloaded ? 'Remove download' : 'Download for offline'}
         </div>
+        <div class="row-sheet-action" onclick="rowSheetPlayNext()"><i class="ri-skip-forward-line"></i> Play next</div>
+        <div class="row-sheet-action" onclick="rowSheetAddToQueue()"><i class="ri-play-list-2-line"></i> Add to queue</div>
         <div class="row-sheet-action" onclick="rowSheetAddToPlaylist()"><i class="ri-play-list-add-line"></i> Add to a playlist</div>
         ${removeRow}`;
 
@@ -810,6 +850,16 @@ function rowSheetRemove() {
         openCollection('liked');
         showToast("Removed from Liked Songs", true);
     }
+    closeRowSheet();
+}
+function rowSheetPlayNext() {
+    const entry = TRACK_REG.get(rowSheetKey);
+    if (entry) addToQueue(entry.track, { playNext: true });
+    closeRowSheet();
+}
+function rowSheetAddToQueue() {
+    const entry = TRACK_REG.get(rowSheetKey);
+    if (entry) addToQueue(entry.track);
     closeRowSheet();
 }
 function rowSheetAddToPlaylist() {
@@ -990,6 +1040,7 @@ async function executeLogin(user, pass, auto = false) {
                 dataSaver: !!data.profile.dataSaver,
                 dataSaverLevel: ['off', 'saver', 'ultra'].includes(data.profile.dataSaverLevel) ? data.profile.dataSaverLevel : (data.profile.dataSaver ? 'saver' : 'off'),
                 downloadLyricsOffline: !!data.profile.downloadLyricsOffline,
+                autoCachePlayed: data.profile.autoCachePlayed === undefined ? true : !!data.profile.autoCachePlayed,
                 // undefined = this account has never touched the setting (brand new,
                 // or predates it) -> use the new default (on). An explicit past
                 // choice (true or false) is always respected either way.
@@ -1053,6 +1104,11 @@ function applyIdentityUI(name) {    const loggedIn = !!name;
         document.querySelectorAll('.data-saver-option').forEach(b => b.classList.toggle('active', b.dataset.level === dsLevel));
         const lyToggle = $('lyrics-offline-toggle');
         if (lyToggle) lyToggle.classList.toggle('on', !!userProfile.downloadLyricsOffline);
+        const autoCacheToggle = $('auto-cache-toggle');
+        if (autoCacheToggle) {
+            autoCacheToggle.classList.toggle('on', userProfile.autoCachePlayed !== false);
+            autoCacheToggle.setAttribute('aria-checked', String(userProfile.autoCachePlayed !== false));
+        }
         const lgToggle = $('liquid-glass-toggle');
         if (lgToggle) lgToggle.classList.toggle('on', !!userProfile.liquidGlass);
         const themeToggle = $('theme-mode-toggle');
@@ -1251,6 +1307,7 @@ function saveDeviceSettings() {
             dataSaver: !!userProfile.dataSaver,
             dataSaverLevel: userProfile.dataSaverLevel || 'off',
             downloadLyricsOffline: !!userProfile.downloadLyricsOffline,
+            autoCachePlayed: userProfile.autoCachePlayed !== false,
             liquidGlass: !!userProfile.liquidGlass,
             theme: userProfile.theme === 'light' ? 'light' : 'dark',
             accentColor: userProfile.accentColor || 'orange',
@@ -1269,6 +1326,7 @@ function loadDeviceSettings() {
         userProfile.dataSaver = !!s.dataSaver;
         userProfile.dataSaverLevel = ['off', 'saver', 'ultra'].includes(s.dataSaverLevel) ? s.dataSaverLevel : (s.dataSaver ? 'saver' : 'off');
         userProfile.downloadLyricsOffline = !!s.downloadLyricsOffline;
+        userProfile.autoCachePlayed = s.autoCachePlayed !== false;
         userProfile.liquidGlass = !!s.liquidGlass;
         userProfile.theme = s.theme === 'light' ? 'light' : 'dark';
         userProfile.accentColor = s.accentColor || 'orange';
@@ -1301,6 +1359,18 @@ function toggleLyricsOffline() {
     showToast(userProfile.downloadLyricsOffline ? "New downloads will also save lyrics for offline" : "Lyrics won't be saved with new downloads");
     saveDeviceSettings();
     syncProfile();
+}
+
+function toggleAutoCachePlayed() {
+    userProfile.autoCachePlayed = !userProfile.autoCachePlayed;
+    const el = $('auto-cache-toggle');
+    if (el) {
+        el.classList.toggle('on', userProfile.autoCachePlayed);
+        el.setAttribute('aria-checked', String(userProfile.autoCachePlayed));
+    }
+    saveDeviceSettings();
+    syncProfile();
+    showToast(userProfile.autoCachePlayed ? 'Played songs will be cached automatically' : 'Automatic caching disabled');
 }
 
 function toggleLiquidGlass() {
@@ -1580,7 +1650,7 @@ function handleLiveTyping(val) {
             if (suggestAbort) suggestAbort.abort();
             const ac = new AbortController();
             suggestAbort = ac;
-            const res = await fetch(`${NEW_HUB_BACKEND}/api/suggestions-proxy?q=${encodeURIComponent(val)}`, { signal: ac.signal });
+            const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/suggestions-proxy?q=${encodeURIComponent(val)}`, 3500, { signal: ac.signal });
             const list = await res.json();
             if (suggestAbort !== ac) return; // a newer keystroke/search superseded this
             if (justSearched) return;        // the search already completed while this was in flight — don't pop it
@@ -1616,6 +1686,21 @@ function setSearchFilter(filter) {
     if (currentSearchQuery) executeSearch(currentSearchQuery);
 }
 
+async function fetchSearchFast(url) {
+    try {
+        const res = await fetchWithTimeout(url, 6500);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    } catch (first) {
+        // One quick retry is enough for transient edge/network misses; the old
+        // generic retry wrapper could spend 20s+ on a search before giving up.
+        await new Promise(r => setTimeout(r, 180));
+        const res = await fetchWithTimeout(url, 6500);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+    }
+}
+
 let searchToken = 0;
 async function executeSearch(keyword, silentRound = 0) {
     const grid = $('search-output-grid');
@@ -1632,7 +1717,7 @@ async function executeSearch(keyword, silentRound = 0) {
     }
     try {
         const apiFilter = currentSearchFilter === 'artist' ? 'artists' : currentSearchFilter;
-        const results = await fetchJsonRetry(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(keyword)}&f=${apiFilter}`);
+        const results = await fetchSearchFast(`${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(keyword)}&f=${apiFilter}`);
         if (myToken !== searchToken) return; // a newer search took over
 
         let items = Array.isArray(results) ? results : (results.items || results.contents || []);
@@ -1909,7 +1994,7 @@ function populateLibraryUI() {
     (userProfile.customPlaylists || []).forEach(pl => {
         const coverSrc = pl.thumb || pl.tracks?.[0]?.thumb || null;
         const art = coverSrc
-            ? `<img src="${escapeHtml(coverSrc)}" loading="lazy" alt="" onerror="this.outerHTML='<div class=&quot;generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+            ? `<img src="${escapeHtml(coverSrc)}" loading="lazy" decoding="async" alt="" onerror="this.outerHTML='<div class=&quot;generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
             : `<div class="generic-cover"><i class="ri-music-2-line"></i></div>`;
         const sourceBadge = pl.source ? `<span class="type-tag">${escapeHtml(pl.source)}</span>` : '';
         libPls.insertAdjacentHTML('beforeend', `
@@ -2940,6 +3025,78 @@ async function initializeTrackStream(track, opts = {}) {
     return ok;
 }
 
+function addToQueue(track, { playNext = false } = {}) {
+    if (!track?.id || track.type === 'artist' || track.type === 'playlist') return false;
+    const item = { ...track, type: 'song' };
+    if (playNext) {
+        // With a normal one-off song there is no queue index yet; Play next
+        // therefore belongs at position 0. When a collection queue is active,
+        // insert immediately after the current track.
+        const insertAt = currentQueueIndex >= 0 ? Math.min(currentQueueIndex + 1, playbackQueue.length) : 0;
+        playbackQueue.splice(insertAt, 0, item);
+        showToast(`Playing next: ${item.title}`);
+    } else {
+        playbackQueue.push(item);
+        showToast(`Added to queue: ${item.title}`);
+    }
+    saveSessionState(true);
+    renderQueuePanel();
+    return true;
+}
+
+function removeFromQueue(index) {
+    if (index < 0 || index >= playbackQueue.length) return;
+    const wasBeforeCurrent = index < currentQueueIndex;
+    const [removed] = playbackQueue.splice(index, 1);
+    if (wasBeforeCurrent) currentQueueIndex--;
+    if (playbackQueue.length === 0) currentQueueIndex = -1;
+    saveSessionState(true);
+    renderQueuePanel();
+    showToast(`Removed ${removed?.title || 'track'} from queue`, true);
+}
+
+function clearPlaybackQueue() {
+    playbackQueue = [];
+    currentQueueIndex = -1;
+    prefetchedQueueTrackId = null;
+    prefetchedQueueUrl = null;
+    saveSessionState(true);
+    renderQueuePanel();
+    showToast('Queue cleared', true);
+}
+
+function openQueuePanel() {
+    renderQueuePanel();
+    $('queue-backdrop')?.classList.add('open');
+    $('queue-panel')?.classList.add('open');
+}
+function closeQueuePanel() {
+    $('queue-backdrop')?.classList.remove('open');
+    $('queue-panel')?.classList.remove('open');
+}
+function renderQueuePanel() {
+    const body = $('queue-panel-body');
+    const count = $('queue-panel-count');
+    if (!body) return;
+    if (count) count.textContent = playbackQueue.length ? `${playbackQueue.length} in queue` : 'Queue is empty';
+    if (!playbackQueue.length) {
+        body.innerHTML = `<div class="queue-empty"><i class="ri-play-list-2-line"></i><h4>Your queue is empty</h4><p>Use ⋮ on any song to add it here, or choose Play next.</p></div>`;
+        return;
+    }
+    body.innerHTML = playbackQueue.map((t, i) => {
+        const key = regTrack(t, { queueIndex: i });
+        const isCurrent = i === currentQueueIndex && activeTrackData?.id === t.id;
+        const art = t.thumb && t.thumb !== PLAYLIST_ART
+            ? `<img src="${escapeHtml(t.thumb)}" alt="" loading="lazy" onerror="this.src='${escapeHtml(canonicalThumbUrl(t.id))}'">`
+            : `<div class="queue-art generic-cover"><i class="ri-music-2-line"></i></div>`;
+        return `<div class="queue-item ${isCurrent ? 'current' : ''}" onclick="playFromQueueContext(${i}); closeQueuePanel();">
+            ${art}
+            <div class="queue-item-meta"><h4>${escapeHtml(t.title)}</h4><p>${escapeHtml(t.artist || '')}</p>${isCurrent ? '<span>Now playing</span>' : ''}</div>
+            <button class="icon-btn" title="Remove" onclick="event.stopPropagation(); removeFromQueue(${i})"><i class="ri-close-line"></i></button>
+        </div>`;
+    }).join('');
+}
+
 /* ---- queue logic ---- */
 function playFromQueueContext(index) {
     if (index >= 0 && index < playbackQueue.length) {
@@ -3685,7 +3842,7 @@ audioEngine.addEventListener('loadedmetadata', updateProgressUI);
 audioEngine.addEventListener('play', () => setPlayIcons('pause'));
 audioEngine.addEventListener('pause', () => { setPlayIcons('play'); saveSessionState(true); });
 audioEngine.addEventListener('waiting', () => setPlayIcons('loading'));
-audioEngine.addEventListener('playing', () => setPlayIcons('pause'));
+audioEngine.addEventListener('playing', () => { setPlayIcons('pause'); scheduleAutoCachePlayed(activeTrackData); renderQueuePanel(); });
 audioEngine.addEventListener('ended', () => {
     if (isLoopingActive) { audioEngine.currentTime = 0; audioEngine.play(); }
     else playNextTrack();
@@ -3980,7 +4137,7 @@ function renderPlSuggestList(plId, songs) {
     list.innerHTML = songs.map(t => {
         const key = regTrack(t, { collectionId: plId, suggestion: true });
         const art = t.thumb && t.thumb !== PLAYLIST_ART
-            ? `<img class="row-art" src="${escapeHtml(t.thumb)}" loading="lazy" alt="" onerror="this.outerHTML='<div class=&quot;row-art generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
+            ? `<img class="row-art" src="${escapeHtml(t.thumb)}" loading="lazy" decoding="async" alt="" onerror="this.outerHTML='<div class=&quot;row-art generic-cover&quot;><i class=&quot;ri-music-2-line&quot;></i></div>'">`
             : `<div class="row-art generic-cover"><i class="ri-music-2-line"></i></div>`;
         return `
         <div class="track-row" data-id="${escapeHtml(t.id || '')}" data-act="open" data-key="${key}">
@@ -4029,13 +4186,8 @@ function openImportPlaylistModal() {
 function closeImportModal() { $('import-playlist-modal').classList.remove('open'); }
 
 function extractYtmPlaylistId(url) {
-    url = String(url || '').trim();
-    // Normal share link: ?list=... or &list=...
     const m = url.match(/[?&]list=([\w-]+)/);
-    if (m) return m[1];
-    // Someone pasted just the raw playlist ID instead of a link
-    if (/^(PL|OL|RD|UL|FL|LL|UU)[A-Za-z0-9_-]{6,}$/.test(url)) return url;
-    return null;
+    return m ? m[1] : null;
 }
 function extractSpotifyPlaylistUrl(url) {
     return /open\.spotify\.com\/playlist\//.test(url) ? url.split('?')[0] : null;
@@ -4070,123 +4222,34 @@ async function submitImportPlaylist() {
     btn.disabled = false;
 }
 
-/* ---- Client-side fallback playlist resolvers ----
-YouTube often answers datacenter IPs (the Worker) with "private"/empty for
-perfectly public playlists. So if the worker importer comes back with
-nothing, we also try public Invidious/Piped APIs straight from the browser
-(they send CORS headers, and from a normal connection YouTube answers). */
-function invidiousOrigins() {
-    const origins = [];
-    STREAM_MIRRORS.forEach(m => {
-        if (m.startsWith(NEW_HUB_BACKEND)) return; // our own worker has no playlist endpoint
-        try { origins.push(new URL(m).origin); } catch (e) {}
-    });
-    return origins;
-}
-
-const PIPED_MIRRORS = [
-    'https://pipedapi.kavin.rocks',
-    'https://pipedapi.adminforge.de',
-    'https://api.piped.private.coffee'
-];
-
-function videoIdFromUrl(u) {
-    const s = String(u || '');
-    const m = s.match(/[?&]v=([\w-]{11})/) || s.match(/youtu\.be\/([\w-]{11})/);
-    return m ? m[1] : null;
-}
-
-async function fetchPlaylistFromInvidious(listId) {
-    const results = await Promise.allSettled(invidiousOrigins().map(async origin => {
-        const res = await fetchWithTimeout(`${origin}/api/v1/playlists/${encodeURIComponent(listId)}`, 9000);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        const videos = Array.isArray(data.videos) ? data.videos : [];
-        if (!videos.length) throw new Error('empty');
-        return {
-            title: data.title || null,
-            items: videos.map(v => ({
-                id: v.videoId || v.id,
-                title: v.title,
-                artist: v.author || 'Unknown Artist',
-                thumb: (Array.isArray(v.videoThumbnails) && v.videoThumbnails.length)
-                    ? v.videoThumbnails[v.videoThumbnails.length - 1].url
-                    : `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${v.videoId || v.id}/mqdefault.webp`
-            })).filter(t => t.id && t.title)
-        };
-    }));
-    for (const r of results) if (r.status === 'fulfilled' && r.value.items.length) return r.value;
-    return null;
-}
-
-async function fetchPlaylistFromPiped(listId) {
-    const results = await Promise.allSettled(PIPED_MIRRORS.map(async origin => {
-        const res = await fetchWithTimeout(`${origin}/playlists/${encodeURIComponent(listId)}`, 9000);
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        const streams = (Array.isArray(data.relatedStreams) ? data.relatedStreams : [])
-            .filter(s => s.type === 'stream');
-        if (!streams.length) throw new Error('empty');
-        return {
-            title: data.name || null,
-            items: streams.map(s => ({
-                id: videoIdFromUrl(s.url) || s.id,
-                title: s.title,
-                artist: s.uploaderName || 'Unknown Artist',
-                thumb: s.thumbnail || null
-            })).filter(t => t.id && t.title)
-        };
-    }));
-    for (const r of results) if (r.status === 'fulfilled' && r.value.items.length) return r.value;
-    return null;
-}
-
 async function importFromYoutubeMusic(listId) {
-    let items = [];
-    let plName = null;
-    let workerNote = '';
-
-    // 1) Dedicated worker importer — unchanged first attempt
-    try {
-        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/playlist-import-proxy?id=${encodeURIComponent(listId)}`, 18000);
-        const data = await res.json().catch(() => null);
-        if (!res.ok || !data) throw new Error(data?.error || "Couldn't reach the playlist importer.");
-        if (data.error) {
-            const d = data.diagnostics;
-            const detail = d ? `\n\n(Data API: ${d.dataApi}\nYTM browse: ${d.ytmBrowse}\nYTM page: ${d.ytmHtml}\nyoutubei.js: ${d.ytMusic}\nInnerTube: ${d.innerTube}\nScrape: ${d.scrape})` : '';
-            workerNote = data.error + detail;
-        } else {
-            items = Array.isArray(data.items) ? data.items : [];
-            plName = data.title || null;
-        }
-    } catch (e) { workerNote = e.message || 'worker failed'; }
-
-    // 2) Worker gave nothing → resolve from the browser via public mirrors,
-    // so YouTube's datacenter-IP "private" block doesn't get the final word.
-    if (!items.length) {
-        const fb = await fetchPlaylistFromInvidious(listId) || await fetchPlaylistFromPiped(listId);
-        if (fb) { items = fb.items; plName = plName || fb.title; }
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/playlist-import-proxy?id=${encodeURIComponent(listId)}`, 18000);
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data) throw new Error(data?.error || "Couldn't reach the playlist importer.");
+    if (data.error) {
+        // Surface exactly which strategy failed and why (Data API / InnerTube /
+        // HTML scrape) instead of a single opaque message — this is what
+        // actually lets a failure get diagnosed and fixed for good, instead of
+        // guessing again next time.
+        const d = data.diagnostics;
+        const detail = d ? `\n\n(Data API: ${d.dataApi}\nYTM browse: ${d.ytmBrowse}\nYTM page: ${d.ytmHtml}\nyoutubei.js: ${d.ytMusic}\nInnerTube: ${d.innerTube}\nScrape: ${d.scrape})` : '';
+        throw new Error(data.error + detail);
     }
 
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) throw new Error("This playlist looks empty, private, or couldn't be read.");
+
+    const plName = data.title || "Imported playlist";
     const tracks = items.filter(t => t.id && t.title).map(t => ({
         id: t.id, title: t.title, artist: t.artist || "Unknown Artist",
-        thumb: t.thumb || `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${t.id}/mqdefault.webp`,
+        thumb: t.thumb || `https://wsrv.nl?url=https://i.ytimg.com/vi_webp/${t.id}/mqdefault.webp`,
         type: 'song'
     }));
-
-    if (!tracks.length) {
-        throw new Error(
-            "Couldn't read that playlist from any source." +
-            (workerNote ? `\n\nImporter said: ${workerNote}` : '') +
-            "\n\nMake sure the playlist is set to Public (not Unlisted/Private) and try again."
-        );
-    }
-
-    const pl = { id: 'pl_' + Date.now(), name: plName || "Imported playlist", tracks, source: 'YouTube Music', thumb: tracks[0]?.thumb || null };
+    const pl = { id: 'pl_' + Date.now(), name: plName, tracks, source: 'YouTube Music', thumb: tracks[0]?.thumb || null };
     userProfile.customPlaylists.push(pl);
     syncProfile();
     closeImportModal();
-    showToast(`Imported "${pl.name}" — ${tracks.length} track${tracks.length === 1 ? '' : 's'}`);
+    showToast(`Imported "${plName}" — ${tracks.length} track${tracks.length === 1 ? '' : 's'}`);
 }
 
 async function importFromSpotify(playlistUrl) {
@@ -4699,6 +4762,7 @@ function initSwipeGestures() {
 
     populateLibraryUI();
     renderRecentlyPlayed();
+    renderQueuePanel();
     initBackButtonHandling();             // hardware/browser Back = in-app back, never exits
     initSwipeGestures();                  // swipe down to close the player / lyrics sheets
     restoreSessionState();                // bring back the last song + position, ready to resume on Play
