@@ -20,6 +20,7 @@ import {
   Square,
   ListCheck,
   FolderPlus,
+  ArrowUpDown,
   X,
 } from 'lucide-react';
 import {
@@ -68,10 +69,13 @@ export const CollectionView: React.FC = () => {
 
   // Multi-select & Drag-and-drop state
   const [isSelectMode, setIsSelectMode] = useState(false);
+  const [isReorderMode, setIsReorderMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [showAddToPlaylistMenu, setShowAddToPlaylistMenu] = useState(false);
+  const touchStartIndexRef = useRef<number | null>(null);
+  const touchCurrentIndexRef = useRef<number | null>(null);
 
   const target = collectionTarget;
   if (!target) return null;
@@ -239,7 +243,62 @@ export const CollectionView: React.FC = () => {
     downloadPlaylist(selectedTracks);
   };
 
-  // Drag and drop reordering handlers
+  // Reordering handlers (Buttons, Touch drag, Desktop drag)
+  const moveTrack = (fromIndex: number, direction: 'up' | 'down') => {
+    const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
+    if (toIndex < 0 || toIndex >= tracks.length) return;
+    const updated = [...tracks];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    setTracks(updated);
+    if (target.type === 'custom-playlist' && target.id) {
+      updatePlaylistTracks(target.id, updated);
+    }
+    showToast(`Moved "${moved.title}" ${direction === 'up' ? 'up' : 'down'}`);
+  };
+
+  const handleTouchStart = (index: number) => {
+    touchStartIndexRef.current = index;
+    touchCurrentIndexRef.current = index;
+    setDraggedIndex(index);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (touchStartIndexRef.current === null) return;
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!el) return;
+    const row = el.closest('[data-track-index]');
+    if (row) {
+      const newIdx = parseInt(row.getAttribute('data-track-index') || '', 10);
+      if (!isNaN(newIdx) && newIdx !== dragOverIndex) {
+        setDragOverIndex(newIdx);
+        touchCurrentIndexRef.current = newIdx;
+      }
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartIndexRef.current !== null && touchCurrentIndexRef.current !== null) {
+      const from = touchStartIndexRef.current;
+      const to = touchCurrentIndexRef.current;
+      if (from !== to && from >= 0 && to >= 0 && from < tracks.length && to < tracks.length) {
+        const updated = [...tracks];
+        const [moved] = updated.splice(from, 1);
+        updated.splice(to, 0, moved);
+        setTracks(updated);
+        if (target.type === 'custom-playlist' && target.id) {
+          updatePlaylistTracks(target.id, updated);
+        }
+        showToast('Playlist reordered');
+      }
+    }
+    touchStartIndexRef.current = null;
+    touchCurrentIndexRef.current = null;
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
@@ -386,8 +445,25 @@ export const CollectionView: React.FC = () => {
               </>
             )}
 
+            {/* Reorder Mode Toggle (Custom Playlists) */}
+            {target.type === 'custom-playlist' && target.id && tracks.length > 1 && !isSelectMode && (
+              <button
+                id="toggle-reorder-mode-btn"
+                onClick={() => setIsReorderMode(!isReorderMode)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm transition-all ${
+                  isReorderMode
+                    ? 'bg-[#ff6b1a] text-black shadow-lg shadow-[#ff6b1a]/20 scale-105'
+                    : 'bg-white/10 hover:bg-white/15 text-white/80 hover:text-white'
+                }`}
+                title="Reorder songs in playlist"
+              >
+                <ArrowUpDown className="w-4 h-4" />
+                <span>{isReorderMode ? 'Done Reorder' : 'Reorder'}</span>
+              </button>
+            )}
+
             {/* Select Mode Toggle */}
-            {tracks.length > 0 && (
+            {tracks.length > 0 && !isReorderMode && (
               <button
                 onClick={() => {
                   setIsSelectMode(!isSelectMode);
@@ -552,6 +628,22 @@ export const CollectionView: React.FC = () => {
         </div>
       )}
 
+      {/* Reorder Mode Sticky Toolbar */}
+      {isReorderMode && (
+        <div className="sticky top-16 z-30 flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#ff6b1a]/20 backdrop-blur-xl border border-[#ff6b1a]/40 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="flex items-center gap-2 text-xs font-bold text-white">
+            <ArrowUpDown className="w-4 h-4 text-[#ff6b1a] flex-shrink-0" />
+            <span>Tap ▲ or ▼ to move songs up/down, or drag the handle.</span>
+          </div>
+          <button
+            onClick={() => setIsReorderMode(false)}
+            className="px-3.5 py-1.5 rounded-xl bg-[#ff6b1a] hover:bg-[#ff7d33] text-black text-xs font-black transition-colors shadow-md flex-shrink-0 cursor-pointer"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
       {/* Track List */}
       <div className="flex flex-col gap-1 mt-4">
         {loading ? (
@@ -569,12 +661,13 @@ export const CollectionView: React.FC = () => {
           tracks.map((t, idx) => (
             <div
               key={`${t.id}-${idx}`}
+              data-track-index={idx}
               draggable={target.type === 'custom-playlist' && !isSelectMode}
               onDragStart={(e) => handleDragStart(e, idx)}
               onDragOver={(e) => handleDragOver(e, idx)}
               onDrop={(e) => handleDrop(e, idx)}
               className={`transition-all rounded-xl ${
-                dragOverIndex === idx ? 'border-t-2 border-[#ff6b1a] bg-[#ff6b1a]/5' : ''
+                dragOverIndex === idx ? 'border-t-2 border-[#ff6b1a] bg-[#ff6b1a]/10' : ''
               }`}
             >
               <TrackRow
@@ -585,11 +678,19 @@ export const CollectionView: React.FC = () => {
                 isSelected={selectedIds.includes(t.id)}
                 onToggleSelect={() => handleToggleSelect(t.id)}
                 onPlay={() => playCollectionFromIndex(tracks, idx)}
+                isReorderMode={isReorderMode}
+                canMoveUp={idx > 0}
+                canMoveDown={idx < tracks.length - 1}
+                onMoveUp={() => moveTrack(idx, 'up')}
+                onMoveDown={() => moveTrack(idx, 'down')}
                 dragHandleProps={
                   target.type === 'custom-playlist' && !isSelectMode
                     ? {
                         draggable: true,
                         onDragStart: (e: any) => handleDragStart(e, idx),
+                        onTouchStart: () => handleTouchStart(idx),
+                        onTouchMove: (e: any) => handleTouchMove(e),
+                        onTouchEnd: () => handleTouchEnd(),
                       }
                     : undefined
                 }

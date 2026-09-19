@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useMusic } from '../context/MusicContext';
 import { Track } from '../types';
-import { Play, MoreVertical, Heart, Music2, Check, GripVertical } from 'lucide-react';
+import { Play, MoreVertical, Heart, Music2, Check, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 import { isDownloaded, getOfflineThumbUrl, getDownloadQuality } from '../services/storage';
 import { canonicalThumbUrl } from '../services/api';
 import { DownloadBadge } from './DownloadBadge';
@@ -15,6 +15,11 @@ interface TrackRowProps {
   isSelected?: boolean;
   onToggleSelect?: () => void;
   dragHandleProps?: any;
+  isReorderMode?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
 export const TrackRow: React.FC<TrackRowProps> = ({
@@ -26,6 +31,11 @@ export const TrackRow: React.FC<TrackRowProps> = ({
   isSelected = false,
   onToggleSelect,
   dragHandleProps,
+  isReorderMode = false,
+  canMoveUp = false,
+  canMoveDown = false,
+  onMoveUp,
+  onMoveDown,
 }) => {
   const {
     activeTrack,
@@ -159,7 +169,36 @@ export const TrackRow: React.FC<TrackRowProps> = ({
       </div>
 
       {/* Actions */}
-      {!isSelectMode && (
+      {isReorderMode ? (
+        <div className="flex items-center gap-1 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveUp?.();
+            }}
+            disabled={!canMoveUp}
+            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 active:scale-90 disabled:opacity-20 disabled:pointer-events-none flex items-center justify-center text-white transition-all shadow-sm"
+            title="Move Up"
+            aria-label="Move track up"
+          >
+            <ChevronUp className="w-4 h-4 stroke-[2.5]" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveDown?.();
+            }}
+            disabled={!canMoveDown}
+            className="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 active:scale-90 disabled:opacity-20 disabled:pointer-events-none flex items-center justify-center text-white transition-all shadow-sm"
+            title="Move Down"
+            aria-label="Move track down"
+          >
+            <ChevronDown className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        </div>
+      ) : !isSelectMode ? (
         <div className="flex items-center gap-1">
           <button
             onClick={(e) => {
@@ -186,7 +225,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
             <MoreVertical className="w-4 h-4" />
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

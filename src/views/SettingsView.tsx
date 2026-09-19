@@ -227,19 +227,21 @@ export const SettingsView: React.FC = () => {
             <div className="pt-3 border-t border-white/10 flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-white/90">Auto-Cache Quality</span>
+                  <span className="text-xs font-bold text-white/90">Auto-Cache Audio Quality</span>
                   <p className="text-[11px] text-white/40 mt-0.5">
-                    Saver quality is used by default to protect device storage. If you manually download that song later, it will automatically upgrade to High Quality.
+                    Stable 160 kbps is the fast default balance. Select High Quality (320 kbps) to automatically cache in full studio fidelity.
                   </p>
                 </div>
               </div>
 
-              <div className="flex bg-black/40 p-1 rounded-xl border border-white/5 gap-1 max-w-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-4 bg-black/40 p-1 rounded-xl border border-white/5 gap-1 max-w-lg">
                 {[
-                  { id: 'saver', label: 'Saver (96 kbps) • Default' },
-                  { id: 'ultra', label: 'Ultra Saver (48 kbps)' },
+                  { id: 'stable', label: 'Stable (160k) • Default' },
+                  { id: 'high', label: 'High (320 kbps)' },
+                  { id: 'saver', label: 'Saver (96 kbps)' },
+                  { id: 'ultra', label: 'Ultra (48 kbps)' },
                 ].map((opt) => {
-                  const current = userProfile.autoCacheQuality || 'saver';
+                  const current = userProfile.autoCacheQuality || 'stable';
                   const isSelected = current === opt.id;
                   return (
                     <button
@@ -250,10 +252,10 @@ export const SettingsView: React.FC = () => {
                           autoCacheQuality: opt.id as any,
                         });
                       }}
-                      className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold transition-all text-center ${
                         isSelected
-                          ? 'bg-sky-500 text-black shadow-md'
-                          : 'text-white/60 hover:text-white'
+                          ? 'bg-[#ff6b1a] text-black shadow-md'
+                          : 'text-white/60 hover:text-white hover:bg-white/5'
                       }`}
                     >
                       {opt.label}

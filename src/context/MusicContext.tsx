@@ -171,7 +171,7 @@ const defaultProfile: UserProfile = {
   dataSaver: false,
   dataSaverLevel: 'off',
   downloadQuality: 'high',
-  autoCacheQuality: 'saver',
+  autoCacheQuality: 'stable',
   downloadLyricsOffline: false,
   autoCachePlayed: true,
   liquidGlass: true,
@@ -265,12 +265,41 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     prefetchAudio.muted = true;
     prefetchAudioRef.current = prefetchAudio;
 
-    const onPlay = () => setIsPlaying(true);
-    const onPause = () => setIsPlaying(false);
+    const onPlay = () => {
+      setIsPlaying(true);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
+    const onPause = () => {
+      setIsPlaying(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+    };
     const onWaiting = () => setIsBuffering(true);
-    const onPlaying = () => setIsBuffering(false);
+    const onPlaying = () => {
+      setIsBuffering(false);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+    };
+    const updatePositionState = () => {
+      if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+        if (audio && isFinite(audio.duration) && audio.duration > 0) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: audio.duration,
+              playbackRate: audio.playbackRate || 1,
+              position: Math.max(0, Math.min(audio.currentTime, audio.duration)),
+            });
+          } catch {}
+        }
+      }
+    };
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
+      updatePositionState();
       // Auto prefetch check: trigger at 18s left in song
       if (
         !hasPrefetchedNextRef.current &&
@@ -284,6 +313,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const onLoadedMetadata = () => {
       setDuration(audio.duration || 0);
       setIsBuffering(false);
+      updatePositionState();
     };
     const onEnded = () => {
       if (audio.loop) {
@@ -684,17 +714,58 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateMediaSession = (t: Track) => {
     if (!('mediaSession' in navigator)) return;
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: t.title,
-      artist: t.artist,
-      artwork: [
-        { src: t.thumb || FALLBACK_ART, sizes: '512x512', type: 'image/png' },
-      ],
-    });
-    navigator.mediaSession.setActionHandler('play', togglePlay);
-    navigator.mediaSession.setActionHandler('pause', togglePlay);
-    navigator.mediaSession.setActionHandler('nexttrack', playNext);
-    navigator.mediaSession.setActionHandler('previoustrack', playPrevious);
+
+    let artUrl = t.thumb || FALLBACK_ART;
+    // Upgrade JioSaavn thumbnails to 500x500 square HD
+    if (artUrl.includes('150x150.jpg')) {
+      artUrl = artUrl.replace('150x150.jpg', '500x500.jpg');
+    } else if (artUrl.includes('50x50.jpg')) {
+      artUrl = artUrl.replace('50x50.jpg', '500x500.jpg');
+    } else if (!artUrl.startsWith('blob:') && !artUrl.startsWith('data:')) {
+      // Crop to perfect 512x512 square so Samsung/Android/iOS lock screen displays crisp full square artwork
+      try {
+        if (artUrl.includes('wsrv.nl/?url=')) {
+          const parsed = new URL(artUrl);
+          parsed.searchParams.set('w', '512');
+          parsed.searchParams.set('h', '512');
+          parsed.searchParams.set('fit', 'cover');
+          artUrl = parsed.toString();
+        } else {
+          artUrl = `https://wsrv.nl/?url=${encodeURIComponent(artUrl)}&w=512&h=512&fit=cover`;
+        }
+      } catch {}
+    }
+
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: t.title,
+        artist: t.artist,
+        album: t.album || 'MOUZIKA',
+        artwork: [
+          { src: artUrl, sizes: '96x96', type: 'image/jpeg' },
+          { src: artUrl, sizes: '128x128', type: 'image/jpeg' },
+          { src: artUrl, sizes: '192x192', type: 'image/jpeg' },
+          { src: artUrl, sizes: '256x256', type: 'image/jpeg' },
+          { src: artUrl, sizes: '384x384', type: 'image/jpeg' },
+          { src: artUrl, sizes: '512x512', type: 'image/jpeg' },
+        ],
+      });
+      navigator.mediaSession.playbackState = 'playing';
+
+      navigator.mediaSession.setActionHandler('play', togglePlay);
+      navigator.mediaSession.setActionHandler('pause', togglePlay);
+      navigator.mediaSession.setActionHandler('nexttrack', playNext);
+      navigator.mediaSession.setActionHandler('previoustrack', playPrevious);
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) seekTo(details.seekTime);
+      });
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        seekBy(-(details.seekOffset || 10));
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        seekBy(details.seekOffset || 10);
+      });
+    } catch {}
   };
 
   const togglePlay = () => {
@@ -852,10 +923,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track?.id) return false;
 
     // Calculate quality target
-    let quality: '320' | '96' | '48' = '320';
+    let quality: '320' | '160' | '96' | '48' = '320';
     if (isAutoCache) {
-      const ac = userProfile.autoCacheQuality || 'saver';
-      quality = ac === 'ultra' ? '48' : '96';
+      const ac = userProfile.autoCacheQuality || 'stable';
+      quality = ac === 'high' ? '320' : ac === 'ultra' ? '48' : ac === 'saver' ? '96' : '160';
     } else {
       const dq =
         userProfile.downloadQuality ||

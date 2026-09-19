@@ -2,6 +2,7 @@ export interface Track {
   id: string;
   title: string;
   artist: string;
+  album?: string;
   thumb: string | null;
   type: 'song' | 'artist' | 'playlist' | 'video';
   duration?: number;
@@ -17,7 +18,8 @@ export interface UserProfile {
   dataSaver: boolean;
   dataSaverLevel: 'off' | 'saver' | 'ultra';
   downloadQuality?: 'high' | 'saver' | 'ultra';
-  autoCacheQuality?: 'saver' | 'ultra';
+  autoCacheQuality?: 'stable' | 'high' | 'saver' | 'ultra';
+  customAppName?: string;
   downloadLyricsOffline: boolean;
   autoCachePlayed: boolean;
   liquidGlass: boolean;
