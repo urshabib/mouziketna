@@ -21,11 +21,9 @@
     </filter>
   </defs>
 
-  <!-- Full bleed background for PWA / iOS / Android -->
   <rect width='512' height='512' fill='url(#bgGrad)'/>
   <circle cx='256' cy='256' r='200' fill='url(#aura)'/>
 
-  <!-- Pulse Icon centered (24x24 path scaled 12.5x => 300x300, offset 106, 106) -->
   <g transform='translate(106, 106) scale(12.5)' filter='url(#drop)'>
     <path d='M9 7.53861L15 21.5386L18.6594 13H23V11H17.3406L15 16.4614L9 2.46143L5.3406 11H1V13H6.6594L9 7.53861Z' fill='url(#pulseGrad)'/>
   </g>

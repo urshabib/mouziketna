@@ -12,6 +12,8 @@ import {
   Wifi,
   Loader2,
   Trash2,
+  Smartphone,
+  Download,
 } from 'lucide-react';
 import {
   getTotalDownloadedSize,
@@ -19,6 +21,7 @@ import {
   deleteAllDownloads,
 } from '../services/storage';
 import { NEW_HUB_BACKEND, fetchWithTimeout } from '../services/api';
+import { InstallModal } from '../components/InstallModal';
 
 const ACCENTS = [
   { id: 'orange', name: 'Orange', color: '#ff6b1a' },
@@ -75,6 +78,7 @@ export const SettingsView: React.FC = () => {
   const [downloadSize, setDownloadSize] = useState('0 MB');
   const [diagnosticsRunning, setDiagnosticsRunning] = useState(false);
   const [serverStats, setServerStats] = useState<Record<string, { status: string; latency?: number }>>({});
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   useEffect(() => {
     getTotalDownloadedSize().then((bytes) => setDownloadSize(formatBytes(bytes)));
@@ -510,6 +514,44 @@ export const SettingsView: React.FC = () => {
         </div>
       </section>
 
+      {/* 5. APP INSTALLATION & PWA */}
+      <section className="flex flex-col gap-4">
+        <div className="flex items-center gap-2 pb-1 border-b border-white/10">
+          <Smartphone className="w-4 h-4 text-[#ff6b1a]" />
+          <h3 className="font-extrabold text-sm uppercase tracking-wider text-white/70">
+            Install MOUZIKA to Device
+          </h3>
+        </div>
+
+        <div className="p-5 rounded-2xl bg-white/[0.04] glass-panel border border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 flex items-center justify-center shadow-lg flex-shrink-0 overflow-hidden">
+              <img
+                src="./apple-touch-icon.png"
+                alt="App Icon"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-white">Full Screen App Experience</h4>
+              <p className="text-xs text-white/50 mt-0.5 max-w-sm">
+                Install MOUZIKA directly onto your Android, iPhone, or Desktop to run standalone without browser tabs or URL bars.
+              </p>
+            </div>
+          </div>
+
+          <button
+            id="settings-install-app-btn"
+            onClick={() => setShowInstallModal(true)}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black font-black text-xs flex items-center justify-center gap-2 shadow-lg shadow-[#ff6b1a]/20 transition-all cursor-pointer flex-shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            <span>Install App</span>
+          </button>
+        </div>
+      </section>
+
       {/* Reset button */}
       <button
         onClick={() => {
@@ -539,6 +581,13 @@ export const SettingsView: React.FC = () => {
         <RotateCcw className="w-3.5 h-3.5" />
         <span>Reset Preferences to Default</span>
       </button>
+
+      {showInstallModal && (
+        <InstallModal
+          isOpen={showInstallModal}
+          onClose={() => setShowInstallModal(false)}
+        />
+      )}
     </div>
   );
 };
