@@ -958,33 +958,73 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ensurePersistentStorageOnce();
     const cleanedArtist = cleanArtistName(track.artist);
 
-    try {
-      let streamUrl: string | null = null;
+    // Resolve real YouTube ID if track has external/Spotify ID
+    let ytTrackId = track.id;
+    if (!ytTrackId || ytTrackId.startsWith('sp_') || ytTrackId.length !== 11) {
       try {
-        streamUrl = await resolveSaavnStream(
+        const found = await searchTracks(`${track.title} ${cleanedArtist}`, 'song');
+        if (found.length > 0 && found[0].id) {
+          ytTrackId = found[0].id;
+          if (!track.thumb) track.thumb = found[0].thumb;
+        }
+      } catch {}
+    }
+
+    try {
+      const candidates: string[] = [];
+
+      // 1. Cached in-memory stream if currently available
+      const cached = getCachedStreamUrl(track.id);
+      if (cached) candidates.push(cached);
+
+      // 2. Saavn high quality / saver stream
+      try {
+        const saavnUrl = await resolveSaavnStream(
           cleanTitleForLyrics(track.title) || track.title,
           cleanedArtist,
           quality,
           track.title,
           track.artist
         );
-      } catch {
-        const mirrors = await resolveMirrorStreams(track.id).catch(() => []);
-        streamUrl = mirrors[0] || null;
+        if (saavnUrl && !candidates.includes(saavnUrl)) {
+          candidates.push(saavnUrl);
+        }
+      } catch {}
+
+      // 3. Mirror streaming sources
+      try {
+        const mirrors = await resolveMirrorStreams(ytTrackId || track.id).catch(() => []);
+        for (const m of mirrors) {
+          if (m && !candidates.includes(m)) {
+            candidates.push(m);
+          }
+        }
+      } catch {}
+
+      if (candidates.length === 0) throw new Error('No stream source');
+
+      // Attempt to download from candidates until one succeeds
+      let audioBlob: Blob | null = null;
+      for (const url of candidates) {
+        try {
+          const res = await fetchWithTimeout(url, 25000);
+          if (res.ok) {
+            const blob = await res.blob();
+            if (blob && blob.size > 10000) {
+              audioBlob = blob;
+              break;
+            }
+          }
+        } catch {}
       }
 
-      if (!streamUrl) throw new Error('No stream source');
-
-      const res = await fetchWithTimeout(streamUrl, 25000);
-      if (!res.ok) throw new Error('Failed to fetch audio');
-      const audioBlob = await res.blob();
-      if (!audioBlob || !audioBlob.size) throw new Error('Empty audio');
+      if (!audioBlob) throw new Error('Failed to fetch audio stream');
 
       // Low-res thumbnail blob
       let thumbBlob: Blob | null = null;
       try {
         if (track.thumb) {
-          const tRes = await fetchWithTimeout(canonicalThumbUrl(track.id), 5000);
+          const tRes = await fetchWithTimeout(canonicalThumbUrl(ytTrackId || track.id), 5000);
           if (tRes.ok) thumbBlob = await tRes.blob();
         }
       } catch {}
@@ -1044,14 +1084,25 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
     setBulkDownloadState({ done: 0, total: unDownloaded.length, inProgress: true });
-    let count = 0;
+    let successCount = 0;
+    let failCount = 0;
     for (const t of unDownloaded) {
-      await downloadTrack(t, true);
-      count++;
-      setBulkDownloadState({ done: count, total: unDownloaded.length, inProgress: true });
+      const ok = await downloadTrack(t, true);
+      if (ok) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+      setBulkDownloadState({ done: successCount + failCount, total: unDownloaded.length, inProgress: true });
     }
-    setBulkDownloadState({ done: count, total: unDownloaded.length, inProgress: false });
-    showToast(`Downloaded ${count} tracks`);
+    setBulkDownloadState({ done: successCount + failCount, total: unDownloaded.length, inProgress: false });
+    if (failCount === 0) {
+      showToast(`Downloaded all ${successCount} tracks`);
+    } else if (successCount > 0) {
+      showToast(`Downloaded ${successCount} tracks (${failCount} failed)`);
+    } else {
+      showToast(`Failed to download tracks. Please check connection.`, true);
+    }
   };
 
   const retryLyrics = () => {
