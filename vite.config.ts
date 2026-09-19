@@ -4,8 +4,23 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
+  // Support GitHub Actions deployment, custom domain, or subpath deployment
+  let basePath = process.env.BASE_URL || './';
+  if (!process.env.BASE_URL && process.env.GITHUB_REPOSITORY) {
+    const parts = process.env.GITHUB_REPOSITORY.split('/');
+    const repo = parts[1];
+    if (repo && !repo.endsWith('.github.io')) {
+      basePath = `/${repo}/`;
+    } else {
+      basePath = '/';
+    }
+  }
+  if (basePath !== './' && !basePath.endsWith('/')) {
+    basePath += '/';
+  }
+
   return {
-    base: './',
+    base: basePath,
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {

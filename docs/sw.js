@@ -1,5 +1,5 @@
 // Service Worker for MOUZIKA PWA
-const CACHE_NAME = 'mouzika-pwa-v2';
+const CACHE_NAME = 'mouzika-pwa-v1';
 
 // Install event - activate immediately
 self.addEventListener('install', (event) => {
