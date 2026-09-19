@@ -1,7 +1,0 @@
-{
-  "name": "MOUZIKA",
-  "description": "A sleek, high-performance music streaming and offline player with synchronized lyrics, YouTube playlist import, and iOS-inspired design.",
-  "requestFramePermissions": ["microphone"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
-
