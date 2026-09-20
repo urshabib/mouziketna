@@ -177,6 +177,11 @@ export const LOGO_PRESETS: LogoPreset[] = [
   },
 ];
 
+export const BRANDING_CACHE_NAME = 'mouzika-branding-cache-v1';
+
+let cachedPng192: string | null = null;
+let cachedPng512: string | null = null;
+
 export function getStoredAppName(): string {
   try {
     const val = localStorage.getItem(STORAGE_KEY)?.trim();
@@ -187,8 +192,88 @@ export function getStoredAppName(): string {
   }
 }
 
-export function updatePwaManifest(appName: string, logoSrc: string): void {
+/**
+ * Rasterizes any image source (SVG preset, data URI, or cropped upload)
+ * into an exact raster PNG (data URL + Blob) with high-quality smoothing.
+ * This is crucial because Chrome Android / WebAPK installer rejects SVG icons.
+ */
+export async function rasterizeToPng(
+  src: string,
+  width: number,
+  height: number
+): Promise<{ dataUrl: string; blob: Blob | null }> {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return { dataUrl: src, blob: null };
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    let objectUrlToRevoke: string | null = null;
+
+    if (src.startsWith('data:image/svg+xml')) {
+      try {
+        const svgContent = decodeURIComponent(
+          src.replace(/^data:image\/svg\+xml;utf8,/, '').replace(/^data:image\/svg\+xml;base64,/, (m) => m)
+        );
+        if (!src.includes('base64,')) {
+          const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+          objectUrlToRevoke = URL.createObjectURL(blob);
+          img.src = objectUrlToRevoke;
+        } else {
+          img.src = src;
+        }
+      } catch {
+        img.src = src;
+      }
+    } else {
+      img.src = src;
+    }
+
+    img.onload = () => {
+      try {
+        if (objectUrlToRevoke) {
+          URL.revokeObjectURL(objectUrlToRevoke);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve({ dataUrl: src, blob: null });
+          return;
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+        const dataUrl = canvas.toDataURL('image/png');
+        canvas.toBlob((blob) => {
+          resolve({ dataUrl, blob });
+        }, 'image/png');
+      } catch (err) {
+        console.warn('Canvas rasterization error:', err);
+        resolve({ dataUrl: src, blob: null });
+      }
+    };
+
+    img.onerror = (err) => {
+      if (objectUrlToRevoke) {
+        URL.revokeObjectURL(objectUrlToRevoke);
+      }
+      console.warn('Image rasterization error on load:', err);
+      resolve({ dataUrl: src, blob: null });
+    };
+  });
+}
+
+export async function updatePwaManifest(
+  appName: string,
+  png192Src: string,
+  png512Src: string
+): Promise<void> {
   try {
+    const timestamp = Date.now();
     const manifestJson = {
       id: "mouzika-player",
       name: appName,
@@ -204,21 +289,58 @@ export function updatePwaManifest(appName: string, logoSrc: string): void {
       categories: ["music", "entertainment"],
       icons: [
         {
-          src: logoSrc,
-          sizes: "192x192 512x512",
-          type: logoSrc.startsWith('data:image/svg') ? "image/svg+xml" : "image/png",
+          src: `./icon-192.png?t=${timestamp}`,
+          sizes: "192x192",
+          type: "image/png",
           purpose: "any"
         },
         {
-          src: logoSrc,
-          sizes: "192x192 512x512",
-          type: logoSrc.startsWith('data:image/svg') ? "image/svg+xml" : "image/png",
+          src: `./icon-maskable-192.png?t=${timestamp}`,
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "maskable"
+        },
+        {
+          src: `./icon-512.png?t=${timestamp}`,
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any"
+        },
+        {
+          src: `./icon-maskable-512.png?t=${timestamp}`,
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "maskable"
+        },
+        {
+          src: png192Src,
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "any"
+        },
+        {
+          src: png192Src,
+          sizes: "192x192",
+          type: "image/png",
+          purpose: "maskable"
+        },
+        {
+          src: png512Src,
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any"
+        },
+        {
+          src: png512Src,
+          sizes: "512x512",
+          type: "image/png",
           purpose: "maskable"
         }
       ]
     };
 
-    const blob = new Blob([JSON.stringify(manifestJson, null, 2)], { type: 'application/manifest+json' });
+    const manifestStr = JSON.stringify(manifestJson, null, 2);
+    const blob = new Blob([manifestStr], { type: 'application/manifest+json' });
     const blobUrl = URL.createObjectURL(blob);
 
     let manifestLink = document.querySelector('link[rel="manifest"]');
@@ -230,12 +352,28 @@ export function updatePwaManifest(appName: string, logoSrc: string): void {
       manifestLink.setAttribute('href', blobUrl);
       document.head.appendChild(manifestLink);
     }
+
+    // Cache manifest in branding cache for Service Worker fetch
+    if (typeof window !== 'undefined' && 'caches' in window) {
+      try {
+        const brandingCache = await caches.open(BRANDING_CACHE_NAME);
+        const manifestResp = new Response(blob, {
+          headers: {
+            'Content-Type': 'application/manifest+json',
+            'Cache-Control': 'no-cache, must-revalidate',
+          },
+        });
+        await brandingCache.put('manifest.json', manifestResp.clone());
+        await brandingCache.put('./manifest.json', manifestResp.clone());
+        await brandingCache.put('/manifest.json', manifestResp.clone());
+      } catch {}
+    }
   } catch (e) {
     console.warn('[MOUZIKETNA] Dynamic manifest update notice:', e);
   }
 }
 
-export function applyCustomAppName(rawName: string): string {
+export async function applyCustomAppName(rawName: string): Promise<string> {
   const name = rawName.trim() || DEFAULT_APP_NAME;
 
   try {
@@ -257,8 +395,9 @@ export function applyCustomAppName(rawName: string): string {
   }
 
   // 3. Update Web App Manifest so Chrome / Android uses this name on Home Screen
-  const currentLogoSrc = getAppLogoSrc();
-  updatePwaManifest(name, currentLogoSrc);
+  const png192 = cachedPng192 || getAppLogoSrc();
+  const png512 = cachedPng512 || getAppLogoSrc();
+  await updatePwaManifest(name, png192, png512);
 
   return name;
 }
@@ -282,36 +421,101 @@ export function getAppLogoSrc(logoKeyOrDataUrl?: string | null): string {
   return preset ? preset.svgDataUri : LOGO_PRESETS[0].svgDataUri;
 }
 
-export function applyCustomAppLogo(logoKeyOrDataUrl: string): void {
+/**
+ * Applies custom logo for installed PWA / Home Screen:
+ * - Rasterizes to true 192x192 and 512x512 PNGs
+ * - Populates Service Worker cache so Chrome/Android icon fetch grabs the new image
+ * - Updates dynamic Web App Manifest
+ * - Updates Apple Touch Icon for iOS
+ * - DOES NOT modify the website brand header or sidebar
+ */
+export async function applyCustomAppLogo(logoKeyOrDataUrl: string): Promise<string> {
   try {
     localStorage.setItem(LOGO_STORAGE_KEY, logoKeyOrDataUrl);
   } catch {}
 
-  const logoSrc = getAppLogoSrc(logoKeyOrDataUrl);
+  const rawLogoSrc = getAppLogoSrc(logoKeyOrDataUrl);
 
-  // 1. Dynamically update head favicons & touch icons for iOS and browser
-  try {
-    const rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
-    rels.forEach((rel) => {
-      const links = document.querySelectorAll(`link[rel="${rel}"]`);
-      links.forEach((l) => {
-        l.setAttribute('href', logoSrc);
-      });
-    });
-
-    // Also update og:image meta tag
-    const ogImage = document.querySelector('meta[property="og:image"]');
-    if (ogImage) ogImage.setAttribute('content', logoSrc);
-  } catch {}
-
-  // 2. Update Web App Manifest so Chrome / Android uses this icon on Home Screen
-  const currentAppName = getStoredAppName();
-  updatePwaManifest(currentAppName, logoSrc);
-
-  // Dispatch event for reactive UI update across components
+  // Dispatch event immediately so local previews in Install Modal update right away
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('mouzika-logo-changed', { detail: logoKeyOrDataUrl }));
   }
+
+  // 1. Generate real raster PNGs (192x192 and 512x512)
+  const [raster192, raster512] = await Promise.all([
+    rasterizeToPng(rawLogoSrc, 192, 192),
+    rasterizeToPng(rawLogoSrc, 512, 512),
+  ]);
+
+  cachedPng192 = raster192.dataUrl;
+  cachedPng512 = raster512.dataUrl;
+
+  // 2. Put both PNG Blobs into Service Worker Cache Storage
+  // When Chrome installs the app, requests for icon-192.png and icon-512.png
+  // are intercepted by sw.js and served with these custom images!
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      const brandingCache = await caches.open(BRANDING_CACHE_NAME);
+      if (raster192.blob) {
+        const r192 = new Response(raster192.blob, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'no-cache, must-revalidate',
+          },
+        });
+        await brandingCache.put('icon-192.png', r192.clone());
+        await brandingCache.put('./icon-192.png', r192.clone());
+        await brandingCache.put('/icon-192.png', r192.clone());
+        await brandingCache.put('icon-maskable-192.png', r192.clone());
+        await brandingCache.put('./icon-maskable-192.png', r192.clone());
+        await brandingCache.put('/icon-maskable-192.png', r192.clone());
+        await brandingCache.put('apple-touch-icon.png', r192.clone());
+        await brandingCache.put('./apple-touch-icon.png', r192.clone());
+        await brandingCache.put('/apple-touch-icon.png', r192.clone());
+        await brandingCache.put('favicon.png', r192.clone());
+      }
+      if (raster512.blob) {
+        const r512 = new Response(raster512.blob, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'no-cache, must-revalidate',
+          },
+        });
+        await brandingCache.put('icon-512.png', r512.clone());
+        await brandingCache.put('./icon-512.png', r512.clone());
+        await brandingCache.put('/icon-512.png', r512.clone());
+        await brandingCache.put('icon-maskable-512.png', r512.clone());
+        await brandingCache.put('./icon-maskable-512.png', r512.clone());
+        await brandingCache.put('/icon-maskable-512.png', r512.clone());
+      }
+    } catch (e) {
+      console.warn('Error updating brandingCache:', e);
+    }
+  }
+
+  // 3. Update apple-touch-icon & head favicons for iOS & mobile browsers
+  try {
+    const iconRels = ['apple-touch-icon', 'apple-touch-icon-precomposed', 'icon', 'shortcut icon'];
+    iconRels.forEach((rel) => {
+      let link = document.querySelector(`link[rel="${rel}"]`);
+      if (link) {
+        link.setAttribute('href', raster192.dataUrl);
+      } else {
+        link = document.createElement('link');
+        link.setAttribute('rel', rel);
+        link.setAttribute('href', raster192.dataUrl);
+        document.head.appendChild(link);
+      }
+    });
+    const ogImage = document.querySelector('meta[property="og:image"]');
+    if (ogImage) ogImage.setAttribute('content', raster512.dataUrl);
+  } catch {}
+
+  // 4. Update the Web App Manifest with both relative URLs and base64 PNG data URLs
+  const currentAppName = getStoredAppName();
+  await updatePwaManifest(currentAppName, raster192.dataUrl, raster512.dataUrl);
+
+  return raster192.dataUrl;
 }
 
 /**
@@ -372,7 +576,7 @@ if (typeof window !== 'undefined') {
     applyCustomAppName(savedName);
   }
   const savedLogo = getStoredAppLogo();
-  if (savedLogo && savedLogo !== 'default') {
+  if (savedLogo) {
     applyCustomAppLogo(savedLogo);
   }
 }

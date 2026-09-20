@@ -1,5 +1,6 @@
 // Service Worker for MOUZIKA PWA
-const CACHE_NAME = 'mouzika-pwa-v4';
+const CACHE_NAME = 'mouzika-pwa-v5';
+const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
 // Install event - activate immediately
 self.addEventListener('install', (event) => {
@@ -18,7 +19,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME && key !== BRANDING_CACHE).map((key) => caches.delete(key))
       )
     ).then(() => self.clients.claim())
   );
@@ -31,8 +32,41 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Audio streams / media / dynamic APIs shouldn't break if offline or caching fails
   const url = new URL(event.request.url);
+  const pathname = url.pathname;
+
+  // Intercept PWA manifest and icon requests so Chrome/Android and iOS get the custom selected/uploaded logo
+  const isBrandingRequest =
+    pathname.endsWith('icon-192.png') ||
+    pathname.endsWith('icon-512.png') ||
+    pathname.endsWith('icon-maskable-192.png') ||
+    pathname.endsWith('icon-maskable-512.png') ||
+    pathname.endsWith('apple-touch-icon.png') ||
+    pathname.endsWith('favicon.png') ||
+    pathname.endsWith('manifest.json');
+
+  if (isBrandingRequest) {
+    const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+    event.respondWith(
+      caches.open(BRANDING_CACHE).then(async (brandingCache) => {
+        const customMatch =
+          (await brandingCache.match(filename)) ||
+          (await brandingCache.match('./' + filename)) ||
+          (await brandingCache.match('/' + filename)) ||
+          (await brandingCache.match(event.request));
+
+        if (customMatch) {
+          return customMatch;
+        }
+
+        // Fall back to normal network/cache flow
+        return fetch(event.request).catch(() => caches.match(event.request));
+      })
+    );
+    return;
+  }
+
+  // Audio streams / media / dynamic APIs shouldn't break if offline or caching fails
   const isAudioOrStream = event.request.destination === 'audio' ||
                           url.pathname.includes('.mp3') ||
                           url.pathname.includes('.m4a') ||

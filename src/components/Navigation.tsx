@@ -49,19 +49,9 @@ export const Sidebar: React.FC = () => {
           onClick={() => setActivePane('home')}
           className="logo hover:opacity-90 transition-opacity text-left mb-6 flex items-center gap-2.5"
         >
-          {userProfile.appLogo && userProfile.appLogo !== 'default' ? (
-            <div className="w-8 h-8 rounded-xl overflow-hidden border border-white/10 flex-shrink-0 bg-black">
-              <img
-                src={getAppLogoSrc(userProfile.appLogo)}
-                alt="Logo"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          ) : (
-            <i className="ri-pulse-fill"></i>
-          )}
+          <i className="ri-pulse-fill"></i>
           <span className="logo-textblock">
-            {userProfile.customAppName || 'MOUZIKETNA'}
+            MOUZIKETNA
             <span className="logo-signature">by habib</span>
           </span>
         </button>
@@ -290,19 +280,9 @@ export const TopBar: React.FC = () => {
           onClick={() => setActivePane('home')}
           className="logo hover:opacity-90 transition-opacity text-left flex items-center gap-2.5"
         >
-          {userProfile.appLogo && userProfile.appLogo !== 'default' ? (
-            <div className="w-7 h-7 rounded-lg overflow-hidden border border-white/10 flex-shrink-0 bg-black">
-              <img
-                src={getAppLogoSrc(userProfile.appLogo)}
-                alt="Logo"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          ) : (
-            <i className="ri-pulse-fill"></i>
-          )}
+          <i className="ri-pulse-fill"></i>
           <span className="logo-textblock">
-            {userProfile.customAppName || 'MOUZIKETNA'}
+            MOUZIKETNA
             <span className="logo-signature">by habib</span>
           </span>
         </button>

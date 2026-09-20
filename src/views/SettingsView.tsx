@@ -523,8 +523,8 @@ export const SettingsView: React.FC = () => {
                 return (
                   <button
                     key={preset.id}
-                    onClick={() => {
-                      applyCustomAppLogo(preset.id);
+                    onClick={async () => {
+                      await applyCustomAppLogo(preset.id);
                       syncProfile({ ...userProfile, appLogo: preset.id });
                       showToast(`Logo switched to ${preset.name}`);
                     }}
@@ -894,7 +894,7 @@ export const SettingsView: React.FC = () => {
           setModalConfirm({
             title: 'Reset all settings to defaults?',
             text: 'Your theme, quality, and appearance preferences will be restored to defaults. Your saved songs and playlists are safe.',
-            onConfirm: () => {
+            onConfirm: async () => {
               syncProfile({
                 ...userProfile,
                 dataSaver: false,
@@ -913,7 +913,7 @@ export const SettingsView: React.FC = () => {
                 presetTint: 'none',
                 activePreset: 'glass',
               });
-              applyCustomAppLogo('default');
+              await applyCustomAppLogo('default');
               showToast('Settings reset to defaults');
             },
           });
@@ -928,8 +928,8 @@ export const SettingsView: React.FC = () => {
       <LogoCropperModal
         isOpen={isCropperOpen}
         onClose={() => setIsCropperOpen(false)}
-        onApply={(dataUrl) => {
-          applyCustomAppLogo(dataUrl);
+        onApply={async (dataUrl) => {
+          await applyCustomAppLogo(dataUrl);
           syncProfile({ ...userProfile, appLogo: dataUrl });
           showToast('Custom app logo applied!');
         }}

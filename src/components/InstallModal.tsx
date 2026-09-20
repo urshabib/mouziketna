@@ -100,19 +100,25 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
     setTimeout(() => setNameSavedToast(false), 2000);
   };
 
-  const handleSelectPresetLogo = (presetId: string) => {
+  const handleSelectPresetLogo = async (presetId: string) => {
     setSelectedLogo(presetId);
-    applyCustomAppLogo(presetId);
     syncProfile({ ...userProfile, appLogo: presetId });
+    await applyCustomAppLogo(presetId);
   };
 
-  const handleCustomLogoCropped = (dataUrl: string) => {
+  const handleCustomLogoCropped = async (dataUrl: string) => {
     setSelectedLogo(dataUrl);
-    applyCustomAppLogo(dataUrl);
     syncProfile({ ...userProfile, appLogo: dataUrl });
+    await applyCustomAppLogo(dataUrl);
   };
 
   const handleNativeInstall = async () => {
+    // Ensure the chosen logo & app name are fully rasterized and cached in the Service Worker prior to the prompt
+    try {
+      await applyCustomAppLogo(selectedLogo);
+      await applyCustomAppName(appName);
+    } catch {}
+
     const promptEvent = (
       window as unknown as {
         __deferredPrompt?: {
