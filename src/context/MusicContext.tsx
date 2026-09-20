@@ -448,8 +448,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cacheProfileLocally(user, merged);
         if (data.surprise) {
           setSurpriseUser(user);
-        } else {
-          showToast(`Welcome back, ${user}`);
         }
       }
       return { success: true };

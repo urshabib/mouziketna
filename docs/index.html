@@ -12,9 +12,9 @@
         }
       })();
     </script>
-    <title>MOUZIKA</title>
+    <title>MOUZIKETNA</title>
     <meta name="description" content="A sleek, high-performance music streaming and offline player with synchronized lyrics, YouTube playlist import, and iOS-inspired design." />
-    <meta property="og:title" content="MOUZIKA" />
+    <meta property="og:title" content="MOUZIKETNA" />
     <meta property="og:description" content="A sleek, high-performance music streaming and offline player with synchronized lyrics, YouTube playlist import, and iOS-inspired design." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -22,15 +22,18 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="MOUZIKA" />
-    <link rel="manifest" href="./manifest.json" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
-    <link rel="apple-touch-icon" href="./icon-192.png" />
-    <meta property="og:image" content="./icon-512.png" />
-    <meta name="twitter:image" content="./icon-512.png" />
+    <meta name="apple-mobile-web-app-title" content="MOUZIKETNA" />
+    <link rel="manifest" href="./assets/manifest.json" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" href="./assets/favicon.ico" />
+    <link rel="shortcut icon" href="./assets/favicon.ico" />
+    <link rel="icon" href="./assets/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <meta property="og:image" content="./assets/icon-512.png" />
+    <meta name="twitter:image" content="./assets/icon-512.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -63,6 +66,14 @@
             document.body.appendChild(script);
           }
         }
+        // On GitHub Pages or static hosts without Vite dev server, load immediately
+        var isStaticHost = window.location.hostname.indexOf('github.io') !== -1 ||
+                           (window.location.protocol === 'file:') ||
+                           (!window.__vite_plugin_react_preamble_installed__ && window.location.port !== '3000');
+        if (isStaticHost && window.location.hostname.indexOf('run.app') === -1 && window.location.hostname !== 'localhost') {
+          checkAndLoadStaticFallback();
+        }
+
         window.addEventListener('error', function(e) {
           if (e && e.filename && (e.filename.indexOf('main.tsx') !== -1 || e.filename.indexOf('.tsx') !== -1)) {
             checkAndLoadStaticFallback();
@@ -72,7 +83,7 @@
           if (!window.__vite_plugin_react_preamble_installed__) {
             checkAndLoadStaticFallback();
           }
-        }, 800);
+        }, 400);
       })();
     </script>
     <script>

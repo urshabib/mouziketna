@@ -1,9 +1,16 @@
 // Service Worker for MOUZIKA PWA
-const CACHE_NAME = 'mouzika-pwa-v1';
+const CACHE_NAME = 'mouzika-pwa-v4';
 
 // Install event - activate immediately
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+});
+
+// Skip waiting message listener from force refresh
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Activate event - claim clients immediately
