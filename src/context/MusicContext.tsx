@@ -191,7 +191,14 @@ const defaultProfile: UserProfile = {
 };
 
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activePane, setActivePane] = useState<NavigationPane>('home');
+  const [activePane, setActivePane] = useState<NavigationPane>(() => {
+    try {
+      if (sessionStorage.getItem('mouzika_restore_after_logo')) {
+        return 'settings';
+      }
+    } catch {}
+    return 'home';
+  });
   const [navHistory, setNavHistory] = useState<NavigationPane[]>(['home']);
   const [collectionTarget, setCollectionTarget] = useState<MusicContextType['collectionTarget']>(null);
 
@@ -997,7 +1004,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     playTrack(tracks[clampedIndex], true);
   };
 
-  // Downloads
+  // Downloads Engine
   const downloadTrack = async (
     track: Track,
     silent = false,
@@ -1056,44 +1063,56 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const candidates: string[] = [];
 
-      // 1. Cached in-memory stream if currently available
+      // 1. Cached in-memory stream if available
       const cached = getCachedStreamUrl(track.id);
       if (cached) candidates.push(cached);
 
-      // 2. Saavn high quality / saver stream
-      try {
-        const saavnUrl = await resolveSaavnStream(
+      // 2. Parallel stream resolution for maximum speed (Saavn + Mirrors + Worker proxy)
+      const [saavnRes, mirrorRes, workerRes] = await Promise.allSettled([
+        resolveSaavnStream(
           cleanTitleForLyrics(track.title) || track.title,
           cleanedArtist,
           quality,
           track.title,
           track.artist
-        );
-        if (saavnUrl && !candidates.includes(saavnUrl)) {
-          candidates.push(saavnUrl);
-        }
-      } catch {}
+        ),
+        resolveMirrorStreams(ytTrackId || track.id),
+        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${ytTrackId || track.id}`, 6000).then(async (r) => {
+          if (!r.ok) return null;
+          const j = await r.json();
+          const audio = (j?.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
+          if (audio.length) {
+            audio.sort((a: any, b: any) => parseInt(b.bitrate) - parseInt(a.bitrate));
+            return audio[0].url;
+          }
+          return null;
+        }),
+      ]);
 
-      // 3. Mirror streaming sources
-      try {
-        const mirrors = await resolveMirrorStreams(ytTrackId || track.id).catch(() => []);
-        for (const m of mirrors) {
+      if (saavnRes.status === 'fulfilled' && saavnRes.value && !candidates.includes(saavnRes.value)) {
+        candidates.push(saavnRes.value);
+      }
+      if (workerRes.status === 'fulfilled' && workerRes.value && !candidates.includes(workerRes.value)) {
+        candidates.push(workerRes.value);
+      }
+      if (mirrorRes.status === 'fulfilled' && Array.isArray(mirrorRes.value)) {
+        for (const m of mirrorRes.value) {
           if (m && !candidates.includes(m)) {
             candidates.push(m);
           }
         }
-      } catch {}
+      }
 
-      if (candidates.length === 0) throw new Error('No stream source');
+      if (candidates.length === 0) throw new Error('No stream source available');
 
-      // Attempt to download from candidates until one succeeds
+      // Attempt to download audio from candidate sources with fast timeout
       let audioBlob: Blob | null = null;
       for (const url of candidates) {
         try {
-          const res = await fetchWithTimeout(url, 25000);
+          const res = await fetchWithTimeout(url, 12000);
           if (res.ok) {
             const blob = await res.blob();
-            if (blob && blob.size > 10000) {
+            if (blob && blob.size > 2000) {
               audioBlob = blob;
               break;
             }
@@ -1101,25 +1120,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } catch {}
       }
 
-      if (!audioBlob) throw new Error('Failed to fetch audio stream');
+      if (!audioBlob) throw new Error('Failed to download audio content');
 
-      // Offline artwork blob (Low quality default per user preference)
-      let thumbBlob: Blob | null = null;
-      if (userProfile.downloadArtOffline !== false) {
-        try {
-          thumbBlob = await fetchArtworkBlob(
-            ytTrackId || track.id,
-            track.thumb,
-            userProfile.artQualityOffline || 'low'
-          );
-        } catch {}
-      }
+      // Parallel fetch for offline artwork and lyrics (non-blocking)
+      const [artResult, lyricsResult] = await Promise.allSettled([
+        userProfile.downloadArtOffline !== false
+          ? fetchArtworkBlob(ytTrackId || track.id, track.thumb, userProfile.artQualityOffline || 'low')
+          : Promise.resolve(null),
+        userProfile.downloadLyricsOffline
+          ? fetchLyricsForTrack(track)
+          : Promise.resolve(null),
+      ]);
 
-      // Lyrics if offline lyrics enabled
-      let lyricsData: LyricsData | null = null;
-      if (userProfile.downloadLyricsOffline) {
-        lyricsData = await fetchLyricsForTrack(track);
-      }
+      const thumbBlob = artResult.status === 'fulfilled' ? artResult.value : null;
+      const lyricsData = lyricsResult.status === 'fulfilled' ? lyricsResult.value : null;
 
       const record: DownloadRecord = {
         id: track.id,
@@ -1138,8 +1152,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!silent) {
         showToast(
           quality === '320'
-            ? `Downloaded "${track.title}" in High Quality`
-            : `Downloaded "${track.title}" in Data Saver`
+            ? `Downloaded "${track.title}" (320 kbps)`
+            : `Downloaded "${track.title}" (Saver Quality)`
         );
       }
       return true;
@@ -1163,31 +1177,61 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast(`Removed ${trackIds.length} downloads`, true);
   };
 
+  // Concurrent Multi-Song Download Queue (3 concurrent workers)
   const downloadPlaylist = async (tracks: Track[]) => {
     const unDownloaded = tracks.filter((t) => !isDownloaded(t.id));
     if (!unDownloaded.length) {
       showToast('All tracks are already downloaded');
       return;
     }
-    setBulkDownloadState({ done: 0, total: unDownloaded.length, inProgress: true });
+
+    const total = unDownloaded.length;
+    setBulkDownloadState({ done: 0, total, inProgress: true });
+
     let successCount = 0;
     let failCount = 0;
-    for (const t of unDownloaded) {
-      const ok = await downloadTrack(t, true);
-      if (ok) {
-        successCount++;
-      } else {
-        failCount++;
+    let finishedCount = 0;
+
+    const concurrency = Math.min(3, total);
+    let queueIdx = 0;
+
+    const worker = async () => {
+      while (queueIdx < total) {
+        const itemIdx = queueIdx++;
+        const trackToDownload = unDownloaded[itemIdx];
+        if (!trackToDownload) break;
+
+        try {
+          const ok = await downloadTrack(trackToDownload, true);
+          if (ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch {
+          failCount++;
+        } finally {
+          finishedCount++;
+          setBulkDownloadState({
+            done: finishedCount,
+            total,
+            inProgress: true,
+          });
+        }
       }
-      setBulkDownloadState({ done: successCount + failCount, total: unDownloaded.length, inProgress: true });
-    }
-    setBulkDownloadState({ done: successCount + failCount, total: unDownloaded.length, inProgress: false });
+    };
+
+    // Run 3 workers in parallel
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+    setBulkDownloadState({ done: total, total, inProgress: false });
+
     if (failCount === 0) {
-      showToast(`Downloaded all ${successCount} tracks`);
+      showToast(`Downloaded all ${successCount} songs for offline listening`);
     } else if (successCount > 0) {
-      showToast(`Downloaded ${successCount} tracks (${failCount} failed)`);
+      showToast(`Downloaded ${successCount} songs (${failCount} unavailable on servers)`);
     } else {
-      showToast(`Failed to download tracks. Please check connection.`, true);
+      showToast(`Unable to download tracks. Please check connection.`, true);
     }
   };
 

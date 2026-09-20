@@ -119,6 +119,29 @@ export const SettingsView: React.FC = () => {
     setIsStandalone(check);
   }, []);
 
+  // Restore active tab and scroll to logo section after auto-reload
+  useEffect(() => {
+    try {
+      const restoreRaw = sessionStorage.getItem('mouzika_restore_after_logo');
+      if (restoreRaw) {
+        const data = JSON.parse(restoreRaw);
+        if (data.tab) setActiveTab(data.tab);
+        sessionStorage.removeItem('mouzika_restore_after_logo');
+        setTimeout(() => {
+          const el = document.getElementById(data.anchor || 'logo-customizer-section');
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          if (data.name) {
+            showToast(`Emblem switched to ${data.name}`);
+          }
+        }, 180);
+      }
+    } catch {
+      sessionStorage.removeItem('mouzika_restore_after_logo');
+    }
+  }, []);
+
   useEffect(() => {
     if (userProfile.customAppName) {
       setAppNameInput(userProfile.customAppName);
@@ -668,7 +691,7 @@ export const SettingsView: React.FC = () => {
 
       {/* 3. APP LOGO & SHORTCUT IDENTITY */}
       {showApp && (
-        <section className="flex flex-col gap-3.5">
+        <section id="logo-customizer-section" className="flex flex-col gap-3.5 scroll-mt-20">
           <div className="flex items-center gap-2 pb-1 border-b border-white/10">
             <Smartphone className="w-4 h-4 text-[#ff6b1a]" />
             <h3 className="font-extrabold text-xs uppercase tracking-wider text-white/70">
@@ -735,7 +758,7 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Logo Presets (Including 100% Authentic Centered Spotify) */}
+            {/* Logo Presets */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-bold text-white/80">
                 Choose App Icon Emblem:
@@ -749,9 +772,20 @@ export const SettingsView: React.FC = () => {
                       key={preset.id}
                       type="button"
                       onClick={async () => {
-                        await applyCustomAppLogo(preset.id);
-                        syncProfile({ ...userProfile, appLogo: preset.id });
-                        showToast(`Emblem changed to ${preset.name}`);
+                        try {
+                          showToast(`Switching emblem to "${preset.name}"…`);
+                          await applyCustomAppLogo(preset.id);
+                          syncProfile({ ...userProfile, appLogo: preset.id });
+                          sessionStorage.setItem(
+                            'mouzika_restore_after_logo',
+                            JSON.stringify({ tab: 'app', anchor: 'logo-customizer-section', name: preset.name })
+                          );
+                          setTimeout(() => {
+                            window.location.reload();
+                          }, 180);
+                        } catch {
+                          showToast(`Failed to switch emblem`, true);
+                        }
                       }}
                       className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left cursor-pointer ${
                         isSelected
@@ -1020,9 +1054,20 @@ export const SettingsView: React.FC = () => {
         isOpen={isCropperOpen}
         onClose={() => setIsCropperOpen(false)}
         onApply={async (dataUrl) => {
-          await applyCustomAppLogo(dataUrl);
-          syncProfile({ ...userProfile, appLogo: dataUrl });
-          showToast('Custom app logo applied!');
+          try {
+            showToast('Applying custom image and updating app…');
+            await applyCustomAppLogo(dataUrl);
+            syncProfile({ ...userProfile, appLogo: dataUrl });
+            sessionStorage.setItem(
+              'mouzika_restore_after_logo',
+              JSON.stringify({ tab: 'app', anchor: 'logo-customizer-section', name: 'Custom Picture' })
+            );
+            setTimeout(() => {
+              window.location.reload();
+            }, 180);
+          } catch {
+            showToast('Failed to apply custom emblem', true);
+          }
         }}
         currentLogoSrc={getAppLogoSrc(userProfile.appLogo)}
       />

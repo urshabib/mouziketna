@@ -481,17 +481,20 @@ export const CollectionView: React.FC = () => {
               </button>
             )}
 
+            {/* Download all collection songs */}
+            {target.type !== 'downloads' && tracks.length > 0 && !isSelectMode && (
+              <button
+                onClick={() => downloadPlaylist(tracks)}
+                className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                title="Download all for offline"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Custom Playlist specific actions */}
             {target.type === 'custom-playlist' && target.id && !isSelectMode && (
               <>
-                <button
-                  onClick={() => downloadPlaylist(tracks)}
-                  className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors"
-                  title="Download all for offline"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-
                 <button
                   onClick={() => setModalAddSongByLinkPlId(target.id!)}
                   className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors"
