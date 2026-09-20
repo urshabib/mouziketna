@@ -34,8 +34,6 @@ export const Modals: React.FC = () => {
     setModalAudioRecognitionOpen,
     modalConfirm,
     setModalConfirm,
-    surpriseUser,
-    setSurpriseUser,
     isAuthGateOpen,
     setIsAuthGateOpen,
     login,
@@ -417,27 +415,7 @@ export const Modals: React.FC = () => {
         </div>
       )}
 
-      {/* 6. SURPRISE TULIP MODAL */}
-      {surpriseUser && (
-        <div
-          onClick={() => setSurpriseUser(null)}
-          className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500 select-none"
-        >
-          <div className="text-6xl mb-4 animate-bounce">🌷</div>
-          <h2 className="font-['Caveat'] text-4xl sm:text-5xl font-bold text-pink-300 leading-snug max-w-md">
-            Thought these flowers were pretty, but then I remembered you rahmouchtyyy
-          </h2>
-          <p className="font-['Caveat'] text-2xl text-pink-400 mt-3">— habib ♡</p>
-          <button
-            onClick={() => setSurpriseUser(null)}
-            className="mt-8 px-8 py-3.5 bg-pink-500 hover:bg-pink-400 text-white font-bold text-sm rounded-full shadow-2xl hover:scale-105 active:scale-95 transition-all"
-          >
-            Tfadhalii hayatii
-          </button>
-        </div>
-      )}
-
-      {/* 7. AUTH GATE MODAL */}
+      {/* 6. AUTH GATE MODAL */}
       {isAuthGateOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none">
           <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center gap-4">

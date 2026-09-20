@@ -125,8 +125,6 @@ interface MusicContextType {
   setModalAudioRecognitionOpen: (open: boolean) => void;
   modalConfirm: { title: string; text: string; onConfirm: () => void } | null;
   setModalConfirm: (conf: { title: string; text: string; onConfirm: () => void } | null) => void;
-  surpriseUser: string | null;
-  setSurpriseUser: (user: string | null) => void;
   isInstallModalOpen: boolean;
   setIsInstallModalOpen: (open: boolean) => void;
 
@@ -247,7 +245,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [modalAddSongByLinkPlId, setModalAddSongByLinkPlId] = useState<string | null>(null);
   const [modalAudioRecognitionOpen, setModalAudioRecognitionOpen] = useState(false);
   const [modalConfirm, setModalConfirm] = useState<{ title: string; text: string; onConfirm: () => void } | null>(null);
-  const [surpriseUser, setSurpriseUser] = useState<string | null>(null);
   const [isInstallModalOpen, setIsInstallModalOpen] = useState(() => {
     try {
       if (sessionStorage.getItem('mouzika_restore_install_modal')) {
@@ -474,9 +471,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         saveDeviceSettings(merged);
         applyTheme(merged.theme, merged.accentColor, merged.lyricsColor, merged.presetTint, merged.liquidGlass);
         cacheProfileLocally(user, merged);
-        if (data.surprise) {
-          setSurpriseUser(user);
-        }
       }
       return { success: true };
     } catch {
@@ -1527,8 +1521,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setModalAudioRecognitionOpen,
         modalConfirm,
         setModalConfirm,
-        surpriseUser,
-        setSurpriseUser,
         isInstallModalOpen,
         setIsInstallModalOpen,
         downloadedSet,
