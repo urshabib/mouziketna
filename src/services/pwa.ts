@@ -75,8 +75,10 @@ function makeSpotifySvg(): string {
   const svg = `<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <rect width="512" height="512" rx="115" fill="#121212"/>
   <rect x="2" y="2" width="508" height="508" rx="113" stroke="rgba(255, 255, 255, 0.08)" stroke-width="3"/>
-  <circle cx="256" cy="256" r="185" fill="#1ed760"/>
-  <path fill="#121212" d="M371.4 233.8c-76.3-45.3-202.4-49.5-275.3-27.4-11.7 3.6-24.1-3-27.7-14.7-3.6-11.7 3-24.1 14.7-27.7 83.8-25.4 223-20.6 310.8 31.5 10.5 6.2 13.9 19.8 7.7 30.3-6.2 10.5-19.8 13.9-30.2 8zm-2.4 61.2c-5.8 9.5-18.1 12.5-27.6 6.7-63.5-39-160.3-50.3-235.4-27.5-10.7 3.3-22.1-2.7-25.4-13.4-3.3-10.7 2.7-22.1 13.4-25.4 86-26.1 192.6-13.4 266.3 32 9.5 5.8 12.5 18.1 6.7 27.6zm-24.7 59.8c-4.6 7.6-14.5 10-22.1 5.4-55.4-33.8-125.2-41.5-207.3-22.7-8.7 2-17.4-3.4-19.4-12.1-2-8.7 3.4-17.4 12.1-19.4 90.1-20.6 167.3-11.8 229.3 26.1 7.6 4.7 10 14.6 5.4 22.2z"/>
+  <circle cx="256" cy="256" r="200" fill="#1ED760"/>
+  <g transform="translate(96, 96) scale(13.33333)">
+    <path fill="#121212" d="M17.485 17.305c-.215.353-.674.467-1.027.252-2.812-1.718-6.352-2.107-10.521-1.154-.403.092-.806-.16-.898-.562-.092-.403.16-.806.562-.898 4.566-1.044 8.49-.602 11.632 1.335.353.215.467.674.252 1.027zm1.464-3.26c-.27.441-.849.582-1.29.312-3.218-1.978-8.124-2.551-11.93-1.394-.494.15-1.02-.133-1.17-.627-.15-.494.133-1.02.627-1.17 4.354-1.321 9.775-.684 13.451 1.576.441.27.582.849.312 1.303zm.135-3.398c-3.858-2.291-10.222-2.503-13.899-1.387-.591.18-1.218-.162-1.398-.753-.18-.591.162-1.218.753-1.398 4.229-1.284 11.265-1.036 15.698 1.597.531.315.706 1.002.391 1.533-.315.531-1.002.706-1.545.408z"/>
+  </g>
 </svg>`;
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
@@ -269,15 +271,16 @@ export async function rasterizeToPng(
 
 export async function updatePwaManifest(
   appName: string,
-  png192Src: string,
-  png512Src: string
+  _png192Src?: string,
+  _png512Src?: string
 ): Promise<void> {
   try {
     const timestamp = Date.now();
+    const shortName = appName.length > 12 ? appName.substring(0, 12) : appName;
     const manifestJson = {
       id: "mouzika-player",
       name: appName,
-      short_name: appName,
+      short_name: shortName,
       description: "Stream, search, and enjoy your music offline with synchronized lyrics.",
       start_url: "./",
       scope: "./",
@@ -286,6 +289,7 @@ export async function updatePwaManifest(
       orientation: "portrait",
       background_color: "#000000",
       theme_color: "#000000",
+      prefer_related_applications: false,
       categories: ["music", "entertainment"],
       icons: [
         {
@@ -311,55 +315,35 @@ export async function updatePwaManifest(
           sizes: "512x512",
           type: "image/png",
           purpose: "maskable"
-        },
-        {
-          src: png192Src,
-          sizes: "192x192",
-          type: "image/png",
-          purpose: "any"
-        },
-        {
-          src: png192Src,
-          sizes: "192x192",
-          type: "image/png",
-          purpose: "maskable"
-        },
-        {
-          src: png512Src,
-          sizes: "512x512",
-          type: "image/png",
-          purpose: "any"
-        },
-        {
-          src: png512Src,
-          sizes: "512x512",
-          type: "image/png",
-          purpose: "maskable"
         }
       ]
     };
 
     const manifestStr = JSON.stringify(manifestJson, null, 2);
-    const blob = new Blob([manifestStr], { type: 'application/manifest+json' });
-    const blobUrl = URL.createObjectURL(blob);
+    const blob = new Blob([manifestStr], { type: 'application/manifest+json; charset=utf-8' });
 
+    // CRITICAL for WebAPK & Android Chrome:
+    // DO NOT set link[rel="manifest"] href to a blob: URL!
+    // WebAPK generators on Google cloud fail when attempting to fetch local blob: URLs,
+    // which causes Chrome to downgrade the PWA to a simple bookmark shortcut with a browser badge.
+    // Instead, keep href="./manifest.json" and let the Service Worker serve the customized response.
     let manifestLink = document.querySelector('link[rel="manifest"]');
-    if (manifestLink) {
-      manifestLink.setAttribute('href', blobUrl);
-    } else {
+    if (!manifestLink) {
       manifestLink = document.createElement('link');
       manifestLink.setAttribute('rel', 'manifest');
-      manifestLink.setAttribute('href', blobUrl);
+      manifestLink.setAttribute('href', './manifest.json');
       document.head.appendChild(manifestLink);
+    } else if (manifestLink.getAttribute('href')?.startsWith('blob:')) {
+      manifestLink.setAttribute('href', './manifest.json');
     }
 
-    // Cache manifest in branding cache for Service Worker fetch
+    // Cache manifest in branding cache so Service Worker answers fetch requests
     if (typeof window !== 'undefined' && 'caches' in window) {
       try {
         const brandingCache = await caches.open(BRANDING_CACHE_NAME);
         const manifestResp = new Response(blob, {
           headers: {
-            'Content-Type': 'application/manifest+json',
+            'Content-Type': 'application/manifest+json; charset=utf-8',
             'Cache-Control': 'no-cache, must-revalidate',
           },
         });
@@ -566,6 +550,40 @@ export async function forceAppUpdateAndRefresh(): Promise<void> {
   } catch (err) {
     console.error('Failed to force refresh:', err);
     window.location.reload();
+  }
+}
+
+export function hasPwaInstallPrompt(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean((window as unknown as { __deferredPrompt?: unknown }).__deferredPrompt);
+}
+
+export async function promptPwaInstall(): Promise<{ outcome: 'accepted' | 'dismissed' | 'unavailable' }> {
+  if (typeof window === 'undefined') return { outcome: 'unavailable' };
+  const promptEvent = (
+    window as unknown as {
+      __deferredPrompt?: {
+        prompt: () => Promise<void>;
+        userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+      };
+    }
+  ).__deferredPrompt;
+
+  if (!promptEvent) {
+    return { outcome: 'unavailable' };
+  }
+
+  try {
+    await promptEvent.prompt();
+    const result = await promptEvent.userChoice;
+    if (result.outcome === 'accepted') {
+      (window as unknown as { __deferredPrompt?: unknown }).__deferredPrompt = null;
+      window.dispatchEvent(new CustomEvent('pwa-installed'));
+    }
+    return result;
+  } catch (err) {
+    console.warn('PWA prompt execution error:', err);
+    return { outcome: 'unavailable' };
   }
 }
 

@@ -26,6 +26,7 @@ import {
   getStoredAppLogo,
   applyCustomAppLogo,
   getAppLogoSrc,
+  promptPwaInstall,
 } from '../services/pwa';
 import { useMusic } from '../context/MusicContext';
 import { LogoCropperModal } from './LogoCropperModal';
@@ -119,37 +120,22 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
       await applyCustomAppName(appName);
     } catch {}
 
-    const promptEvent = (
-      window as unknown as {
-        __deferredPrompt?: {
-          prompt: () => Promise<void>;
-          userChoice: Promise<{ outcome: string }>;
-        };
-      }
-    ).__deferredPrompt;
+    const result = await promptPwaInstall();
+    if (result.outcome === 'accepted') {
+      setInstallSuccess(true);
+      setTimeout(() => onClose(), 2000);
+      return;
+    } else if (result.outcome === 'dismissed') {
+      setPromptNotice('Installation was dismissed. You can install anytime!');
+      return;
+    }
 
-    if (promptEvent) {
-      try {
-        await promptEvent.prompt();
-        const choice = await promptEvent.userChoice;
-        if (choice.outcome === 'accepted') {
-          setInstallSuccess(true);
-          setTimeout(() => onClose(), 2000);
-        } else {
-          setPromptNotice('Installation was dismissed. You can install anytime!');
-        }
-      } catch (err) {
-        console.warn('Install prompt failed:', err);
-        setPromptNotice('Please use the browser menu (⋮) to install.');
-      }
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/i.test(ua)) {
+      setActiveTab('ios');
+      setPromptNotice('iOS Safari uses the Share menu: Tap Share (⎋) then "Add to Home Screen".');
     } else {
-      const ua = navigator.userAgent || '';
-      if (/iPhone|iPad|iPod/i.test(ua)) {
-        setActiveTab('ios');
-        setPromptNotice('iOS Safari uses the Share menu: Tap Share (⎋) then "Add to Home Screen".');
-      } else {
-        setPromptNotice('Tap your browser menu (⋮) at the top right and select "Install app" or "Add to Home screen".');
-      }
+      setPromptNotice('Tap your browser menu (⋮) at the top right and select "Install app" (or "Add to Home screen").');
     }
   };
 
