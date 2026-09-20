@@ -197,7 +197,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [globalUser, setGlobalUser] = useState<string | null>(() => localStorage.getItem('hub_active_user') || null);
   const [globalPass, setGlobalPass] = useState<string | null>(() => localStorage.getItem('hub_active_pass') || null);
-  const [userProfile, setUserProfile] = useState<UserProfile>(defaultProfile);
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    const dev = loadDeviceSettings();
+    return dev ? { ...defaultProfile, ...dev } : defaultProfile;
+  });
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
 
   // Playback state
@@ -423,6 +426,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         showToast('Logged in as Admin');
       } else if (data.profile) {
         const p = data.profile;
+        const devSettings = loadDeviceSettings() || {};
         const merged: UserProfile = {
           ...userProfile,
           username: p.username || user,
@@ -431,19 +435,26 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           favouriteArtists: p.favouriteArtists || [],
           favouriteAlbums: p.favouriteAlbums || [],
           recentlyPlayed: p.recentlyPlayed || [],
-          dataSaver: !!p.dataSaver,
-          dataSaverLevel: p.dataSaverLevel || 'off',
-          downloadLyricsOffline: !!p.downloadLyricsOffline,
-          autoCachePlayed: !!p.autoCachePlayed,
-          liquidGlass: p.liquidGlass !== undefined ? !!p.liquidGlass : true,
-          theme: p.theme === 'light' ? 'light' : 'dark',
-          accentColor: p.accentColor || 'orange',
-          lyricsColor: p.lyricsColor || 'white',
-          presetTint: p.presetTint || 'none',
-          activePreset: p.activePreset ?? 'glass',
+          dataSaver: devSettings.dataSaver !== undefined ? !!devSettings.dataSaver : !!p.dataSaver,
+          dataSaverLevel: devSettings.dataSaverLevel || p.dataSaverLevel || 'off',
+          downloadQuality: devSettings.downloadQuality || userProfile.downloadQuality || 'stable',
+          downloadArtOffline: devSettings.downloadArtOffline !== undefined ? devSettings.downloadArtOffline : true,
+          artQualityOffline: devSettings.artQualityOffline || userProfile.artQualityOffline || 'low',
+          customAppName: devSettings.customAppName || userProfile.customAppName || 'MOUZIKETNA',
+          appLogo: devSettings.appLogo || userProfile.appLogo || 'default',
+          downloadLyricsOffline: devSettings.downloadLyricsOffline !== undefined ? !!devSettings.downloadLyricsOffline : !!p.downloadLyricsOffline,
+          autoCachePlayed: devSettings.autoCachePlayed !== undefined ? !!devSettings.autoCachePlayed : false,
+          autoCacheQuality: devSettings.autoCacheQuality || userProfile.autoCacheQuality || 'stable',
+          liquidGlass: devSettings.liquidGlass !== undefined ? !!devSettings.liquidGlass : (p.liquidGlass !== undefined ? !!p.liquidGlass : true),
+          theme: devSettings.theme || (p.theme === 'light' ? 'light' : 'dark'),
+          accentColor: devSettings.accentColor || p.accentColor || 'orange',
+          lyricsColor: devSettings.lyricsColor || p.lyricsColor || 'white',
+          presetTint: devSettings.presetTint || p.presetTint || 'none',
+          activePreset: devSettings.activePreset || p.activePreset || 'glass',
           avatarUrl: p.avatarUrl || null,
         };
         setUserProfile(merged);
+        saveDeviceSettings(merged);
         applyTheme(merged.theme, merged.accentColor, merged.lyricsColor, merged.presetTint, merged.liquidGlass);
         cacheProfileLocally(user, merged);
         if (data.surprise) {
@@ -563,9 +574,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const generateRadioQueue = async (seedTrack: Track) => {
     try {
-      let recs: Track[] = [];
+      const candidates: Track[] = [];
+      const seenIds = new Set<string>([seedTrack.id]);
+      const artistCounts: Record<string, number> = {};
 
-      // 1. Try theme/acoustic similarity endpoint first
+      const seedArtistKey = tasteArtistKey(seedTrack.artist);
+      if (seedArtistKey) artistCounts[seedArtistKey] = 1;
+
+      // 1. Fetch acoustic & thematic recommendations via similar-proxy
       try {
         const simRes = await fetchWithTimeout(
           `${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(seedTrack.title)}&artist=${encodeURIComponent(seedTrack.artist || '')}`,
@@ -574,32 +590,59 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (simRes.ok) {
           const simData = await simRes.json();
           const list = Array.isArray(simData) ? simData : simData.items || [];
-          recs = list
-            .filter((it: any) => (it.id || it.videoId) && (it.id || it.videoId) !== seedTrack.id)
-            .map((it: any) => normalizeTrack(it, 'song'));
+          for (const it of list) {
+            const id = it.id || it.videoId;
+            if (!id || seenIds.has(id)) continue;
+            const norm = normalizeTrack(it, 'song');
+            const aKey = tasteArtistKey(norm.artist);
+            // Cap at 2 tracks from the same artist to prevent single-artist flooding
+            if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
+            seenIds.add(id);
+            if (aKey) artistCounts[aKey] = (artistCounts[aKey] || 0) + 1;
+            candidates.push(norm);
+          }
         }
       } catch {}
 
-      // 2. If similar proxy returned few or no tracks, search by theme/song title context
-      if (recs.length < 5) {
+      // 2. Mix in personalized taste seeds based on user listening history and liked songs
+      try {
+        const topSeeds = tasteTopSeeds(userProfile.likedSongs || [], 3, seedTrack.id);
+        for (const tSeed of topSeeds) {
+          if (candidates.length >= 18) break;
+          const aKey = tasteArtistKey(tSeed.artist);
+          if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
+          if (!seenIds.has(tSeed.id)) {
+            seenIds.add(tSeed.id);
+            if (aKey) artistCounts[aKey] = (artistCounts[aKey] || 0) + 1;
+            candidates.push(tSeed);
+          }
+        }
+      } catch {}
+
+      // 3. Fallback / supplement with radio mix search if fewer than 10 tracks
+      if (candidates.length < 10) {
         const cleanTitle = cleanTitleForLyrics(seedTrack.title) || seedTrack.title;
-        const query = cleanTitle ? `${cleanTitle} radio` : seedTrack.artist || 'popular music';
+        const query = cleanTitle ? `${cleanTitle} radio mix` : `${seedTrack.artist || 'popular'} mix`;
         const res = await fetchJsonRetry<any>(
           `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(query)}&f=song`,
           2
         );
         const items = Array.isArray(res) ? res : res.items || [];
-        const additional: Track[] = items
-          .filter((it: any) => {
-            const id = it.videoId || it.id;
-            return id && id !== seedTrack.id && !recs.some((r) => r.id === id);
-          })
-          .map((it: any) => normalizeTrack(it, 'song'));
-        recs = [...recs, ...additional];
+        for (const it of items) {
+          const id = it.videoId || it.id;
+          if (!id || seenIds.has(id)) continue;
+          const norm = normalizeTrack(it, 'song');
+          const aKey = tasteArtistKey(norm.artist);
+          if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
+          seenIds.add(id);
+          if (aKey) artistCounts[aKey] = (artistCounts[aKey] || 0) + 1;
+          candidates.push(norm);
+          if (candidates.length >= 25) break;
+        }
       }
 
-      if (recs.length > 0) {
-        const finalQueue = recs.slice(0, 20);
+      if (candidates.length > 0) {
+        const finalQueue = candidates.slice(0, 25);
         setPlaybackQueue((current) => {
           if (current.length <= 1) {
             return [seedTrack, ...finalQueue];

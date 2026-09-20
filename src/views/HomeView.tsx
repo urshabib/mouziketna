@@ -16,6 +16,7 @@ import {
   Radio,
 } from 'lucide-react';
 import { fetchJsonRetry, normalizeTrack, NEW_HUB_BACKEND } from '../services/api';
+import { tasteTopSeeds, tasteArtistKey } from '../services/storage';
 
 const GENRES = [
   { name: 'Arabic Hits', query: 'Top 50 Arabic Hits', bg: 'from-purple-900 to-indigo-950', icon: <Flame className="w-8 h-8 opacity-40" /> },
@@ -44,21 +45,58 @@ export const HomeView: React.FC = () => {
   const loadRecommendations = async (manual = false) => {
     setLoadingRecs(true);
     try {
-      // Fetch recommendations based on user's taste or top music seeds
-      const seedQuery = recentlyPlayed.length > 0
-        ? recentlyPlayed[0].artist
-        : 'Tunisian Rap Arabic Pop';
+      // 1. Gather rich seeds across user's liked songs, recently played, and custom playlists
+      const playlistSongs = (userProfile.customPlaylists || []).flatMap((pl) => pl.tracks || []);
+      const allUserTracks = [...(userProfile.likedSongs || []), ...recentlyPlayed, ...playlistSongs];
+      const topTaste = tasteTopSeeds(allUserTracks, 4);
+
+      // 2. Select dynamic query based on taste seeds and artists
+      let seedQuery = 'Tunisian Rap Arabic Pop Hits';
+      if (topTaste.length > 0) {
+        const artists = topTaste.map((t) => t.artist).filter(Boolean);
+        seedQuery = artists.slice(0, 2).join(' ') + ' mix';
+      } else if (recentlyPlayed.length > 0) {
+        seedQuery = recentlyPlayed[0].artist + ' mix';
+      }
 
       const res = await fetchJsonRetry<any>(
         `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(seedQuery)}&f=song`,
         2
       );
       const items = Array.isArray(res) ? res : res.items || [];
-      const songs: Track[] = items.slice(0, 12).map((it: any) => normalizeTrack(it, 'song'));
+      const seen = new Set<string>();
+      const artistSeen: Record<string, number> = {};
+      const songs: Track[] = [];
+
+      // Interleave user favorite tracks if available
+      for (const t of topTaste) {
+        if (!seen.has(t.id)) {
+          seen.add(t.id);
+          songs.push(t);
+        }
+      }
+
+      // Add discovered matching songs
+      for (const it of items) {
+        const norm = normalizeTrack(it, 'song');
+        if (!norm.id || seen.has(norm.id)) continue;
+        const aKey = tasteArtistKey(norm.artist);
+        if (aKey && (artistSeen[aKey] || 0) >= 2) continue;
+        seen.add(norm.id);
+        if (aKey) artistSeen[aKey] = (artistSeen[aKey] || 0) + 1;
+        songs.push(norm);
+        if (songs.length >= 12) break;
+      }
+
       setRecommendedSongs(songs);
 
+      // Playlists based on genre/taste
+      const plQuery = topTaste.length > 0 && topTaste[0].artist
+        ? `${topTaste[0].artist} Playlist Mix`
+        : 'Top Hits Music Mix';
+
       const plRes = await fetchJsonRetry<any>(
-        `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent('Top Arabic Hits Mix')}&f=playlist`,
+        `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(plQuery)}&f=playlist`,
         2
       );
       const plItems = Array.isArray(plRes) ? plRes : plRes.items || [];

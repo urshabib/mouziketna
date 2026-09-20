@@ -27,6 +27,7 @@ import {
   applyCustomAppLogo,
   getAppLogoSrc,
 } from '../services/pwa';
+import { useMusic } from '../context/MusicContext';
 import { LogoCropperModal } from './LogoCropperModal';
 
 interface InstallModalProps {
@@ -37,6 +38,7 @@ interface InstallModalProps {
 type PlatformTab = 'android' | 'ios' | 'desktop';
 
 export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) => {
+  const { userProfile, syncProfile } = useMusic();
   const [activeTab, setActiveTab] = useState<PlatformTab>('android');
   const [isInstalled, setIsInstalled] = useState(false);
   const [installSuccess, setInstallSuccess] = useState(false);
@@ -85,6 +87,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
   const handleNameChange = (val: string) => {
     setAppName(val);
     applyCustomAppName(val);
+    syncProfile({ ...userProfile, customAppName: val });
     setNameSavedToast(true);
     setTimeout(() => setNameSavedToast(false), 2000);
   };
@@ -92,6 +95,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
   const handleResetName = () => {
     setAppName(DEFAULT_APP_NAME);
     applyCustomAppName(DEFAULT_APP_NAME);
+    syncProfile({ ...userProfile, customAppName: DEFAULT_APP_NAME });
     setNameSavedToast(true);
     setTimeout(() => setNameSavedToast(false), 2000);
   };
@@ -99,11 +103,13 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
   const handleSelectPresetLogo = (presetId: string) => {
     setSelectedLogo(presetId);
     applyCustomAppLogo(presetId);
+    syncProfile({ ...userProfile, appLogo: presetId });
   };
 
   const handleCustomLogoCropped = (dataUrl: string) => {
     setSelectedLogo(dataUrl);
     applyCustomAppLogo(dataUrl);
+    syncProfile({ ...userProfile, appLogo: dataUrl });
   };
 
   const handleNativeInstall = async () => {

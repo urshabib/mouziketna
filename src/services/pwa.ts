@@ -187,6 +187,54 @@ export function getStoredAppName(): string {
   }
 }
 
+export function updatePwaManifest(appName: string, logoSrc: string): void {
+  try {
+    const manifestJson = {
+      id: "mouzika-player",
+      name: appName,
+      short_name: appName,
+      description: "Stream, search, and enjoy your music offline with synchronized lyrics.",
+      start_url: "./",
+      scope: "./",
+      display: "standalone",
+      display_override: ["standalone", "window-controls-overlay"],
+      orientation: "portrait",
+      background_color: "#000000",
+      theme_color: "#000000",
+      categories: ["music", "entertainment"],
+      icons: [
+        {
+          src: logoSrc,
+          sizes: "192x192 512x512",
+          type: logoSrc.startsWith('data:image/svg') ? "image/svg+xml" : "image/png",
+          purpose: "any"
+        },
+        {
+          src: logoSrc,
+          sizes: "192x192 512x512",
+          type: logoSrc.startsWith('data:image/svg') ? "image/svg+xml" : "image/png",
+          purpose: "maskable"
+        }
+      ]
+    };
+
+    const blob = new Blob([JSON.stringify(manifestJson, null, 2)], { type: 'application/manifest+json' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    let manifestLink = document.querySelector('link[rel="manifest"]');
+    if (manifestLink) {
+      manifestLink.setAttribute('href', blobUrl);
+    } else {
+      manifestLink = document.createElement('link');
+      manifestLink.setAttribute('rel', 'manifest');
+      manifestLink.setAttribute('href', blobUrl);
+      document.head.appendChild(manifestLink);
+    }
+  } catch (e) {
+    console.warn('[MOUZIKETNA] Dynamic manifest update notice:', e);
+  }
+}
+
 export function applyCustomAppName(rawName: string): string {
   const name = rawName.trim() || DEFAULT_APP_NAME;
 
@@ -194,10 +242,10 @@ export function applyCustomAppName(rawName: string): string {
     localStorage.setItem(STORAGE_KEY, name);
   } catch {}
 
-  // 1. Update Document Title
-  document.title = name;
+  // 1. DO NOT touch document.title (preserve permanent website title MOUZIKETNA)
+  // document.title remains unaltered
 
-  // 2. Update Apple Mobile Web App Title
+  // 2. Update Apple Mobile Web App Title for iOS Add to Home Screen
   let appleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
   if (appleMeta) {
     appleMeta.setAttribute('content', name);
@@ -208,19 +256,9 @@ export function applyCustomAppName(rawName: string): string {
     document.head.appendChild(appleMeta);
   }
 
-  // 3. Update OG Title
-  const ogTitle = document.querySelector('meta[property="og:title"]');
-  if (ogTitle) ogTitle.setAttribute('content', name);
-
-  // 4. Ensure Web App Manifest always points to the valid static manifest
-  try {
-    const manifestLink = document.querySelector('link[rel="manifest"]');
-    if (manifestLink && manifestLink.getAttribute('href')?.startsWith('blob:')) {
-      manifestLink.setAttribute('href', './manifest.json');
-    }
-  } catch (e) {
-    console.warn('[MOUZIKETNA] Manifest verification warning:', e);
-  }
+  // 3. Update Web App Manifest so Chrome / Android uses this name on Home Screen
+  const currentLogoSrc = getAppLogoSrc();
+  updatePwaManifest(name, currentLogoSrc);
 
   return name;
 }
@@ -251,7 +289,7 @@ export function applyCustomAppLogo(logoKeyOrDataUrl: string): void {
 
   const logoSrc = getAppLogoSrc(logoKeyOrDataUrl);
 
-  // Dynamically update head favicons & touch icons
+  // 1. Dynamically update head favicons & touch icons for iOS and browser
   try {
     const rels = ['icon', 'shortcut icon', 'apple-touch-icon'];
     rels.forEach((rel) => {
@@ -265,6 +303,10 @@ export function applyCustomAppLogo(logoKeyOrDataUrl: string): void {
     const ogImage = document.querySelector('meta[property="og:image"]');
     if (ogImage) ogImage.setAttribute('content', logoSrc);
   } catch {}
+
+  // 2. Update Web App Manifest so Chrome / Android uses this icon on Home Screen
+  const currentAppName = getStoredAppName();
+  updatePwaManifest(currentAppName, logoSrc);
 
   // Dispatch event for reactive UI update across components
   if (typeof window !== 'undefined') {
