@@ -1,4 +1,4 @@
-import { DownloadRecord, Track, UserProfile } from '../types';
+import { DownloadRecord, LyricsData, Track, UserProfile } from '../types';
 
 const DL_DB_NAME = 'mouzika-downloads';
 const DL_DB_VERSION = 1;
@@ -180,6 +180,28 @@ export async function getTotalDownloadedSize(): Promise<number> {
   return all.reduce((sum, d) => sum + (d.sizeBytes || 0), 0);
 }
 
+export async function getDownloadedLyrics(id: string): Promise<LyricsData | null> {
+  if (!id) return null;
+  try {
+    const record = await getDownload(id);
+    if (record && record.lyricsData && record.lyricsData.mode && record.lyricsData.mode !== 'none') {
+      return record.lyricsData;
+    }
+  } catch {}
+  return null;
+}
+
+export async function saveDownloadLyrics(id: string, lyrics: LyricsData): Promise<void> {
+  if (!id || !lyrics || lyrics.mode === 'none' || lyrics.mode === 'loading' || lyrics.mode === 'error') return;
+  try {
+    const record = await getDownload(id);
+    if (record) {
+      record.lyricsData = lyrics;
+      await saveDownload(record);
+    }
+  } catch {}
+}
+
 export function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return '0 MB';
   const mb = bytes / (1024 * 1024);
@@ -199,7 +221,7 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       artQualityOffline: profile.artQualityOffline || 'low',
       customAppName: profile.customAppName || undefined,
       appLogo: profile.appLogo || 'default',
-      downloadLyricsOffline: !!profile.downloadLyricsOffline,
+      downloadLyricsOffline: profile.downloadLyricsOffline !== false,
       autoCachePlayed: !!profile.autoCachePlayed,
       autoCacheQuality: profile.autoCacheQuality || 'stable',
       liquidGlass: profile.liquidGlass !== undefined ? !!profile.liquidGlass : true,

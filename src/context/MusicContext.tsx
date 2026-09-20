@@ -28,6 +28,8 @@ import {
   ensurePersistentStorageOnce,
   formatBytes,
   getDownload,
+  getDownloadedLyrics,
+  saveDownloadLyrics,
   initDownloadsRegistry,
   isDownloaded,
   listDownloads,
@@ -177,7 +179,7 @@ const defaultProfile: UserProfile = {
   autoCacheQuality: 'stable',
   customAppName: 'MOUZIKETNA',
   appLogo: 'default',
-  downloadLyricsOffline: false,
+  downloadLyricsOffline: true,
   downloadArtOffline: true,
   artQualityOffline: 'low',
   autoCachePlayed: false,
@@ -246,7 +248,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [modalAudioRecognitionOpen, setModalAudioRecognitionOpen] = useState(false);
   const [modalConfirm, setModalConfirm] = useState<{ title: string; text: string; onConfirm: () => void } | null>(null);
   const [surpriseUser, setSurpriseUser] = useState<string | null>(null);
-  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(() => {
+    try {
+      if (sessionStorage.getItem('mouzika_restore_install_modal')) {
+        sessionStorage.removeItem('mouzika_restore_install_modal');
+        return true;
+      }
+    } catch {}
+    return false;
+  });
 
   // Downloads
   const [downloadedSet, setDownloadedSet] = useState<Set<string>>(new Set());
@@ -686,9 +696,44 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsBuffering(true);
     setCurrentTime(0);
 
-    // Reset lyrics
+    // Lyrics Resolver with Instant Offline Cache Fallback
+    const resolveTrackLyrics = async (targetTrack: Track, targetDuration?: number): Promise<LyricsData> => {
+      if (!targetTrack || !targetTrack.id) return { mode: 'none' };
+      
+      // 1. Check if stored in offline downloads first (instant offline availability)
+      try {
+        const offlineLyrics = await getDownloadedLyrics(targetTrack.id);
+        if (offlineLyrics && (offlineLyrics.mode === 'synced' || offlineLyrics.mode === 'plain')) {
+          return offlineLyrics;
+        }
+      } catch {}
+
+      // 2. Online fetch if network is available
+      try {
+        const fetched = await fetchLyricsForTrack(targetTrack, targetDuration);
+        if (fetched && (fetched.mode === 'synced' || fetched.mode === 'plain')) {
+          // If the track is downloaded, persist these fetched lyrics to IndexedDB
+          if (isDownloaded(targetTrack.id)) {
+            saveDownloadLyrics(targetTrack.id, fetched).catch(() => {});
+          }
+          return fetched;
+        }
+      } catch {}
+
+      // 3. Fallback to offline download record if network query failed
+      try {
+        const offlineLyrics = await getDownloadedLyrics(targetTrack.id);
+        if (offlineLyrics && offlineLyrics.mode && offlineLyrics.mode !== 'none') {
+          return offlineLyrics;
+        }
+      } catch {}
+
+      return { mode: 'none' };
+    };
+
+    // Reset lyrics and resolve with offline priority
     setCurrentLyrics({ mode: 'loading' });
-    fetchLyricsForTrack(track).then((l) => {
+    resolveTrackLyrics(track, track.duration).then((l) => {
       if (token === playTokenRef.current) {
         setCurrentLyrics(l);
       }
@@ -1127,7 +1172,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         userProfile.downloadArtOffline !== false
           ? fetchArtworkBlob(ytTrackId || track.id, track.thumb, userProfile.artQualityOffline || 'low')
           : Promise.resolve(null),
-        userProfile.downloadLyricsOffline
+        userProfile.downloadLyricsOffline !== false
           ? fetchLyricsForTrack(track)
           : Promise.resolve(null),
       ]);
@@ -1238,7 +1283,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const retryLyrics = () => {
     if (activeTrack) {
       setCurrentLyrics({ mode: 'loading' });
-      fetchLyricsForTrack(activeTrack, duration).then(setCurrentLyrics);
+      // Check offline store first, then LRCLIB
+      getDownloadedLyrics(activeTrack.id).then((cached) => {
+        if (cached && (cached.mode === 'synced' || cached.mode === 'plain')) {
+          setCurrentLyrics(cached);
+        } else {
+          fetchLyricsForTrack(activeTrack, duration).then((fetched) => {
+            setCurrentLyrics(fetched);
+            if (isDownloaded(activeTrack.id) && fetched && (fetched.mode === 'synced' || fetched.mode === 'plain')) {
+              saveDownloadLyrics(activeTrack.id, fetched).catch(() => {});
+            }
+          });
+        }
+      });
     }
   };
 

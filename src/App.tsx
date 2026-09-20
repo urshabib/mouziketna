@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { MusicProvider, useMusic } from './context/MusicContext';
 import { Sidebar, MobileNav, TopBar } from './components/Navigation';
 import { PlayerBar, MiniPlayer } from './components/PlayerBar';
@@ -17,13 +17,169 @@ import { AccountView } from './views/AccountView';
 import { AdminView } from './views/AdminView';
 
 const AppShell: React.FC = () => {
-  const { activePane, userProfile, toasts, isInstallModalOpen, setIsInstallModalOpen } = useMusic();
+  const {
+    activePane,
+    setActivePane,
+    userProfile,
+    toasts,
+    isInstallModalOpen,
+    setIsInstallModalOpen,
+    isFullScreenOpen,
+    setIsFullScreenOpen,
+    isLyricsOpen,
+    setIsLyricsOpen,
+    isQueueOpen,
+    setIsQueueOpen,
+    actionSheetTrack,
+    setActionSheetTrack,
+    goBack,
+  } = useMusic();
 
   const themeClass = userProfile.theme === 'light' ? 'light-mode' : '';
   const glassClass = userProfile.liquidGlass ? 'liquid-glass' : '';
-  const tintClass = userProfile.presetTint && userProfile.presetTint !== 'none'
-    ? `tint-${userProfile.presetTint}`
-    : '';
+  const tintClass =
+    userProfile.presetTint && userProfile.presetTint !== 'none'
+      ? `tint-${userProfile.presetTint}`
+      : '';
+
+  // Universal Hardware Back / Popstate History Sync
+  useEffect(() => {
+    // Whenever an overlay opens or activePane changes, push history state
+    const isAnyOverlayOpen =
+      isFullScreenOpen ||
+      isLyricsOpen ||
+      isQueueOpen ||
+      !!actionSheetTrack ||
+      isInstallModalOpen;
+
+    const stateObj = {
+      pane: activePane,
+      hasOverlay: isAnyOverlayOpen,
+      time: Date.now(),
+    };
+
+    window.history.pushState(stateObj, '');
+
+    const handlePopState = () => {
+      if (isInstallModalOpen) {
+        setIsInstallModalOpen(false);
+        return;
+      }
+      if (actionSheetTrack) {
+        setActionSheetTrack(null);
+        return;
+      }
+      if (isLyricsOpen) {
+        setIsLyricsOpen(false);
+        return;
+      }
+      if (isQueueOpen) {
+        setIsQueueOpen(false);
+        return;
+      }
+      if (isFullScreenOpen) {
+        setIsFullScreenOpen(false);
+        return;
+      }
+      if (activePane !== 'home') {
+        goBack();
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [
+    activePane,
+    isFullScreenOpen,
+    isLyricsOpen,
+    isQueueOpen,
+    actionSheetTrack,
+    isInstallModalOpen,
+    goBack,
+    setIsFullScreenOpen,
+    setIsLyricsOpen,
+    setIsQueueOpen,
+    setActionSheetTrack,
+    setIsInstallModalOpen,
+  ]);
+
+  // Universal Touch Edge-Swipe Back Gesture for iOS & Android
+  useEffect(() => {
+    let startX = 0;
+    let startY = 0;
+    let isEdgeSwipe = false;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+
+      // Check if gesture started near screen edges (iOS/Android gesture boundary)
+      const screenWidth = window.innerWidth;
+      const isLeftEdge = startX <= 45;
+      const isRightEdge = startX >= screenWidth - 45;
+      const isOverlayActive =
+        isFullScreenOpen || isLyricsOpen || isQueueOpen || !!actionSheetTrack || isInstallModalOpen;
+
+      isEdgeSwipe = isLeftEdge || isRightEdge || (isOverlayActive && startX <= screenWidth * 0.3);
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (!isEdgeSwipe || e.changedTouches.length !== 1) return;
+      const touch = e.changedTouches[0];
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+
+      // Minimum swipe distance and horizontal direction dominance
+      const isHorizontalSwipe = Math.abs(deltaX) > 55 && Math.abs(deltaX) > 1.6 * Math.abs(deltaY);
+
+      if (isHorizontalSwipe) {
+        // Left-to-right swipe (standard back gesture)
+        if (deltaX > 0) {
+          if (isInstallModalOpen) setIsInstallModalOpen(false);
+          else if (actionSheetTrack) setActionSheetTrack(null);
+          else if (isLyricsOpen) setIsLyricsOpen(false);
+          else if (isQueueOpen) setIsQueueOpen(false);
+          else if (isFullScreenOpen) setIsFullScreenOpen(false);
+          else if (activePane !== 'home') goBack();
+        }
+        // Right-to-left swipe from right edge (Android right-edge back gesture)
+        else if (startX >= window.innerWidth - 45 && deltaX < -55) {
+          if (isInstallModalOpen) setIsInstallModalOpen(false);
+          else if (actionSheetTrack) setActionSheetTrack(null);
+          else if (isLyricsOpen) setIsLyricsOpen(false);
+          else if (isQueueOpen) setIsQueueOpen(false);
+          else if (isFullScreenOpen) setIsFullScreenOpen(false);
+          else if (activePane !== 'home') goBack();
+        }
+      }
+      isEdgeSwipe = false;
+    };
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [
+    activePane,
+    isFullScreenOpen,
+    isLyricsOpen,
+    isQueueOpen,
+    actionSheetTrack,
+    isInstallModalOpen,
+    goBack,
+    setIsFullScreenOpen,
+    setIsLyricsOpen,
+    setIsQueueOpen,
+    setActionSheetTrack,
+    setIsInstallModalOpen,
+  ]);
 
   return (
     <div

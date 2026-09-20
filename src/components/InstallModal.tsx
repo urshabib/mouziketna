@@ -105,12 +105,24 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
     setSelectedLogo(presetId);
     syncProfile({ ...userProfile, appLogo: presetId });
     await applyCustomAppLogo(presetId);
+    try {
+      sessionStorage.setItem('mouzika_restore_install_modal', 'true');
+    } catch {}
+    setTimeout(() => {
+      window.location.reload();
+    }, 120);
   };
 
   const handleCustomLogoCropped = async (dataUrl: string) => {
     setSelectedLogo(dataUrl);
     syncProfile({ ...userProfile, appLogo: dataUrl });
     await applyCustomAppLogo(dataUrl);
+    try {
+      sessionStorage.setItem('mouzika_restore_install_modal', 'true');
+    } catch {}
+    setTimeout(() => {
+      window.location.reload();
+    }, 120);
   };
 
   const handleNativeInstall = async () => {

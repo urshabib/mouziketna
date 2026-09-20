@@ -219,7 +219,7 @@ export const SettingsView: React.FC = () => {
 
   const showAudio = activeTab === 'all' || activeTab === 'audio';
   const showAppearance = activeTab === 'all' || activeTab === 'appearance';
-  const showApp = activeTab === 'all' || activeTab === 'app';
+  const showApp = !isStandalone && (activeTab === 'all' || activeTab === 'app');
   const showSystem = activeTab === 'all' || activeTab === 'system';
 
   return (
@@ -239,7 +239,7 @@ export const SettingsView: React.FC = () => {
             { id: 'all', label: 'All Settings', icon: Sliders },
             { id: 'audio', label: 'Audio & Offline', icon: Volume2 },
             { id: 'appearance', label: 'Theme & Colors', icon: Palette },
-            { id: 'app', label: 'App & Logo', icon: Smartphone },
+            ...(!isStandalone ? [{ id: 'app', label: 'App & Logo', icon: Smartphone }] : []),
             { id: 'system', label: 'Storage & System', icon: HardDrive },
           ].map((cat) => {
             const isCurrent = activeTab === cat.id;

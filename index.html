@@ -3,15 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-    <script>
-      // Immediate trailing-slash normalization for GitHub Pages and subpath hosting
-      (function() {
-        var path = window.location.pathname;
-        if (path && path.length > 1 && !path.endsWith('/') && !path.split('/').pop().includes('.')) {
-          window.location.replace(window.location.protocol + '//' + window.location.host + path + '/' + window.location.search + window.location.hash);
-        }
-      })();
-    </script>
     <title>MOUZIKETNA</title>
     <meta name="description" content="A sleek, high-performance music streaming and offline player with synchronized lyrics, YouTube playlist import, and iOS-inspired design." />
     <meta property="og:title" content="MOUZIKETNA" />
@@ -43,25 +34,6 @@
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Automatic fallback for static GitHub Pages deployments serving from repository root
-      (function() {
-        var isViteDev = Boolean(window.__vite_plugin_react_preamble_installed__ || window.location.port === '3000' || window.location.hostname.includes('run.app') || window.location.hostname.includes('localhost'));
-        if (!isViteDev) {
-          window.addEventListener('DOMContentLoaded', function() {
-            setTimeout(function() {
-              var root = document.getElementById('root');
-              if (root && root.childElementCount === 0) {
-                if (window.location.hostname.includes('github.io') && !window.location.pathname.includes('/docs')) {
-                  var p = window.location.pathname.replace(/\/?$/, '/docs/');
-                  window.location.replace(p + window.location.search + window.location.hash);
-                }
-              }
-            }, 300);
-          });
-        }
-      })();
-    </script>
     <script>
       // Global PWA prompt capture
       window.__deferredPrompt = null;
