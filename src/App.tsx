@@ -15,6 +15,7 @@ import { CollectionView } from './views/CollectionView';
 import { SettingsView } from './views/SettingsView';
 import { AccountView } from './views/AccountView';
 import { AdminView } from './views/AdminView';
+import { motion, AnimatePresence } from 'motion/react';
 
 const AppShell: React.FC = () => {
   const {
@@ -198,13 +199,24 @@ const AppShell: React.FC = () => {
           id="main-scroll-container"
           className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-8 py-6 pb-36 md:pb-28"
         >
-          {activePane === 'home' && <HomeView />}
-          {activePane === 'search' && <SearchView />}
-          {activePane === 'library' && <LibraryView />}
-          {activePane === 'collection' && <CollectionView />}
-          {activePane === 'settings' && <SettingsView />}
-          {activePane === 'account' && <AccountView />}
-          {activePane === 'admin' && <AdminView />}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activePane}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full h-full"
+            >
+              {activePane === 'home' && <HomeView />}
+              {activePane === 'search' && <SearchView />}
+              {activePane === 'library' && <LibraryView />}
+              {activePane === 'collection' && <CollectionView />}
+              {activePane === 'settings' && <SettingsView />}
+              {activePane === 'account' && <AccountView />}
+              {activePane === 'admin' && <AdminView />}
+            </motion.div>
+          </AnimatePresence>
         </main>
 
         {/* Desktop Fixed Bottom Player Dock */}

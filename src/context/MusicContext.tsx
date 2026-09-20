@@ -223,13 +223,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [playbackQueue, setPlaybackQueue] = useState<Track[]>([]);
   const [queueIndex, setQueueIndex] = useState(-1);
 
-  // Audio elements
+  // Audio elements & Synchronized Refs to avoid stale closures
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prefetchAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
   const playTokenRef = useRef(0);
   const hasPrefetchedNextRef = useRef(false);
   const playedHistoryRef = useRef<Track[]>([]);
+
+  const playbackQueueRef = useRef<Track[]>([]);
+  const queueIndexRef = useRef(-1);
+  const activeTrackRef = useRef<Track | null>(null);
+  const isShuffleRef = useRef(false);
+  const isLoopingRef = useRef(false);
+  const playNextRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const playPreviousRef = useRef<() => void>(() => {});
 
   // Overlays
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
@@ -341,11 +349,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatePositionState();
     };
     const onEnded = () => {
-      if (audio.loop) {
-        audio.currentTime = 0;
-        audio.play().catch(() => {});
+      if (isLoopingRef.current || (audioRef.current && audioRef.current.loop)) {
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0;
+          audioRef.current.play().catch(() => {});
+        }
       } else {
-        playNext();
+        if (playNextRef.current) {
+          playNextRef.current();
+        }
       }
     };
 
@@ -943,49 +955,145 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const toggleLoop = () => {
     setIsLooping((prev) => {
       const next = !prev;
+      isLoopingRef.current = next;
       if (audioRef.current) audioRef.current.loop = next;
       return next;
     });
   };
 
   const toggleShuffle = () => {
-    setIsShuffle((prev) => !prev);
+    setIsShuffle((prev) => {
+      const next = !prev;
+      isShuffleRef.current = next;
+      return next;
+    });
   };
 
   const playNext = async () => {
-    if (playbackQueue.length > 0) {
-      if (isShuffle) {
-        const nextIdx = Math.floor(Math.random() * playbackQueue.length);
+    const queue = playbackQueueRef.current;
+    const idx = queueIndexRef.current;
+    const shuffle = isShuffleRef.current;
+    const active = activeTrackRef.current;
+
+    if (queue && queue.length > 0) {
+      if (shuffle) {
+        const nextIdx = Math.floor(Math.random() * queue.length);
         setQueueIndex(nextIdx);
-        playTrack(playbackQueue[nextIdx], true);
-      } else if (queueIndex < playbackQueue.length - 1) {
-        const nextIdx = queueIndex + 1;
+        queueIndexRef.current = nextIdx;
+        const ok = await playTrack(queue[nextIdx], true);
+        if (!ok && queue.length > 1) {
+          const fallbackIdx = (nextIdx + 1) % queue.length;
+          setQueueIndex(fallbackIdx);
+          queueIndexRef.current = fallbackIdx;
+          await playTrack(queue[fallbackIdx], true);
+        }
+      } else if (idx >= 0 && idx < queue.length - 1) {
+        const nextIdx = idx + 1;
         setQueueIndex(nextIdx);
-        playTrack(playbackQueue[nextIdx], true);
-      } else if (activeTrack) {
-        // Algorithmic discovery when queue finishes
-        const next = await getNextAlgorithmTrack(activeTrack);
-        if (next) playTrack(next);
+        queueIndexRef.current = nextIdx;
+        const ok = await playTrack(queue[nextIdx], true);
+        if (!ok && nextIdx < queue.length - 1) {
+          const nextNextIdx = nextIdx + 1;
+          setQueueIndex(nextNextIdx);
+          queueIndexRef.current = nextNextIdx;
+          await playTrack(queue[nextNextIdx], true);
+        }
+      } else if (active) {
+        // Queue ended or loop queue, let's discover next algorithm track
+        const next = await getNextAlgorithmTrack(active);
+        if (next) {
+          const newQueue = [...queue, next];
+          setPlaybackQueue(newQueue);
+          playbackQueueRef.current = newQueue;
+          const nextIdx = newQueue.length - 1;
+          setQueueIndex(nextIdx);
+          queueIndexRef.current = nextIdx;
+          await playTrack(next, true);
+        } else if (queue.length > 0) {
+          // Loop back to start of playlist
+          setQueueIndex(0);
+          queueIndexRef.current = 0;
+          await playTrack(queue[0], true);
+        }
       }
-    } else if (activeTrack) {
-      const next = await getNextAlgorithmTrack(activeTrack);
-      if (next) playTrack(next);
+    } else if (active) {
+      const next = await getNextAlgorithmTrack(active);
+      if (next) {
+        setPlaybackQueue([next]);
+        playbackQueueRef.current = [next];
+        setQueueIndex(0);
+        queueIndexRef.current = 0;
+        await playTrack(next, true);
+      }
     }
   };
 
-  const playPrevious = () => {
+  const playPrevious = async () => {
     const audio = audioRef.current;
     if (audio && audio.currentTime > 3) {
       audio.currentTime = 0;
+      setCurrentTime(0);
       return;
     }
+
+    const queue = playbackQueueRef.current;
+    const idx = queueIndexRef.current;
+    const shuffle = isShuffleRef.current;
+
+    if (queue && queue.length > 0) {
+      if (shuffle) {
+        const prevIdx = Math.floor(Math.random() * queue.length);
+        setQueueIndex(prevIdx);
+        queueIndexRef.current = prevIdx;
+        await playTrack(queue[prevIdx], true);
+        return;
+      } else if (idx > 0) {
+        const prevIdx = idx - 1;
+        setQueueIndex(prevIdx);
+        queueIndexRef.current = prevIdx;
+        await playTrack(queue[prevIdx], true);
+        return;
+      }
+    }
+
     if (playedHistoryRef.current.length > 0) {
       const prev = playedHistoryRef.current.pop();
-      if (prev) playTrack(prev);
-    } else if (audio) {
+      if (prev) {
+        await playTrack(prev);
+        return;
+      }
+    }
+
+    if (audio) {
       audio.currentTime = 0;
+      setCurrentTime(0);
     }
   };
+
+  useEffect(() => {
+    playbackQueueRef.current = playbackQueue;
+  }, [playbackQueue]);
+
+  useEffect(() => {
+    queueIndexRef.current = queueIndex;
+  }, [queueIndex]);
+
+  useEffect(() => {
+    activeTrackRef.current = activeTrack;
+  }, [activeTrack]);
+
+  useEffect(() => {
+    isShuffleRef.current = isShuffle;
+  }, [isShuffle]);
+
+  useEffect(() => {
+    isLoopingRef.current = isLooping;
+  }, [isLooping]);
+
+  useEffect(() => {
+    playNextRef.current = playNext;
+    playPreviousRef.current = playPrevious;
+  });
 
   const addToQueue = (track: Track, playNext = false) => {
     setPlaybackQueue((prev) => {
@@ -994,27 +1102,43 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const insertAt = queueIndex >= 0 ? queueIndex + 1 : 0;
         const copy = [...filtered];
         copy.splice(insertAt, 0, track);
+        playbackQueueRef.current = copy;
         return copy;
       }
-      return [...filtered, track];
+      const copy = [...filtered, track];
+      playbackQueueRef.current = copy;
+      return copy;
     });
     showToast(playNext ? `Playing next: ${track.title}` : `Added to queue: ${track.title}`);
   };
 
   const removeFromQueue = (idx: number) => {
-    setPlaybackQueue((prev) => prev.filter((_, i) => i !== idx));
-    if (idx < queueIndex) setQueueIndex((q) => q - 1);
+    setPlaybackQueue((prev) => {
+      const copy = prev.filter((_, i) => i !== idx);
+      playbackQueueRef.current = copy;
+      return copy;
+    });
+    if (idx < queueIndex) {
+      setQueueIndex((q) => {
+        const next = q - 1;
+        queueIndexRef.current = next;
+        return next;
+      });
+    }
   };
 
   const clearQueue = () => {
     setPlaybackQueue([]);
+    playbackQueueRef.current = [];
     setQueueIndex(-1);
+    queueIndexRef.current = -1;
     showToast('Queue cleared', true);
   };
 
   const playQueueIndex = (idx: number) => {
     if (idx >= 0 && idx < playbackQueue.length) {
       setQueueIndex(idx);
+      queueIndexRef.current = idx;
       playTrack(playbackQueue[idx], true);
     }
   };
@@ -1022,7 +1146,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const playWholeCollection = (tracks: Track[]) => {
     if (!tracks.length) return;
     setPlaybackQueue(tracks);
+    playbackQueueRef.current = tracks;
     setQueueIndex(0);
+    queueIndexRef.current = 0;
     playTrack(tracks[0], true);
   };
 
@@ -1030,8 +1156,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!tracks.length) return;
     const shuffled = [...tracks].sort(() => Math.random() - 0.5);
     setPlaybackQueue(shuffled);
+    playbackQueueRef.current = shuffled;
     setQueueIndex(0);
+    queueIndexRef.current = 0;
     setIsShuffle(true);
+    isShuffleRef.current = true;
     playTrack(shuffled[0], true);
   };
 
@@ -1039,7 +1168,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!tracks.length) return;
     const clampedIndex = Math.max(0, Math.min(index, tracks.length - 1));
     setPlaybackQueue(tracks);
+    playbackQueueRef.current = tracks;
     setQueueIndex(clampedIndex);
+    queueIndexRef.current = clampedIndex;
     playTrack(tracks[clampedIndex], true);
   };
 

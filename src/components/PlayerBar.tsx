@@ -289,29 +289,105 @@ export const MiniPlayer: React.FC = () => {
     userProfile,
     setIsFullScreenOpen,
     setIsQueueOpen,
+    playNext,
+    playPrevious,
   } = useMusic();
 
   const thumbSrc = useTrackThumb(activeTrack);
+  const [dragX, setDragX] = React.useState(0);
+  const [swipeHint, setSwipeHint] = React.useState<'next' | 'prev' | null>(null);
+  const startRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
+  const isSwipingRef = React.useRef(false);
 
   if (!activeTrack) return null;
 
   const isLiked = userProfile.likedSongs?.some((s) => s.id === activeTrack.id);
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
+  const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, input, a')) return;
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    startRef.current = { x: clientX, y: clientY, time: Date.now() };
+    isSwipingRef.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (!startRef.current) return;
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    const diffX = clientX - startRef.current.x;
+    const diffY = clientY - startRef.current.y;
+
+    if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY)) {
+      isSwipingRef.current = true;
+      setDragX(diffX * 0.7);
+      if (diffX < -30) setSwipeHint('next');
+      else if (diffX > 30) setSwipeHint('prev');
+      else setSwipeHint(null);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!startRef.current) return;
+    const diff = dragX;
+    const wasSwiping = isSwipingRef.current;
+
+    if (wasSwiping) {
+      if (diff < -40) {
+        playNext();
+      } else if (diff > 40) {
+        playPrevious();
+      }
+    } else {
+      const elapsed = Date.now() - startRef.current.time;
+      if (elapsed < 400 && Math.abs(diff) < 15) {
+        setIsFullScreenOpen(true);
+      }
+    }
+
+    startRef.current = null;
+    isSwipingRef.current = false;
+    setDragX(0);
+    setSwipeHint(null);
+  };
+
   return (
     <div
-      onClick={() => setIsFullScreenOpen(true)}
-      className="md:hidden fixed left-2.5 right-2.5 bottom-[calc(4.2rem+env(safe-area-inset-bottom))] z-30 bg-[#1c140d]/90 glass-panel border border-white/15 rounded-2xl p-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-2xl cursor-pointer select-none"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onMouseDown={handleTouchStart}
+      onMouseMove={handleTouchMove}
+      onMouseUp={handleTouchEnd}
+      style={{
+        transform: `translateX(${dragX}px)`,
+        transition: dragX === 0 ? 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+      }}
+      className="md:hidden fixed left-2.5 right-2.5 bottom-[calc(4.2rem+env(safe-area-inset-bottom))] z-30 bg-[#1c140d]/90 glass-panel border border-white/15 rounded-2xl p-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-2xl cursor-pointer select-none touch-none active:scale-[0.99] transition-transform"
     >
       {/* Thumbnail */}
-      <img
-        src={thumbSrc}
-        alt={activeTrack.title}
-        onError={(e) => {
-          e.currentTarget.src = FALLBACK_ART;
-        }}
-        className="w-11 h-11 rounded-xl object-cover shadow-md flex-shrink-0"
-      />
+      <div className="relative flex-shrink-0">
+        <img
+          src={thumbSrc}
+          alt={activeTrack.title}
+          onError={(e) => {
+            e.currentTarget.src = FALLBACK_ART;
+          }}
+          className="w-11 h-11 rounded-xl object-cover shadow-md pointer-events-none"
+          draggable={false}
+        />
+        {swipeHint && (
+          <div className="absolute inset-0 bg-[#ff6b1a]/90 rounded-xl flex items-center justify-center text-black font-extrabold text-[10px]">
+            {swipeHint === 'next' ? 'NEXT' : 'PREV'}
+          </div>
+        )}
+      </div>
 
       {/* Meta */}
       <div className="flex-1 min-w-0">
