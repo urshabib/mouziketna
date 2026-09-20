@@ -1,5 +1,5 @@
 // Service Worker for MOUZIKA PWA
-const CACHE_NAME = 'mouzika-pwa-v5';
+const CACHE_NAME = 'mouzika-pwa-v6';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
 // Install event - activate immediately
@@ -14,18 +14,21 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Activate event - claim clients immediately
+// Activate event - claim clients immediately and clean all outdated caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((key) => key !== CACHE_NAME && key !== BRANDING_CACHE).map((key) => caches.delete(key))
+        keys.filter((key) => key !== CACHE_NAME && key !== BRANDING_CACHE).map((key) => {
+          console.log('[MOUZIKA SW] Purging old cache:', key);
+          return caches.delete(key);
+        })
       )
     ).then(() => self.clients.claim())
   );
 });
 
-// Fetch event - network-first with cache fallback
+// Fetch event - network-first with offline fallback
 self.addEventListener('fetch', (event) => {
   // Only handle GET requests and http/https schemes
   if (event.request.method !== 'GET' || !event.request.url.startsWith('http')) {
@@ -78,10 +81,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-First with cache fallback for everything else
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone and cache valid 200 responses
+        // Clone and cache valid 200 responses for static assets
         if (response && response.status === 200 && response.type === 'basic') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -91,12 +95,11 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => {
-        // If network fails, try cache
+        // If network fails (offline), try cache
         return caches.match(event.request).then((cached) => {
           if (cached) return cached;
-          // If HTML page request failed, return root
-          if (event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('./index.html') || caches.match('./');
+          if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+            return caches.match('./index.html') || caches.match('./') || caches.match('/index.html');
           }
           return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
         });

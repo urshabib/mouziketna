@@ -44,48 +44,6 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Fallback for static hosting directly from repo root or non-Vite static hosts
-      (function() {
-        function checkAndLoadStaticFallback() {
-          if (window.__mouzikaLoaded) return;
-          var root = document.getElementById('root');
-          if (!root || root.childElementCount === 0) {
-            window.__mouzikaLoaded = true;
-            console.log('[MOUZIKA] Loading static production assets fallback...');
-            var css = document.createElement('link');
-            css.rel = 'stylesheet';
-            css.crossOrigin = '';
-            css.href = './assets/index.css';
-            document.head.appendChild(css);
-
-            var script = document.createElement('script');
-            script.type = 'module';
-            script.crossOrigin = '';
-            script.src = './assets/index.js';
-            document.body.appendChild(script);
-          }
-        }
-        // On GitHub Pages or static hosts without Vite dev server, load immediately
-        var isStaticHost = window.location.hostname.indexOf('github.io') !== -1 ||
-                           (window.location.protocol === 'file:') ||
-                           (!window.__vite_plugin_react_preamble_installed__ && window.location.port !== '3000');
-        if (isStaticHost && window.location.hostname.indexOf('run.app') === -1 && window.location.hostname !== 'localhost') {
-          checkAndLoadStaticFallback();
-        }
-
-        window.addEventListener('error', function(e) {
-          if (e && e.filename && (e.filename.indexOf('main.tsx') !== -1 || e.filename.indexOf('.tsx') !== -1)) {
-            checkAndLoadStaticFallback();
-          }
-        });
-        setTimeout(function() {
-          if (!window.__vite_plugin_react_preamble_installed__) {
-            checkAndLoadStaticFallback();
-          }
-        }, 400);
-      })();
-    </script>
-    <script>
       // Global PWA prompt capture
       window.__deferredPrompt = null;
       window.addEventListener('beforeinstallprompt', function(e) {
