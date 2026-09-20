@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Download,
   Share,
@@ -12,6 +13,7 @@ import {
   Edit3,
   RotateCcw,
   CheckCircle2,
+  Info,
 } from 'lucide-react';
 import { getStoredAppName, applyCustomAppName } from '../services/pwa';
 
@@ -28,6 +30,8 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
   const [installSuccess, setInstallSuccess] = useState(false);
   const [appName, setAppName] = useState<string>(getStoredAppName());
   const [nameSavedToast, setNameSavedToast] = useState(false);
+  const [hasPrompt, setHasPrompt] = useState<boolean>(false);
+  const [promptNotice, setPromptNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -50,16 +54,31 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
     setIsInstalled(isStandalone);
     setAppName(getStoredAppName());
 
+    // Check if browser already captured the beforeinstallprompt event
+    if (typeof window !== 'undefined') {
+      const p = (window as unknown as { __deferredPrompt?: unknown }).__deferredPrompt;
+      setHasPrompt(Boolean(p));
+    }
+
+    const handlePromptReady = () => {
+      setHasPrompt(true);
+    };
+
     const handleInstalled = () => {
       setIsInstalled(true);
       setInstallSuccess(true);
+      setHasPrompt(false);
       setTimeout(() => {
         onClose();
       }, 2500);
     };
 
+    window.addEventListener('pwa-install-ready', handlePromptReady);
     window.addEventListener('pwa-installed', handleInstalled);
-    return () => window.removeEventListener('pwa-installed', handleInstalled);
+    return () => {
+      window.removeEventListener('pwa-install-ready', handlePromptReady);
+      window.removeEventListener('pwa-installed', handleInstalled);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
@@ -95,17 +114,28 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
         if (choice.outcome === 'accepted') {
           setInstallSuccess(true);
           setTimeout(() => onClose(), 2000);
+        } else {
+          setPromptNotice('Installation was dismissed. You can install anytime!');
         }
       } catch (err) {
         console.warn('Install prompt failed:', err);
+        setPromptNotice('Please use the browser menu (⋮) to install.');
+      }
+    } else {
+      const ua = navigator.userAgent || '';
+      if (/iPhone|iPad|iPod/i.test(ua)) {
+        setActiveTab('ios');
+        setPromptNotice('iOS Safari uses the Share menu: Tap Share (⎋) then "Add to Home Screen".');
+      } else {
+        setPromptNotice('Tap your browser menu (⋮) at the top right and select "Install app" or "Add to Home screen".');
       }
     }
   };
 
-  return (
+  const modalContent = (
     <div
       id="install-app-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -139,12 +169,20 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
           <button
             id="install-modal-close-btn"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors flex-shrink-0"
+            className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/15 flex items-center justify-center text-white/60 hover:text-white transition-colors flex-shrink-0 cursor-pointer"
             aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Notice banner when prompt clicked without deferred prompt */}
+        {promptNotice && (
+          <div className="p-3 rounded-xl bg-[#ff6b1a]/15 border border-[#ff6b1a]/30 flex items-start gap-2.5 text-xs text-white animate-in fade-in duration-150">
+            <Info className="w-4 h-4 text-[#ff6b1a] flex-shrink-0 mt-0.5" />
+            <span className="leading-relaxed">{promptNotice}</span>
+          </div>
+        )}
 
         {/* Success / Installed State */}
         {installSuccess ? (
@@ -379,4 +417,8 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };

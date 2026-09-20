@@ -91,9 +91,9 @@ export const Sidebar: React.FC = () => {
           <button
             id="sidebar-install-app-btn"
             onClick={() => setShowInstallModal(true)}
-            className="flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm text-[#ff6b1a] hover:bg-[#ff6b1a]/10 transition-all border border-[#ff6b1a]/20"
+            className="flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm text-[#ff6b1a] hover:bg-[#ff6b1a]/10 transition-all border border-[#ff6b1a]/20 cursor-pointer"
           >
-            <Smartphone className="w-5 h-5 text-[#ff6b1a]" /> Install App
+            <Download className="w-5 h-5 text-[#ff6b1a]" /> Install App
           </button>
 
           {globalUser === 'admin' && (
@@ -307,10 +307,10 @@ export const TopBar: React.FC = () => {
           <button
             id="topbar-install-btn"
             onClick={() => setShowInstallModal(true)}
-            className="flex items-center gap-1.5 bg-[#ff6b1a]/20 hover:bg-[#ff6b1a]/30 active:scale-95 text-[#ff6b1a] px-3 py-1.5 rounded-full border border-[#ff6b1a]/40 font-bold text-xs transition-all shadow-sm"
+            className="flex items-center gap-1.5 bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black px-3.5 py-1.5 rounded-full font-black text-xs transition-all shadow-md shadow-[#ff6b1a]/25 flex-shrink-0 cursor-pointer"
           >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Install</span> App
+            <Download className="w-3.5 h-3.5" />
+            <span>Install App</span>
           </button>
         )}
 

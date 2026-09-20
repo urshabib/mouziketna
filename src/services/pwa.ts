@@ -5,8 +5,6 @@
 const DEFAULT_APP_NAME = 'MOUZIKA';
 const STORAGE_KEY = 'mouzika_app_name';
 
-let activeBlobUrl: string | null = null;
-
 export function getStoredAppName(): string {
   try {
     return localStorage.getItem(STORAGE_KEY)?.trim() || DEFAULT_APP_NAME;
@@ -41,69 +39,15 @@ export function applyCustomAppName(rawName: string): string {
   const ogTitle = document.querySelector('meta[property="og:title"]');
   if (ogTitle) ogTitle.setAttribute('content', name);
 
-  // 4. Update Dynamic Manifest Blob for Chrome / Android / Desktop
+  // 4. Ensure Web App Manifest always points to the valid static manifest
+  // Note: Chromium security standards forbid blob: URLs for manifests and disable PWA installation if a blob URL is used.
   try {
-    const manifestData = {
-      id: './',
-      name: name,
-      short_name: shortName,
-      description: 'Stream, search, and enjoy your music offline with synchronized lyrics.',
-      start_url: './',
-      scope: './',
-      display: 'standalone',
-      display_override: ['standalone', 'window-controls-overlay'],
-      orientation: 'portrait',
-      background_color: '#000000',
-      theme_color: '#000000',
-      categories: ['music', 'entertainment'],
-      icons: [
-        {
-          src: './icon-192.png',
-          sizes: '192x192',
-          type: 'image/png',
-          purpose: 'any',
-        },
-        {
-          src: './icon-maskable-192.png',
-          sizes: '192x192',
-          type: 'image/png',
-          purpose: 'maskable',
-        },
-        {
-          src: './icon-512.png',
-          sizes: '512x512',
-          type: 'image/png',
-          purpose: 'any',
-        },
-        {
-          src: './icon-maskable-512.png',
-          sizes: '512x512',
-          type: 'image/png',
-          purpose: 'maskable',
-        },
-      ],
-    };
-
-    if (activeBlobUrl) {
-      URL.revokeObjectURL(activeBlobUrl);
-    }
-
-    const blob = new Blob([JSON.stringify(manifestData, null, 2)], {
-      type: 'application/manifest+json',
-    });
-    activeBlobUrl = URL.createObjectURL(blob);
-
-    let manifestLink = document.querySelector('link[rel="manifest"]');
-    if (manifestLink) {
-      manifestLink.setAttribute('href', activeBlobUrl);
-    } else {
-      manifestLink = document.createElement('link');
-      manifestLink.setAttribute('rel', 'manifest');
-      manifestLink.setAttribute('href', activeBlobUrl);
-      document.head.appendChild(manifestLink);
+    const manifestLink = document.querySelector('link[rel="manifest"]');
+    if (manifestLink && manifestLink.getAttribute('href')?.startsWith('blob:')) {
+      manifestLink.setAttribute('href', './manifest.json');
     }
   } catch (e) {
-    console.warn('Dynamic manifest creation failed:', e);
+    console.warn('[MOUZIKA] Manifest verification warning:', e);
   }
 
   return name;
