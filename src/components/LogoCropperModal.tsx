@@ -35,12 +35,23 @@ export const LogoCropperModal: React.FC<LogoCropperModalProps> = ({
   const imgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Reset state when opening
+  // Reset state when opening or closing
   useEffect(() => {
     if (isOpen) {
       setZoom(1);
       setPan({ x: 0, y: 0 });
       setPreviewDataUrl(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } else {
+      // Clear loaded image and transient state on close
+      setImageSrc(null);
+      imgRef.current = null;
+      setPreviewDataUrl(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   }, [isOpen]);
 
@@ -56,13 +67,19 @@ export const LogoCropperModal: React.FC<LogoCropperModalProps> = ({
       setPan({ x: 0, y: 0 });
 
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         imgRef.current = img;
         updatePreview(img, 1, { x: 0, y: 0 });
       };
+      img.onerror = () => {
+        console.warn('Failed to load image for cropping');
+      };
       img.src = src;
     };
     reader.readAsDataURL(file);
+    // Reset the input value so selecting the same file again triggers onChange
+    e.target.value = '';
   };
 
   const updatePreview = useCallback(

@@ -225,7 +225,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   className="flex items-center gap-1.5 text-xs font-bold text-white/90"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                  <span>Customize App Name</span>
+                  <span>Home Screen App Shortcut Name</span>
                 </label>
                 {appName !== DEFAULT_APP_NAME && (
                   <button
@@ -255,7 +255,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                 )}
               </div>
               <p className="text-[10px] text-white/40 leading-snug">
-                Updates the manifest title and the icon shortcut name on your home screen.
+                Sets the title of the app shortcut icon on your phone's home screen.
               </p>
             </div>
 

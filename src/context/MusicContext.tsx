@@ -180,7 +180,7 @@ const defaultProfile: UserProfile = {
   downloadLyricsOffline: false,
   downloadArtOffline: true,
   artQualityOffline: 'low',
-  autoCachePlayed: true,
+  autoCachePlayed: false,
   liquidGlass: true,
   theme: 'dark',
   accentColor: 'orange',
@@ -434,7 +434,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           dataSaver: !!p.dataSaver,
           dataSaverLevel: p.dataSaverLevel || 'off',
           downloadLyricsOffline: !!p.downloadLyricsOffline,
-          autoCachePlayed: p.autoCachePlayed !== false,
+          autoCachePlayed: !!p.autoCachePlayed,
           liquidGlass: p.liquidGlass !== undefined ? !!p.liquidGlass : true,
           theme: p.theme === 'light' ? 'light' : 'dark',
           accentColor: p.accentColor || 'orange',
@@ -563,21 +563,46 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const generateRadioQueue = async (seedTrack: Track) => {
     try {
-      const query = seedTrack.artist ? cleanArtistName(seedTrack.artist) : seedTrack.title;
-      const res = await fetchJsonRetry<any>(
-        `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(query)}&f=song`,
-        2
-      );
-      const items = Array.isArray(res) ? res : res.items || [];
-      const recs: Track[] = items
-        .filter((it: any) => (it.videoId || it.id) !== seedTrack.id)
-        .slice(0, 15)
-        .map((it: any) => normalizeTrack(it, 'song'));
+      let recs: Track[] = [];
+
+      // 1. Try theme/acoustic similarity endpoint first
+      try {
+        const simRes = await fetchWithTimeout(
+          `${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(seedTrack.title)}&artist=${encodeURIComponent(seedTrack.artist || '')}`,
+          4500
+        );
+        if (simRes.ok) {
+          const simData = await simRes.json();
+          const list = Array.isArray(simData) ? simData : simData.items || [];
+          recs = list
+            .filter((it: any) => (it.id || it.videoId) && (it.id || it.videoId) !== seedTrack.id)
+            .map((it: any) => normalizeTrack(it, 'song'));
+        }
+      } catch {}
+
+      // 2. If similar proxy returned few or no tracks, search by theme/song title context
+      if (recs.length < 5) {
+        const cleanTitle = cleanTitleForLyrics(seedTrack.title) || seedTrack.title;
+        const query = cleanTitle ? `${cleanTitle} radio` : seedTrack.artist || 'popular music';
+        const res = await fetchJsonRetry<any>(
+          `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(query)}&f=song`,
+          2
+        );
+        const items = Array.isArray(res) ? res : res.items || [];
+        const additional: Track[] = items
+          .filter((it: any) => {
+            const id = it.videoId || it.id;
+            return id && id !== seedTrack.id && !recs.some((r) => r.id === id);
+          })
+          .map((it: any) => normalizeTrack(it, 'song'));
+        recs = [...recs, ...additional];
+      }
 
       if (recs.length > 0) {
+        const finalQueue = recs.slice(0, 20);
         setPlaybackQueue((current) => {
           if (current.length <= 1) {
-            return [seedTrack, ...recs];
+            return [seedTrack, ...finalQueue];
           }
           return current;
         });

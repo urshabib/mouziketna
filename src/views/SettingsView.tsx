@@ -69,16 +69,16 @@ const LYRICS_COLORS = [
 ];
 
 const PRESETS = [
-  { id: 'classic', name: 'Classic', desc: 'Minimal Dark & Orange', accent: '#ff6b1a', glass: false, theme: 'dark', tint: 'none', lyrics: 'white' },
-  { id: 'glass', name: 'Liquid Glass', desc: 'Frosted Translucent Blur', accent: '#ff8b47', glass: true, theme: 'dark', tint: 'none', lyrics: 'white' },
-  { id: 'monochrome', name: 'Monochrome', desc: 'Clean White & Gray', accent: '#d8d8d8', glass: false, theme: 'dark', tint: 'none', lyrics: 'mono' },
-  { id: 'daylight', name: 'Daylight', desc: 'Crisp Modern Light Mode', accent: '#3b9dff', glass: false, theme: 'light', tint: 'none', lyrics: 'white' },
-  { id: 'gold', name: 'Gold Luxury', desc: 'Warm Amber & Brass Glow', accent: '#d4af37', glass: false, theme: 'dark', tint: 'gold', lyrics: 'gold' },
-  { id: 'midnight', name: 'Midnight', desc: 'Deep Violet & Cyber Glow', accent: '#a259ff', glass: true, theme: 'dark', tint: 'purple', lyrics: 'purple' },
-  { id: 'ocean', name: 'Ocean Wave', desc: 'Cyan & Deep Sea Azure', accent: '#06b6d4', glass: false, theme: 'dark', tint: 'ocean', lyrics: 'ocean' },
-  { id: 'emerald', name: 'Emerald', desc: 'Forest Green Atmosphere', accent: '#10b981', glass: false, theme: 'dark', tint: 'emerald', lyrics: 'emerald' },
-  { id: 'crimson', name: 'Crimson Night', desc: 'Velvet Ruby & Frosted Glass', accent: '#e11d48', glass: true, theme: 'dark', tint: 'crimson', lyrics: 'crimson' },
-  { id: 'sunset', name: 'Sunset Bloom', desc: 'Peach & Coral Dusk', accent: '#fb7185', glass: false, theme: 'dark', tint: 'sunset', lyrics: 'sunset' },
+  { id: 'classic', name: 'Classic', desc: 'Minimal Dark & Orange', accentColor: 'orange', accentHex: '#ff6b1a', glass: false, theme: 'dark', tint: 'none', lyrics: 'white' },
+  { id: 'glass', name: 'Liquid Glass', desc: 'Frosted Translucent Blur', accentColor: 'orange', accentHex: '#ff8b47', glass: true, theme: 'dark', tint: 'none', lyrics: 'white' },
+  { id: 'monochrome', name: 'Monochrome', desc: 'Clean White & Gray', accentColor: 'mono', accentHex: '#d8d8d8', glass: false, theme: 'dark', tint: 'none', lyrics: 'mono' },
+  { id: 'daylight', name: 'Daylight', desc: 'Crisp Modern Light Mode', accentColor: 'blue', accentHex: '#3b9dff', glass: false, theme: 'light', tint: 'none', lyrics: 'white' },
+  { id: 'gold', name: 'Gold Luxury', desc: 'Warm Amber & Brass Glow', accentColor: 'gold', accentHex: '#d4af37', glass: false, theme: 'dark', tint: 'gold', lyrics: 'gold' },
+  { id: 'midnight', name: 'Midnight', desc: 'Deep Violet & Cyber Glow', accentColor: 'purple', accentHex: '#a259ff', glass: true, theme: 'dark', tint: 'purple', lyrics: 'purple' },
+  { id: 'ocean', name: 'Ocean Wave', desc: 'Cyan & Deep Sea Azure', accentColor: 'ocean', accentHex: '#06b6d4', glass: false, theme: 'dark', tint: 'ocean', lyrics: 'ocean' },
+  { id: 'emerald', name: 'Emerald', desc: 'Forest Green Atmosphere', accentColor: 'emerald', accentHex: '#10b981', glass: false, theme: 'dark', tint: 'emerald', lyrics: 'emerald' },
+  { id: 'crimson', name: 'Crimson Night', desc: 'Velvet Ruby & Frosted Glass', accentColor: 'crimson', accentHex: '#e11d48', glass: true, theme: 'dark', tint: 'crimson', lyrics: 'crimson' },
+  { id: 'sunset', name: 'Sunset Bloom', desc: 'Peach & Coral Dusk', accentColor: 'sunset', accentHex: '#fb7185', glass: false, theme: 'dark', tint: 'sunset', lyrics: 'sunset' },
 ];
 
 export const SettingsView: React.FC = () => {
@@ -167,7 +167,7 @@ export const SettingsView: React.FC = () => {
       ...userProfile,
       liquidGlass: preset.glass,
       theme: preset.theme as any,
-      accentColor: preset.accent === '#ff6b1a' ? 'orange' : preset.id === 'daylight' ? 'blue' : preset.id,
+      accentColor: preset.accentColor,
       lyricsColor: preset.lyrics,
       presetTint: preset.tint,
       activePreset: preset.id,
@@ -452,9 +452,9 @@ export const SettingsView: React.FC = () => {
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-white flex items-center gap-1.5">
                 <Edit3 className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                <span>App Name & Title</span>
+                <span>Home Screen App Shortcut Name</span>
               </label>
-              <span className="text-[10px] text-white/40">Works for Android & iOS</span>
+              <span className="text-[10px] text-white/40">Android & iOS Home Screen</span>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-0.5">
               <input
@@ -489,7 +489,7 @@ export const SettingsView: React.FC = () => {
 
             {/* Real-time Header Preview */}
             <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/5 mt-0.5">
-              <span className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">Preview:</span>
+              <span className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">Home Icon Preview:</span>
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-md overflow-hidden bg-black border border-white/10 flex-shrink-0">
                   <img
@@ -500,14 +500,14 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <span className="text-xs font-black tracking-tight text-white flex items-center gap-1">
                   {appNameInput.trim() || DEFAULT_APP_NAME}
-                  <span className="text-[9px] font-normal text-white/40">by habib</span>
+                  <span className="text-[9px] font-normal text-white/40">app shortcut</span>
                 </span>
               </div>
             </div>
             <p className="text-[10px] text-white/40 leading-normal">
               {isStandalone
-                ? 'App is currently installed. Your browser syncs the home screen shortcut name and icon automatically in the background.'
-                : 'Sets the name displayed in the top bar, browser tab, and when adding the app to your Home Screen.'}
+                ? 'Sets your home screen icon title and application shortcut label without modifying the website brand.'
+                : 'Configures the title used when adding the app to your Home Screen / Desktop without altering website domain titles.'}
             </p>
           </div>
 
@@ -688,7 +688,7 @@ export const SettingsView: React.FC = () => {
               >
                 <div
                   className="w-4 h-4 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: p.accent }}
+                  style={{ backgroundColor: p.accentHex }}
                 />
                 <div className="min-w-0 flex-1">
                   <span className="font-bold text-xs text-white block truncate">{p.name}</span>
