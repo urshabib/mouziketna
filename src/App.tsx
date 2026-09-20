@@ -7,6 +7,7 @@ import { LyricsSheet } from './components/LyricsSheet';
 import { QueueDrawer } from './components/QueueDrawer';
 import { ActionSheet } from './components/ActionSheet';
 import { Modals } from './components/Modals';
+import { InstallModal } from './components/InstallModal';
 import { HomeView } from './views/HomeView';
 import { SearchView } from './views/SearchView';
 import { LibraryView } from './views/LibraryView';
@@ -16,7 +17,7 @@ import { AccountView } from './views/AccountView';
 import { AdminView } from './views/AdminView';
 
 const AppShell: React.FC = () => {
-  const { activePane, userProfile, toasts } = useMusic();
+  const { activePane, userProfile, toasts, isInstallModalOpen, setIsInstallModalOpen } = useMusic();
 
   const themeClass = userProfile.theme === 'light' ? 'light-mode' : '';
   const glassClass = userProfile.liquidGlass ? 'liquid-glass' : '';
@@ -66,6 +67,12 @@ const AppShell: React.FC = () => {
       <QueueDrawer />
       <ActionSheet />
       <Modals />
+      {isInstallModalOpen && (
+        <InstallModal
+          isOpen={isInstallModalOpen}
+          onClose={() => setIsInstallModalOpen(false)}
+        />
+      )}
 
       {/* Toast Notification Container */}
       <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none w-full max-w-sm px-4">

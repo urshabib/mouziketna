@@ -15,7 +15,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { NavigationPane } from '../types';
-import { InstallModal } from './InstallModal';
+import { getAppLogoSrc } from '../services/pwa';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -25,9 +25,9 @@ export const Sidebar: React.FC = () => {
     userProfile,
     globalUser,
     setModalCreatePlaylistOpen,
+    setIsInstallModalOpen,
   } = useMusic();
 
-  const [showInstallModal, setShowInstallModal] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
@@ -47,11 +47,21 @@ export const Sidebar: React.FC = () => {
       <div className="bg-[#121212] glass-panel rounded-2xl p-5 border border-white/5">
         <button
           onClick={() => setActivePane('home')}
-          className="logo hover:opacity-90 transition-opacity text-left mb-6"
+          className="logo hover:opacity-90 transition-opacity text-left mb-6 flex items-center gap-2.5"
         >
-          <i className="ri-pulse-fill"></i>
+          {userProfile.appLogo && userProfile.appLogo !== 'default' ? (
+            <div className="w-8 h-8 rounded-xl overflow-hidden border border-white/10 flex-shrink-0 bg-black">
+              <img
+                src={getAppLogoSrc(userProfile.appLogo)}
+                alt="Logo"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <i className="ri-pulse-fill"></i>
+          )}
           <span className="logo-textblock">
-            MOUZIKETNA
+            {userProfile.customAppName || 'MOUZIKETNA'}
             <span className="logo-signature">by habib</span>
           </span>
         </button>
@@ -90,7 +100,7 @@ export const Sidebar: React.FC = () => {
 
           <button
             id="sidebar-install-app-btn"
-            onClick={() => setShowInstallModal(true)}
+            onClick={() => setIsInstallModalOpen(true)}
             className="flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm text-[#ff6b1a] hover:bg-[#ff6b1a]/10 transition-all border border-[#ff6b1a]/20 cursor-pointer"
           >
             <Download className="w-5 h-5 text-[#ff6b1a]" /> Install App
@@ -211,13 +221,6 @@ export const Sidebar: React.FC = () => {
           ))}
         </div>
       </div>
-
-      {showInstallModal && (
-        <InstallModal
-          isOpen={showInstallModal}
-          onClose={() => setShowInstallModal(false)}
-        />
-      )}
     </aside>
   );
 };
@@ -261,9 +264,9 @@ export const TopBar: React.FC = () => {
     bulkDownloadState,
     openCollection,
     setIsAuthGateOpen,
+    setIsInstallModalOpen,
   } = useMusic();
 
-  const [showInstallModal, setShowInstallModal] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
   useEffect(() => {
@@ -285,11 +288,21 @@ export const TopBar: React.FC = () => {
       <div className="flex items-center gap-3.5">
         <button
           onClick={() => setActivePane('home')}
-          className="logo hover:opacity-90 transition-opacity text-left"
+          className="logo hover:opacity-90 transition-opacity text-left flex items-center gap-2.5"
         >
-          <i className="ri-pulse-fill"></i>
+          {userProfile.appLogo && userProfile.appLogo !== 'default' ? (
+            <div className="w-7 h-7 rounded-lg overflow-hidden border border-white/10 flex-shrink-0 bg-black">
+              <img
+                src={getAppLogoSrc(userProfile.appLogo)}
+                alt="Logo"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ) : (
+            <i className="ri-pulse-fill"></i>
+          )}
           <span className="logo-textblock">
-            MOUZIKETNA
+            {userProfile.customAppName || 'MOUZIKETNA'}
             <span className="logo-signature">by habib</span>
           </span>
         </button>
@@ -306,7 +319,7 @@ export const TopBar: React.FC = () => {
         {!isStandalone && (
           <button
             id="topbar-install-btn"
-            onClick={() => setShowInstallModal(true)}
+            onClick={() => setIsInstallModalOpen(true)}
             className="flex items-center gap-1.5 bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black px-3.5 py-1.5 rounded-full font-black text-xs transition-all shadow-md shadow-[#ff6b1a]/25 flex-shrink-0 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
@@ -349,13 +362,6 @@ export const TopBar: React.FC = () => {
           </span>
         </button>
       </div>
-
-      {showInstallModal && (
-        <InstallModal
-          isOpen={showInstallModal}
-          onClose={() => setShowInstallModal(false)}
-        />
-      )}
     </header>
   );
 };

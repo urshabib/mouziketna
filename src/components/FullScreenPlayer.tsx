@@ -22,7 +22,8 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { canonicalThumbUrl } from '../services/api';
+import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
+import { useTrackThumb } from '../services/useTrackThumb';
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '0:00';
@@ -60,6 +61,7 @@ export const FullScreenPlayer: React.FC = () => {
     cancelSleepTimer,
   } = useMusic();
 
+  const thumbSrc = useTrackThumb(activeTrack);
   const [isVideoMode, setIsVideoMode] = useState(false);
   const [isSleepMenuOpen, setIsSleepMenuOpen] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -108,7 +110,7 @@ export const FullScreenPlayer: React.FC = () => {
       <div
         className="absolute inset-0 opacity-40 blur-3xl pointer-events-none -z-10"
         style={{
-          backgroundImage: `url(${activeTrack.thumb || canonicalThumbUrl(activeTrack.id)})`,
+          backgroundImage: `url(${thumbSrc})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
@@ -244,8 +246,11 @@ export const FullScreenPlayer: React.FC = () => {
         ) : (
           <div className="w-full aspect-square rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] bg-[#18181b] border border-white/10 group">
             <img
-              src={activeTrack.thumb || canonicalThumbUrl(activeTrack.id)}
+              src={thumbSrc}
               alt={activeTrack.title}
+              onError={(e) => {
+                e.currentTarget.src = FALLBACK_ART;
+              }}
               className="w-full h-full object-cover"
             />
           </div>

@@ -82,6 +82,11 @@ export async function ensurePersistentStorageOnce(): Promise<void> {
 
 const offlineThumbCache = new Map<string, string | null>();
 
+export function getOfflineThumbUrlSync(id: string): string | null {
+  if (!id) return null;
+  return offlineThumbCache.get(id) || null;
+}
+
 export async function getOfflineThumbUrl(id: string): Promise<string | null> {
   if (!id) return null;
   if (offlineThumbCache.has(id)) return offlineThumbCache.get(id) || null;
@@ -189,8 +194,13 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
     localStorage.setItem(DEVICE_SETTINGS_KEY, JSON.stringify({
       dataSaver: !!profile.dataSaver,
       dataSaverLevel: profile.dataSaverLevel || 'off',
+      downloadQuality: profile.downloadQuality || 'stable',
+      downloadArtOffline: profile.downloadArtOffline !== false,
+      artQualityOffline: profile.artQualityOffline || 'low',
+      appLogo: profile.appLogo || 'default',
       downloadLyricsOffline: !!profile.downloadLyricsOffline,
       autoCachePlayed: profile.autoCachePlayed !== false,
+      autoCacheQuality: profile.autoCacheQuality || 'stable',
       liquidGlass: !!profile.liquidGlass,
       theme: profile.theme === 'light' ? 'light' : 'dark',
       accentColor: profile.accentColor || 'orange',

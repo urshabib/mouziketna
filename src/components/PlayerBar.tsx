@@ -20,7 +20,8 @@ import {
   FileText,
   Loader2,
 } from 'lucide-react';
-import { canonicalThumbUrl } from '../services/api';
+import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
+import { useTrackThumb } from '../services/useTrackThumb';
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '0:00';
@@ -59,6 +60,8 @@ export const PlayerBar: React.FC = () => {
     setModalAddToPlaylistTrack,
   } = useMusic();
 
+  const thumbSrc = useTrackThumb(activeTrack);
+
   if (!activeTrack) return null;
 
   const isLiked = userProfile.likedSongs?.some((s) => s.id === activeTrack.id);
@@ -79,8 +82,11 @@ export const PlayerBar: React.FC = () => {
           className="relative w-14 h-14 rounded-xl overflow-hidden cursor-pointer shadow-lg group flex-shrink-0"
         >
           <img
-            src={activeTrack.thumb || canonicalThumbUrl(activeTrack.id)}
+            src={thumbSrc}
             alt={activeTrack.title}
+            onError={(e) => {
+              e.currentTarget.src = FALLBACK_ART;
+            }}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -285,6 +291,8 @@ export const MiniPlayer: React.FC = () => {
     setIsQueueOpen,
   } = useMusic();
 
+  const thumbSrc = useTrackThumb(activeTrack);
+
   if (!activeTrack) return null;
 
   const isLiked = userProfile.likedSongs?.some((s) => s.id === activeTrack.id);
@@ -297,8 +305,11 @@ export const MiniPlayer: React.FC = () => {
     >
       {/* Thumbnail */}
       <img
-        src={activeTrack.thumb || canonicalThumbUrl(activeTrack.id)}
+        src={thumbSrc}
         alt={activeTrack.title}
+        onError={(e) => {
+          e.currentTarget.src = FALLBACK_ART;
+        }}
         className="w-11 h-11 rounded-xl object-cover shadow-md flex-shrink-0"
       />
 

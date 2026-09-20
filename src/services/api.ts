@@ -127,6 +127,66 @@ export function corsSafeThumbUrl(url: string | null): string | null {
   return `https://wsrv.nl/?url=${encodeURIComponent(url)}`;
 }
 
+export async function fetchArtworkBlob(
+  trackId: string,
+  thumbUrl: string | null,
+  quality: 'low' | 'medium' | 'high' | 'original' = 'low'
+): Promise<Blob | null> {
+  const dim =
+    quality === 'low'
+      ? { w: 150, h: 150, q: 70 }
+      : quality === 'medium'
+      ? { w: 300, h: 300, q: 80 }
+      : quality === 'high'
+      ? { w: 500, h: 500, q: 85 }
+      : null;
+
+  const candidateUrls: string[] = [];
+
+  // 1. If thumbUrl exists
+  if (thumbUrl) {
+    if (thumbUrl.startsWith('blob:') || thumbUrl.startsWith('data:')) {
+      try {
+        const res = await fetch(thumbUrl);
+        if (res.ok) return await res.blob();
+      } catch {}
+    }
+
+    if (dim) {
+      candidateUrls.push(
+        `https://wsrv.nl/?url=${encodeURIComponent(thumbUrl)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+      );
+    }
+    candidateUrls.push(corsSafeThumbUrl(thumbUrl) || thumbUrl);
+  }
+
+  // 2. YouTube canonical fallbacks
+  if (trackId && trackId.length === 11) {
+    const ytUrl = `https://i.ytimg.com/vi/${trackId}/mqdefault.jpg`;
+    if (dim) {
+      candidateUrls.push(
+        `https://wsrv.nl/?url=${encodeURIComponent(ytUrl)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+      );
+    }
+    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytUrl)}`);
+  }
+
+  // Attempt each candidate
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetchWithTimeout(url, 8000);
+      if (res.ok) {
+        const blob = await res.blob();
+        if (blob && blob.size > 500) {
+          return blob;
+        }
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
 export function normalizeTrack(item: any, forcedType: Track['type'] | null = null): Track {
   let type = forcedType || item.type || item.resultType || 'song';
   if (type === 'video') type = 'song';

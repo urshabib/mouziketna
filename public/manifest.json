@@ -1,7 +1,7 @@
 {
   "id": "mouzika-player",
-  "name": "MOUZIKA",
-  "short_name": "MOUZIKA",
+  "name": "MOUZIKETNA",
+  "short_name": "MOUZIKETNA",
   "description": "Stream, search, and enjoy your music offline with synchronized lyrics.",
   "start_url": "./",
   "scope": "./",

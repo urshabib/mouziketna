@@ -17,10 +17,13 @@ export interface UserProfile {
   recentlyPlayed: Track[];
   dataSaver: boolean;
   dataSaverLevel: 'off' | 'saver' | 'ultra';
-  downloadQuality?: 'high' | 'saver' | 'ultra';
+  downloadQuality?: 'stable' | 'high' | 'saver' | 'ultra';
   autoCacheQuality?: 'stable' | 'high' | 'saver' | 'ultra';
   customAppName?: string;
+  appLogo?: string;
   downloadLyricsOffline: boolean;
+  downloadArtOffline?: boolean;
+  artQualityOffline?: 'low' | 'medium' | 'high' | 'original';
   autoCachePlayed: boolean;
   liquidGlass: boolean;
   theme: 'dark' | 'light';

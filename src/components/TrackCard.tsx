@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useMusic } from '../context/MusicContext';
 import { Track } from '../types';
 import { Play, Heart, Download, MoreVertical, Music2, Check } from 'lucide-react';
-import { isDownloaded, getOfflineThumbUrl, getDownloadQuality } from '../services/storage';
-import { canonicalThumbUrl } from '../services/api';
+import { isDownloaded, getDownloadQuality } from '../services/storage';
+import { FALLBACK_ART } from '../services/api';
+import { useTrackThumb } from '../services/useTrackThumb';
 import { DownloadBadge } from './DownloadBadge';
 
 interface TrackCardProps {
@@ -26,24 +27,10 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
     setActionSheetMeta,
   } = useMusic();
 
-  const [thumbSrc, setThumbSrc] = useState<string>(track.thumb || canonicalThumbUrl(track.id));
+  const thumbSrc = useTrackThumb(track);
   const isCurrent = activeTrack?.id === track.id;
   const isLiked = userProfile.likedSongs?.some((s) => s.id === track.id);
   const downloaded = isDownloaded(track.id);
-
-  useEffect(() => {
-    let active = true;
-    if (downloaded) {
-      getOfflineThumbUrl(track.id).then((url) => {
-        if (active && url) setThumbSrc(url);
-      });
-    } else if (track.thumb) {
-      setThumbSrc(track.thumb);
-    }
-    return () => {
-      active = false;
-    };
-  }, [track.id, track.thumb, downloaded]);
 
   const handleCardClick = () => {
     if (track.type === 'artist') {
@@ -56,15 +43,8 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
     }
   };
 
-  const handleThumbError = async () => {
-    if (downloaded) {
-      const offline = await getOfflineThumbUrl(track.id);
-      if (offline) {
-        setThumbSrc(offline);
-        return;
-      }
-    }
-    setThumbSrc(canonicalThumbUrl(track.id));
+  const handleThumbError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    e.currentTarget.src = FALLBACK_ART;
   };
 
   return (

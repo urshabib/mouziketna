@@ -13,6 +13,7 @@ import {
   resolveMirrorStreams,
   resolveSaavnStream,
   canonicalThumbUrl,
+  fetchArtworkBlob,
   FALLBACK_ART,
   fetchJsonRetry,
   normalizeTrack,
@@ -124,6 +125,8 @@ interface MusicContextType {
   setModalConfirm: (conf: { title: string; text: string; onConfirm: () => void } | null) => void;
   surpriseUser: string | null;
   setSurpriseUser: (user: string | null) => void;
+  isInstallModalOpen: boolean;
+  setIsInstallModalOpen: (open: boolean) => void;
 
   // Downloads
   downloadedSet: Set<string>;
@@ -170,9 +173,13 @@ const defaultProfile: UserProfile = {
   recentlyPlayed: [],
   dataSaver: false,
   dataSaverLevel: 'off',
-  downloadQuality: 'high',
+  downloadQuality: 'stable',
   autoCacheQuality: 'stable',
+  customAppName: 'MOUZIKETNA',
+  appLogo: 'default',
   downloadLyricsOffline: false,
+  downloadArtOffline: true,
+  artQualityOffline: 'low',
   autoCachePlayed: true,
   liquidGlass: true,
   theme: 'dark',
@@ -229,6 +236,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [modalAudioRecognitionOpen, setModalAudioRecognitionOpen] = useState(false);
   const [modalConfirm, setModalConfirm] = useState<{ title: string; text: string; onConfirm: () => void } | null>(null);
   const [surpriseUser, setSurpriseUser] = useState<string | null>(null);
+  const [isInstallModalOpen, setIsInstallModalOpen] = useState(false);
 
   // Downloads
   const [downloadedSet, setDownloadedSet] = useState<Set<string>>(new Set());
@@ -629,8 +637,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (token !== playTokenRef.current) return false;
           audio.src = blobUrl;
           audio.play().catch(() => {});
-          rememberListen(track);
-          updateMediaSession(track);
+
+          let activeThumb = track.thumb;
+          if (record.thumbLowRes) {
+            try {
+              activeThumb = URL.createObjectURL(record.thumbLowRes);
+            } catch {}
+          }
+          const playingTrack = activeThumb !== track.thumb ? { ...track, thumb: activeThumb } : track;
+          setActiveTrack(playingTrack);
+          rememberListen(playingTrack);
+          updateMediaSession(playingTrack);
           return true;
         }
       } catch {}
@@ -923,7 +940,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track?.id) return false;
 
     // Calculate quality target
-    let quality: '320' | '160' | '96' | '48' = '320';
+    let quality: '320' | '160' | '96' | '48' = '160';
     if (isAutoCache) {
       const ac = userProfile.autoCacheQuality || 'stable';
       quality = ac === 'high' ? '320' : ac === 'ultra' ? '48' : ac === 'saver' ? '96' : '160';
@@ -934,8 +951,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ? 'ultra'
           : userProfile.dataSaverLevel === 'saver'
           ? 'saver'
-          : 'high');
-      quality = dq === 'ultra' ? '48' : dq === 'saver' ? '96' : '320';
+          : 'stable');
+      quality = dq === 'high' ? '320' : dq === 'ultra' ? '48' : dq === 'saver' ? '96' : '160';
     }
 
     const currentQuality = getDownloadQuality(track.id);
@@ -1020,14 +1037,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!audioBlob) throw new Error('Failed to fetch audio stream');
 
-      // Low-res thumbnail blob
+      // Offline artwork blob (Low quality default per user preference)
       let thumbBlob: Blob | null = null;
-      try {
-        if (track.thumb) {
-          const tRes = await fetchWithTimeout(canonicalThumbUrl(ytTrackId || track.id), 5000);
-          if (tRes.ok) thumbBlob = await tRes.blob();
-        }
-      } catch {}
+      if (userProfile.downloadArtOffline !== false) {
+        try {
+          thumbBlob = await fetchArtworkBlob(
+            ytTrackId || track.id,
+            track.thumb,
+            userProfile.artQualityOffline || 'low'
+          );
+        } catch {}
+      }
 
       // Lyrics if offline lyrics enabled
       let lyricsData: LyricsData | null = null;
@@ -1342,6 +1362,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setModalConfirm,
         surpriseUser,
         setSurpriseUser,
+        isInstallModalOpen,
+        setIsInstallModalOpen,
         downloadedSet,
         downloadQualityMap: downloadedQualityMap,
         downloadTrack,

@@ -14,8 +14,20 @@ import {
   RotateCcw,
   CheckCircle2,
   Info,
+  Palette,
+  UploadCloud,
+  FileCode,
 } from 'lucide-react';
-import { getStoredAppName, applyCustomAppName } from '../services/pwa';
+import {
+  getStoredAppName,
+  applyCustomAppName,
+  DEFAULT_APP_NAME,
+  LOGO_PRESETS,
+  getStoredAppLogo,
+  applyCustomAppLogo,
+  getAppLogoSrc,
+} from '../services/pwa';
+import { LogoCropperModal } from './LogoCropperModal';
 
 interface InstallModalProps {
   isOpen: boolean;
@@ -30,8 +42,10 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
   const [installSuccess, setInstallSuccess] = useState(false);
   const [appName, setAppName] = useState<string>(getStoredAppName());
   const [nameSavedToast, setNameSavedToast] = useState(false);
-  const [hasPrompt, setHasPrompt] = useState<boolean>(false);
   const [promptNotice, setPromptNotice] = useState<string | null>(null);
+  const [selectedLogo, setSelectedLogo] = useState<string>(getStoredAppLogo());
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [showFileGuide, setShowFileGuide] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -53,33 +67,18 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
 
     setIsInstalled(isStandalone);
     setAppName(getStoredAppName());
+    setSelectedLogo(getStoredAppLogo());
 
-    // Check if browser already captured the beforeinstallprompt event
-    if (typeof window !== 'undefined') {
-      const p = (window as unknown as { __deferredPrompt?: unknown }).__deferredPrompt;
-      setHasPrompt(Boolean(p));
-    }
-
-    const handlePromptReady = () => {
-      setHasPrompt(true);
+    const handleLogoChanged = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      setSelectedLogo(customEvent.detail || getStoredAppLogo());
     };
 
-    const handleInstalled = () => {
-      setIsInstalled(true);
-      setInstallSuccess(true);
-      setHasPrompt(false);
-      setTimeout(() => {
-        onClose();
-      }, 2500);
-    };
-
-    window.addEventListener('pwa-install-ready', handlePromptReady);
-    window.addEventListener('pwa-installed', handleInstalled);
+    window.addEventListener('mouzika-logo-changed', handleLogoChanged);
     return () => {
-      window.removeEventListener('pwa-install-ready', handlePromptReady);
-      window.removeEventListener('pwa-installed', handleInstalled);
+      window.removeEventListener('mouzika-logo-changed', handleLogoChanged);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -91,10 +90,20 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
   };
 
   const handleResetName = () => {
-    setAppName('MOUZIKA');
-    applyCustomAppName('MOUZIKA');
+    setAppName(DEFAULT_APP_NAME);
+    applyCustomAppName(DEFAULT_APP_NAME);
     setNameSavedToast(true);
     setTimeout(() => setNameSavedToast(false), 2000);
+  };
+
+  const handleSelectPresetLogo = (presetId: string) => {
+    setSelectedLogo(presetId);
+    applyCustomAppLogo(presetId);
+  };
+
+  const handleCustomLogoCropped = (dataUrl: string) => {
+    setSelectedLogo(dataUrl);
+    applyCustomAppLogo(dataUrl);
   };
 
   const handleNativeInstall = async () => {
@@ -132,15 +141,17 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
     }
   };
 
+  const currentLogoSrc = getAppLogoSrc(selectedLogo);
+
   const modalContent = (
     <div
       id="install-app-modal-backdrop"
-      className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[10000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-md transition-opacity duration-200"
       onClick={onClose}
     >
       <div
         id="install-app-modal-container"
-        className="w-full sm:max-w-md bg-[#161619] border-t sm:border border-white/10 rounded-t-[2rem] sm:rounded-3xl p-5 sm:p-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col gap-4 text-white max-h-[90vh] overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200"
+        className="w-full sm:max-w-md bg-[#161619] border-t sm:border border-white/10 rounded-t-[2rem] sm:rounded-3xl p-5 sm:p-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col gap-4 text-white max-h-[90vh] overflow-y-auto transform transition-transform duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Mobile Swipe / Pull indicator */}
@@ -151,15 +162,15 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-black border border-white/10 flex items-center justify-center shadow-lg relative overflow-hidden flex-shrink-0">
               <img
-                src="./apple-touch-icon.png"
-                alt={appName || 'MOUZIKA'}
+                src={currentLogoSrc}
+                alt={appName || DEFAULT_APP_NAME}
                 className="w-full h-full object-cover"
                 referrerPolicy="no-referrer"
               />
             </div>
             <div className="min-w-0">
               <h3 className="font-black text-base sm:text-lg text-white leading-tight truncate">
-                Install {appName || 'MOUZIKA'}
+                Install {appName || DEFAULT_APP_NAME}
               </h3>
               <p className="text-[11px] text-[#ff6b1a] font-semibold">
                 Standalone App • Offline Ready
@@ -178,7 +189,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
 
         {/* Notice banner when prompt clicked without deferred prompt */}
         {promptNotice && (
-          <div className="p-3 rounded-xl bg-[#ff6b1a]/15 border border-[#ff6b1a]/30 flex items-start gap-2.5 text-xs text-white animate-in fade-in duration-150">
+          <div className="p-3 rounded-xl bg-[#ff6b1a]/15 border border-[#ff6b1a]/30 flex items-start gap-2.5 text-xs text-white">
             <Info className="w-4 h-4 text-[#ff6b1a] flex-shrink-0 mt-0.5" />
             <span className="leading-relaxed">{promptNotice}</span>
           </div>
@@ -216,11 +227,11 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   <Edit3 className="w-3.5 h-3.5 text-[#ff6b1a]" />
                   <span>Customize App Name</span>
                 </label>
-                {appName !== 'MOUZIKA' && (
+                {appName !== DEFAULT_APP_NAME && (
                   <button
                     type="button"
                     onClick={handleResetName}
-                    className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white transition-colors"
+                    className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white transition-colors cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
                     <span>Reset</span>
@@ -233,19 +244,91 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   type="text"
                   value={appName}
                   onChange={(e) => handleNameChange(e.target.value)}
-                  placeholder="e.g. MOUZIKA, My Music"
+                  placeholder={`e.g. ${DEFAULT_APP_NAME}, My Music`}
                   maxLength={28}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-black/50 border border-white/10 text-white text-sm font-semibold focus:outline-none focus:border-[#ff6b1a] transition-colors"
                 />
                 {nameSavedToast && (
-                  <span className="absolute right-3 top-2.5 text-[11px] font-bold text-[#28c76f] animate-in fade-in">
+                  <span className="absolute right-3 top-2.5 text-[11px] font-bold text-[#28c76f]">
                     Saved!
                   </span>
                 )}
               </div>
               <p className="text-[10px] text-white/40 leading-snug">
-                This updates your manifest and shortcut name on your home screen.
+                Updates the manifest title and the icon shortcut name on your home screen.
               </p>
+            </div>
+
+            {/* Custom App Logo / Icon Chooser */}
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-white/90">
+                  <Palette className="w-3.5 h-3.5 text-[#ff6b1a]" />
+                  <span>App Logo & Icon</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowFileGuide(!showFileGuide)}
+                  className="text-[10px] text-white/50 hover:text-white transition-colors flex items-center gap-1"
+                >
+                  <FileCode className="w-3 h-3" />
+                  <span>File Paths</span>
+                </button>
+              </div>
+
+              {/* Logo Preset Chips */}
+              <div className="grid grid-cols-3 gap-2">
+                {LOGO_PRESETS.map((preset) => {
+                  const isCurrent = selectedLogo === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => handleSelectPresetLogo(preset.id)}
+                      className={`flex flex-col items-center gap-1.5 p-2 rounded-xl border transition-all cursor-pointer ${
+                        isCurrent
+                          ? 'border-[#ff6b1a] bg-[#ff6b1a]/15 shadow-md shadow-[#ff6b1a]/10'
+                          : 'border-white/10 bg-white/[0.02] hover:bg-white/5'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg overflow-hidden border border-white/15 bg-black flex items-center justify-center">
+                        <img
+                          src={preset.svgDataUri}
+                          alt={preset.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <span className="text-[10px] font-semibold text-white/80 leading-tight text-center truncate w-full">
+                        {preset.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Crop Button */}
+              <button
+                type="button"
+                onClick={() => setIsCropperOpen(true)}
+                className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white/90 flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <UploadCloud className="w-3.5 h-3.5 text-[#ff6b1a]" />
+                <span>Upload & Crop Custom Picture</span>
+              </button>
+
+              {/* File placement instructions (if user wants to download/paste files) */}
+              {showFileGuide && (
+                <div className="p-2.5 rounded-xl bg-black/60 border border-white/10 text-[10px] text-white/70 space-y-1">
+                  <div className="font-bold text-[#ff6b1a]">To permanently replace app icon files:</div>
+                  <p>Download your desired logo and put files into the project at:</p>
+                  <code className="block bg-white/5 p-1.5 rounded text-white font-mono text-[9px] leading-relaxed">
+                    /public/icon-512.png<br />
+                    /public/icon-192.png<br />
+                    /public/apple-touch-icon.png<br />
+                    /public/favicon.ico &amp; favicon.png
+                  </code>
+                </div>
+              )}
             </div>
 
             {/* Platform Selector Tabs */}
@@ -253,7 +336,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
               <button
                 type="button"
                 onClick={() => setActiveTab('android')}
-                className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'android'
                     ? 'bg-[#ff6b1a] text-black shadow-md'
                     : 'text-white/60 hover:text-white'
@@ -265,7 +348,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
               <button
                 type="button"
                 onClick={() => setActiveTab('ios')}
-                className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'ios'
                     ? 'bg-[#ff6b1a] text-black shadow-md'
                     : 'text-white/60 hover:text-white'
@@ -277,7 +360,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
               <button
                 type="button"
                 onClick={() => setActiveTab('desktop')}
-                className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'desktop'
                     ? 'bg-[#ff6b1a] text-black shadow-md'
                     : 'text-white/60 hover:text-white'
@@ -302,7 +385,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
 
                 <div className="flex flex-col gap-2.5 bg-white/[0.03] border border-white/5 p-3.5 rounded-2xl">
                   <span className="text-xs font-bold text-white/90">
-                    If "Install App" doesn't prompt automatically:
+                    If 1-tap install doesn't appear:
                   </span>
                   <div className="flex items-start gap-2.5 text-xs text-white/80">
                     <span className="w-5 h-5 rounded-md bg-[#ff6b1a]/20 text-[#ff6b1a] flex items-center justify-center font-bold text-[11px] flex-shrink-0">
@@ -322,13 +405,6 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                       <strong className="text-white">Add to Home screen</strong>.
                     </span>
                   </div>
-                </div>
-
-                <div className="p-3 rounded-xl bg-[#ff6b1a]/10 border border-[#ff6b1a]/20 text-[11px] text-white/80 leading-relaxed">
-                  <strong className="text-[#ff6b1a] block mb-0.5">Android Pro Tip:</strong>
-                  Selecting <strong className="text-white">"Add to Home screen"</strong> from
-                  Chrome's 3-dot menu opens a dialog where you can change the name right on your
-                  screen!
                 </div>
               </div>
             )}
@@ -368,11 +444,6 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                     </span>
                   </div>
                 </div>
-
-                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 text-[11px] text-white/60 leading-relaxed">
-                  Apple Safari allows editing the app name directly in the "Add to Home Screen"
-                  popup window.
-                </div>
               </div>
             )}
 
@@ -392,8 +463,8 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                     icon on the right side of the address bar.
                   </p>
                   <p className="text-white/50 text-[11px]">
-                    Once installed, the app launches as its own native window on Windows, Mac, and
-                    Linux.
+                    Once installed, the app launches as its own standalone window on Windows, Mac,
+                    and Linux.
                   </p>
                 </div>
               </div>
@@ -415,6 +486,14 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
           </>
         )}
       </div>
+
+      {/* Cropper Modal for custom logo uploads */}
+      <LogoCropperModal
+        isOpen={isCropperOpen}
+        onClose={() => setIsCropperOpen(false)}
+        onApply={handleCustomLogoCropped}
+        currentLogoSrc={currentLogoSrc}
+      />
     </div>
   );
 
