@@ -110,7 +110,13 @@ export const LyricsSheet: React.FC = () => {
         )}
 
         {currentLyrics.mode === 'plain' && typeof currentLyrics.lines === 'string' && (
-          <div className="whitespace-pre-wrap font-['Poppins'] text-lg sm:text-xl font-semibold leading-relaxed text-white/80 py-6">
+          <div
+            style={{
+              fontFamily: 'var(--lyrics-font, "Poppins", sans-serif)',
+              fontSize: 'calc(1.125rem * var(--lyrics-font-scale, 1))',
+            }}
+            className="whitespace-pre-wrap font-semibold leading-relaxed text-white/80 py-6"
+          >
             {currentLyrics.lines}
           </div>
         )}
@@ -135,7 +141,11 @@ export const LyricsSheet: React.FC = () => {
                   ref={isActive ? (activeLineRef as any) : null}
                   onClick={() => seekTo(line.time)}
                   dir={isRtl ? 'rtl' : 'ltr'}
-                  className={`lyric-line font-['Poppins'] font-extrabold text-xl sm:text-2xl md:text-3xl leading-snug cursor-pointer transition-all duration-300 ${
+                  style={{
+                    fontFamily: 'var(--lyrics-font, "Poppins", sans-serif)',
+                    fontSize: 'calc(1em * var(--lyrics-font-scale, 1))',
+                  }}
+                  className={`lyric-line font-extrabold text-xl sm:text-2xl md:text-3xl leading-snug cursor-pointer transition-all duration-300 ${
                     isActive
                       ? 'active scale-[1.03] text-white opacity-100'
                       : isPassed

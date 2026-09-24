@@ -22,6 +22,7 @@ import {
 import {
   cacheProfileLocally,
   deleteDownload,
+  deleteAllDownloads,
   downloadedIds,
   downloadedQualityMap,
   getDownloadQuality,
@@ -134,6 +135,7 @@ interface MusicContextType {
   downloadTrack: (track: Track, silent?: boolean, isAutoCache?: boolean) => Promise<boolean>;
   removeDownload: (trackId: string) => Promise<void>;
   removeMultipleDownloads: (trackIds: string[]) => Promise<void>;
+  clearAllDownloads: () => Promise<void>;
   downloadPlaylist: (tracks: Track[]) => Promise<void>;
   bulkDownloadState: { done: number; total: number; inProgress: boolean };
 
@@ -186,6 +188,7 @@ const defaultProfile: UserProfile = {
   accentColor: 'orange',
   lyricsColor: 'white',
   presetTint: 'none',
+  uiScale: 'default',
   activePreset: 'glass',
   avatarUrl: null,
 };
@@ -378,8 +381,28 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const devSettings = loadDeviceSettings();
     if (devSettings) {
       setUserProfile((prev) => ({ ...prev, ...devSettings }));
-      applyTheme(devSettings.theme || 'dark', devSettings.accentColor || 'orange', devSettings.lyricsColor || 'white', devSettings.presetTint || 'none', devSettings.liquidGlass ?? true);
+      applyTheme(
+        devSettings.theme || 'dark',
+        devSettings.accentColor || 'orange',
+        devSettings.lyricsColor || 'white',
+        devSettings.presetTint || 'none',
+        devSettings.liquidGlass ?? true,
+        devSettings.uiScale || 'default',
+        devSettings.customAccentHex,
+        devSettings.lyricsFont,
+        devSettings.customLyricsHex
+      );
     }
+
+    const sanitizeTracks = (tracks?: Track[]): Track[] => {
+      if (!tracks || !Array.isArray(tracks)) return [];
+      return tracks.map((t) => {
+        if (t && t.thumb && t.thumb.startsWith('blob:') && t.id) {
+          return { ...t, thumb: canonicalThumbUrl(t.id) };
+        }
+        return t;
+      });
+    };
 
     // Auto-login on launch if saved
     const savedUser = localStorage.getItem('hub_active_user');
@@ -388,6 +411,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (savedUser !== 'admin') {
         const cached = restoreProfileFromCache(savedUser);
         if (cached) {
+          if (cached.recentlyPlayed) {
+            cached.recentlyPlayed = sanitizeTracks(cached.recentlyPlayed);
+          }
           setUserProfile((prev) => ({ ...prev, ...cached }));
         }
       }
@@ -407,12 +433,46 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     accent: string,
     lyricsColor: string,
     presetTint: string,
-    liquidGlass: boolean
+    liquidGlass: boolean,
+    uiScale: string = 'default',
+    customAccentHex?: string,
+    lyricsFont?: string,
+    customLyricsHex?: string
   ) => {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-accent', accent);
     document.documentElement.setAttribute('data-lyrics-color', lyricsColor);
     document.documentElement.setAttribute('data-preset-tint', presetTint);
+    document.documentElement.setAttribute('data-ui-scale', uiScale || 'default');
+    if (lyricsFont) {
+      document.documentElement.setAttribute('data-lyrics-font', lyricsFont);
+    }
+    if (customAccentHex || (accent && accent.startsWith('#'))) {
+      const hex = customAccentHex || accent;
+      document.documentElement.style.setProperty('--accent', hex);
+      document.documentElement.style.setProperty('--accent-hover', hex);
+      document.documentElement.style.setProperty('--accent-soft', `${hex}28`);
+    } else {
+      document.documentElement.style.removeProperty('--accent');
+      document.documentElement.style.removeProperty('--accent-hover');
+      document.documentElement.style.removeProperty('--accent-soft');
+    }
+
+    if (customLyricsHex || (lyricsColor && lyricsColor.startsWith('#'))) {
+      const lyrHex = customLyricsHex || lyricsColor;
+      document.documentElement.style.setProperty('--lyrics-color', lyrHex);
+      const cleanHex = lyrHex.replace('#', '');
+      if (cleanHex.length === 6) {
+        const r = parseInt(cleanHex.slice(0, 2), 16);
+        const g = parseInt(cleanHex.slice(2, 4), 16);
+        const b = parseInt(cleanHex.slice(4, 6), 16);
+        document.documentElement.style.setProperty('--lyrics-color-rgb', `${r}, ${g}, ${b}`);
+      }
+    } else {
+      document.documentElement.style.removeProperty('--lyrics-color');
+      document.documentElement.style.removeProperty('--lyrics-color-rgb');
+    }
+
     document.body.classList.toggle('liquid-glass', !!liquidGlass);
   };
 
@@ -420,7 +480,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const prof = updated || userProfile;
     setUserProfile(prof);
     saveDeviceSettings(prof);
-    applyTheme(prof.theme, prof.accentColor, prof.lyricsColor, prof.presetTint, prof.liquidGlass);
+    applyTheme(
+      prof.theme,
+      prof.accentColor,
+      prof.lyricsColor,
+      prof.presetTint,
+      prof.liquidGlass,
+      prof.uiScale,
+      prof.customAccentHex,
+      prof.lyricsFont,
+      prof.customLyricsHex
+    );
     if (!globalUser || globalUser === 'admin') return;
     cacheProfileLocally(globalUser, prof);
 
@@ -453,14 +523,23 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else if (data.profile) {
         const p = data.profile;
         const devSettings = loadDeviceSettings() || {};
+        const sanitizeTracks = (tracks?: Track[]): Track[] => {
+          if (!tracks || !Array.isArray(tracks)) return [];
+          return tracks.map((t) => {
+            if (t && t.thumb && t.thumb.startsWith('blob:') && t.id) {
+              return { ...t, thumb: canonicalThumbUrl(t.id) };
+            }
+            return t;
+          });
+        };
         const merged: UserProfile = {
           ...userProfile,
           username: p.username || user,
-          likedSongs: p.likedSongs || [],
+          likedSongs: sanitizeTracks(p.likedSongs),
           customPlaylists: p.customPlaylists || [],
           favouriteArtists: p.favouriteArtists || [],
           favouriteAlbums: p.favouriteAlbums || [],
-          recentlyPlayed: p.recentlyPlayed || [],
+          recentlyPlayed: sanitizeTracks(p.recentlyPlayed),
           dataSaver: devSettings.dataSaver !== undefined ? !!devSettings.dataSaver : !!p.dataSaver,
           dataSaverLevel: devSettings.dataSaverLevel || p.dataSaverLevel || 'off',
           downloadQuality: devSettings.downloadQuality || userProfile.downloadQuality || 'stable',
@@ -476,12 +555,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           accentColor: devSettings.accentColor || p.accentColor || 'orange',
           lyricsColor: devSettings.lyricsColor || p.lyricsColor || 'white',
           presetTint: devSettings.presetTint || p.presetTint || 'none',
+          uiScale: devSettings.uiScale || p.uiScale || 'default',
           activePreset: devSettings.activePreset || p.activePreset || 'glass',
           avatarUrl: p.avatarUrl || null,
         };
         setUserProfile(merged);
         saveDeviceSettings(merged);
-        applyTheme(merged.theme, merged.accentColor, merged.lyricsColor, merged.presetTint, merged.liquidGlass);
+        applyTheme(merged.theme, merged.accentColor, merged.lyricsColor, merged.presetTint, merged.liquidGlass, merged.uiScale);
         cacheProfileLocally(user, merged);
       }
       return { success: true };
@@ -676,6 +756,42 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   };
 
+  const recordPlaybackSync = useCallback((track: Track) => {
+    if (!track || !track.id) return;
+    rememberListen(track);
+    setUserProfile((prev) => {
+      const prevRecent = prev.recentlyPlayed || [];
+      const updated = [track, ...prevRecent.filter((t) => t.id !== track.id)].slice(0, 30);
+      const updatedProf = { ...prev, recentlyPlayed: updated };
+      saveDeviceSettings(updatedProf);
+      if (globalUser && globalUser !== 'admin') {
+        cacheProfileLocally(globalUser, updatedProf);
+        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedProf),
+        }).catch(() => {});
+        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/record-playback`, 4000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: globalUser,
+            track: {
+              id: track.id,
+              title: track.title,
+              artist: track.artist,
+              thumb: track.thumb,
+              album: track.album,
+              type: track.type || 'song',
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(() => {});
+      }
+      return updatedProf;
+    });
+  }, [globalUser]);
+
   // Primary playback execution
   const playTrack = async (track: Track, fromQueue = false): Promise<boolean> => {
     if (!track || !track.id) return false;
@@ -768,9 +884,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               activeThumb = URL.createObjectURL(record.thumbLowRes);
             } catch {}
           }
+          // Note: Keep track.thumb persistent (do not store blob: URL in profile/recentlyPlayed)
           const playingTrack = activeThumb !== track.thumb ? { ...track, thumb: activeThumb } : track;
+          const persistentTrack = track.thumb?.startsWith('blob:')
+            ? { ...track, thumb: canonicalThumbUrl(track.id) }
+            : track;
           setActiveTrack(playingTrack);
-          rememberListen(playingTrack);
+          recordPlaybackSync(persistentTrack);
           updateMediaSession(playingTrack);
           return true;
         }
@@ -783,38 +903,43 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (token !== playTokenRef.current) return false;
       audio.src = cachedUrl;
       audio.play().catch(() => {});
-      rememberListen(track);
+      recordPlaybackSync(track);
       updateMediaSession(track);
       return true;
     }
 
-    // 3. Fast Parallel Resolving
+    // 3. Fast Parallel Resolving with Startup Race Protection
     const level = userProfile.dataSaverLevel || 'off';
     const quality = level === 'ultra' ? '48' : level === 'saver' ? '96' : '320';
     const cleanedArtist = cleanArtistName(track.artist);
+    let resolvedTrack = { ...track };
 
-    // If track has an imported ID (like Spotify "sp_..."), resolve YouTube ID for mirror fallback
-    if (!track.id || track.id.startsWith('sp_') || track.id.length !== 11) {
+    // If track has an imported ID (like Spotify "sp_...") or is still resolving metadata, resolve properly
+    if (!resolvedTrack.id || resolvedTrack.title === 'Loading...' || resolvedTrack.id.startsWith('sp_') || resolvedTrack.id.length !== 11) {
       try {
-        const found = await searchTracks(`${track.title} ${cleanedArtist}`, 'song');
-        if (found.length > 0 && found[0].id) {
-          track.id = found[0].id;
-          if (!track.thumb) track.thumb = found[0].thumb;
+        const queryTerm = `${resolvedTrack.title !== 'Loading...' ? resolvedTrack.title : ''} ${cleanedArtist}`.trim();
+        if (queryTerm) {
+          const found = await searchTracks(queryTerm, 'song');
+          if (found.length > 0 && found[0].id) {
+            resolvedTrack.id = found[0].id;
+            if (!resolvedTrack.thumb) resolvedTrack.thumb = found[0].thumb;
+            if (resolvedTrack.title === 'Loading...') resolvedTrack.title = found[0].title;
+          }
         }
       } catch {}
     }
 
     const candidates: string[] = [];
-    const mirrorPromise = resolveMirrorStreams(track.id).catch(() => []);
+    const mirrorPromise = resolveMirrorStreams(resolvedTrack.id).catch(() => []);
 
     // Try Saavn first
     try {
       const saavnUrl = await resolveSaavnStream(
-        cleanTitleForLyrics(track.title) || track.title,
+        cleanTitleForLyrics(resolvedTrack.title) || resolvedTrack.title,
         cleanedArtist,
         quality,
-        track.title,
-        track.artist
+        resolvedTrack.title,
+        resolvedTrack.artist
       );
       if (saavnUrl) candidates.push(saavnUrl);
     } catch {}
@@ -826,9 +951,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (token !== playTokenRef.current) return false;
 
+    // Startup Race Condition Deferral: Defer audio stream error until mirrors settle
+    if (candidates.length === 0) {
+      await new Promise((r) => setTimeout(r, 450));
+      if (token !== playTokenRef.current) return false;
+      try {
+        const retryMirrors = await resolveMirrorStreams(resolvedTrack.id);
+        candidates.push(...retryMirrors);
+      } catch {}
+    }
+
     if (candidates.length === 0) {
       setIsBuffering(false);
-      showToast('Could not resolve stream source for this track.', true);
+      showToast('Sources are resolving. Please try again in a moment.', true);
       return false;
     }
 
@@ -837,18 +972,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (token !== playTokenRef.current) return false;
 
     if (ok) {
-      rememberListen(track);
-      updateMediaSession(track);
+      recordPlaybackSync(resolvedTrack);
+      updateMediaSession(resolvedTrack);
       // Auto cache if enabled
-      if (userProfile.autoCachePlayed && !isDownloaded(track.id)) {
+      if (userProfile.autoCachePlayed && !isDownloaded(resolvedTrack.id)) {
         setTimeout(() => {
-          downloadTrack(track, true, true).catch(() => {});
+          downloadTrack(resolvedTrack, true, true).catch(() => {});
         }, 3000);
       }
       return true;
     } else {
       setIsBuffering(false);
-      showToast('Playback failed across all mirrors. Please try another track.', true);
+      showToast('Playback failed across available mirrors. Please try another track.', true);
       return false;
     }
   };
@@ -1318,7 +1453,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
 
       await saveDownload(record);
-      setDownloadedSet(new Set(downloadedIds));
+      setDownloadedSet((prev) => new Set([...prev, track.id]));
       if (!silent) {
         showToast(
           quality === '320'
@@ -1335,7 +1470,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const removeDownload = async (trackId: string) => {
     await deleteDownload(trackId);
-    setDownloadedSet(new Set(downloadedIds));
+    setDownloadedSet((prev) => {
+      const next = new Set(prev);
+      next.delete(trackId);
+      return next;
+    });
     showToast('Download removed', true);
   };
 
@@ -1343,8 +1482,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     for (const id of trackIds) {
       await deleteDownload(id);
     }
-    setDownloadedSet(new Set(downloadedIds));
+    setDownloadedSet((prev) => {
+      const next = new Set(prev);
+      trackIds.forEach((id) => next.delete(id));
+      return next;
+    });
     showToast(`Removed ${trackIds.length} downloads`, true);
+  };
+
+  const clearAllDownloads = async () => {
+    await deleteAllDownloads();
+    setDownloadedSet(new Set());
   };
 
   // Concurrent Multi-Song Download Queue (3 concurrent workers)
@@ -1481,7 +1629,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       id: 'pl_' + Date.now(),
       name,
       tracks: firstTrack ? [firstTrack] : [],
-      thumb: firstTrack?.thumb || null,
+      thumb: null,
+      customCover: null,
     };
     syncProfile({ ...userProfile, customPlaylists: [pl, ...userProfile.customPlaylists] });
     showToast(`Created playlist "${name}"`);
@@ -1522,7 +1671,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated = {
       ...pl,
       tracks: [...pl.tracks, track],
-      thumb: pl.thumb || track.thumb,
+      thumb: pl.customCover || pl.thumb || null,
     };
     syncProfile({
       ...userProfile,
@@ -1537,7 +1686,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated = {
       ...pl,
       tracks: newTracks,
-      thumb: newTracks[0]?.thumb || pl.thumb,
+      thumb: pl.customCover || pl.thumb || null,
     };
     syncProfile({
       ...userProfile,
@@ -1553,7 +1702,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const updated = {
       ...pl,
       tracks: [...pl.tracks, ...uniqueNew],
-      thumb: pl.thumb || uniqueNew[0]?.thumb,
+      thumb: pl.customCover || pl.thumb || null,
     };
     syncProfile({
       ...userProfile,
@@ -1659,6 +1808,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         downloadTrack,
         removeDownload,
         removeMultipleDownloads,
+        clearAllDownloads,
         downloadPlaylist,
         bulkDownloadState,
         currentLyrics,

@@ -784,3 +784,251 @@ export async function getSearchSuggestions(query: string): Promise<string[]> {
   } catch {}
   return [];
 }
+
+// ---------------------------------------------------------------------------
+// Real Global Trending Tracks & Verification
+// ---------------------------------------------------------------------------
+let trendingTracksCache: Track[] | null = null;
+let trendingCacheTime = 0;
+
+export async function fetchTrendingTracks(forceRefresh = false): Promise<Track[]> {
+  const now = Date.now();
+  if (!forceRefresh && trendingTracksCache && now - trendingCacheTime < 30 * 60 * 1000) {
+    return trendingTracksCache;
+  }
+
+  // Tier 1: YouTube Official Top 50 Global chart playlist
+  try {
+    const res = await fetchWithTimeout(
+      `${NEW_HUB_BACKEND}/api/playlist-import-proxy?id=PLgzTt0k8mXzEk586ze4BjvDXR7c-TUSnx`,
+      8000
+    );
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.items) && data.items.length >= 10) {
+        const tracks: Track[] = data.items.map((it: any) => ({
+          id: it.id,
+          title: cleanTitle(it.title),
+          artist: cleanArtistName(it.artist),
+          thumb: it.thumb || canonicalThumbUrl(it.id),
+          type: 'song' as const,
+        }));
+        trendingTracksCache = tracks;
+        trendingCacheTime = now;
+        return tracks;
+      }
+    }
+  } catch {}
+
+  // Tier 2: Real Verified Billboard & Global Viral Songs
+  const CURATED_TRENDING_QUERIES = [
+    'Lady Gaga Bruno Mars Die With A Smile',
+    'Billie Eilish Birds of a Feather',
+    'Sabrina Carpenter Espresso',
+    'Sabrina Carpenter Taste',
+    'Chappell Roan Good Luck Babe',
+    'Kendrick Lamar Not Like Us',
+    'Benson Boone Beautiful Things',
+    'Teddy Swims Lose Control',
+    'Shaboozey A Bar Song Tipsy',
+    'Post Malone Morgan Wallen I Had Some Help',
+    'Rose Bruno Mars APT',
+    'The Weeknd Playboi Carti Timeless',
+    'Tommy Richman MILLION DOLLAR BABY',
+    'FloyyMenor Cris Mj Gata Only',
+  ];
+
+  try {
+    const promises = CURATED_TRENDING_QUERIES.slice(0, 10).map((q) =>
+      searchTracks(q, 'song').catch(() => [])
+    );
+    const results = await Promise.all(promises);
+    const pooled: Track[] = [];
+    const seen = new Set<string>();
+
+    for (const r of results) {
+      if (r && r.length > 0) {
+        const top = r[0];
+        if (top && !seen.has(top.id)) {
+          seen.add(top.id);
+          pooled.push(top);
+        }
+      }
+    }
+
+    if (pooled.length >= 6) {
+      trendingTracksCache = pooled;
+      trendingCacheTime = now;
+      return pooled;
+    }
+  } catch {}
+
+  return trendingTracksCache || [];
+}
+
+// ---------------------------------------------------------------------------
+// Authentic Track-to-Track Recommendations via Invidious / YouTube Radio
+// ---------------------------------------------------------------------------
+const relatedCache = new Map<string, Track[]>();
+
+export async function getRelatedTracks(seedTrackId: string): Promise<Track[]> {
+  if (!seedTrackId || seedTrackId.length < 5) return [];
+  if (relatedCache.has(seedTrackId)) {
+    return relatedCache.get(seedTrackId)!;
+  }
+
+  const candidateMirrors = [
+    'https://yt.omada.cafe/api/v1/videos/',
+    'https://invidious.schenkel.eti.br/api/v1/videos/',
+    'https://invidious.kemonomimi.nl/api/v1/videos/',
+  ];
+
+  for (const mirror of candidateMirrors) {
+    try {
+      const res = await fetchWithTimeout(`${mirror}${encodeURIComponent(seedTrackId)}`, 4500);
+      if (res.ok) {
+        const data = await res.json();
+        const recommended = data?.recommendedVideos;
+        if (Array.isArray(recommended) && recommended.length > 0) {
+          const list: Track[] = recommended
+            .filter((v: any) => {
+              if (!v.videoId || !v.title) return false;
+              const tLower = v.title.toLowerCase();
+              const aLower = (v.author || '').toLowerCase();
+              // Filter out noise: type beats, reaction, tutorial, or title matching artist name
+              if (tLower === aLower) return false;
+              if (tLower.includes('type beat') || tLower.includes('instrumental') || tLower.includes('reaction')) return false;
+              return true;
+            })
+            .map((v: any) => ({
+              id: v.videoId,
+              title: cleanTitle(v.title),
+              artist: cleanArtistName(v.author || 'Various Artists'),
+              thumb: v.videoThumbnails?.[0]?.url || canonicalThumbUrl(v.videoId),
+              type: 'song' as const,
+            }));
+
+          if (list.length > 0) {
+            relatedCache.set(seedTrackId, list);
+            return list;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return [];
+}
+
+// ---------------------------------------------------------------------------
+// Robust Taste-Profile Recommendation Engine (No artist-name-in-song-title bugs!)
+// ---------------------------------------------------------------------------
+export async function getTasteProfileRecommendations(
+  userProfile: any,
+  excludeIds: Set<string> = new Set(),
+  limit = 12
+): Promise<Track[]> {
+  try {
+    // 1. Collect real seed songs from user profile (NOT bare artist strings!)
+    const songWeights = new Map<string, { track: Track; weight: number }>();
+
+    // Weight from Liked Songs (highest priority: weight 4)
+    (userProfile?.likedSongs || []).forEach((t: Track) => {
+      if (!t.id || excludeIds.has(t.id)) return;
+      const prev = songWeights.get(t.id)?.weight || 0;
+      songWeights.set(t.id, { track: t, weight: prev + 4 });
+    });
+
+    // Weight from Recently Played (recency priority: weight 3)
+    (userProfile?.recentlyPlayed || []).forEach((t: Track, idx: number) => {
+      if (!t.id || excludeIds.has(t.id)) return;
+      const recencyBonus = Math.max(1, 5 - Math.floor(idx / 3));
+      const prev = songWeights.get(t.id)?.weight || 0;
+      songWeights.set(t.id, { track: t, weight: prev + recencyBonus });
+    });
+
+    // Weight from Custom Playlists (weight 2)
+    (userProfile?.customPlaylists || []).forEach((pl: any) => {
+      (pl.tracks || []).forEach((t: Track) => {
+        if (!t.id || excludeIds.has(t.id)) return;
+        const prev = songWeights.get(t.id)?.weight || 0;
+        songWeights.set(t.id, { track: t, weight: prev + 2 });
+      });
+    });
+
+    const rankedSeeds = Array.from(songWeights.values())
+      .sort((a, b) => b.weight - a.weight)
+      .map((item) => item.track);
+
+    // If user has history, use YouTube recommendation algorithm for top 3 diverse seeds
+    if (rankedSeeds.length > 0) {
+      // Pick 2-3 diverse seed songs (different artists)
+      const pickedSeeds: Track[] = [];
+      const seenSeedArtists = new Set<string>();
+      for (const t of rankedSeeds) {
+        const art = (t.artist || '').toLowerCase().trim();
+        if (!seenSeedArtists.has(art)) {
+          seenSeedArtists.add(art);
+          pickedSeeds.push(t);
+          if (pickedSeeds.length >= 3) break;
+        }
+      }
+
+      // Fetch related tracks for picked seed tracks
+      const relatedPromises = pickedSeeds.map((s) => getRelatedTracks(s.id));
+      const relatedResults = await Promise.all(relatedPromises);
+
+      const candidateTracks: Track[] = [];
+      const seenIds = new Set<string>(excludeIds);
+      const artistCounts = new Map<string, number>();
+
+      relatedResults.forEach((tracks) => {
+        tracks.forEach((t) => {
+          if (!t.id || seenIds.has(t.id)) return;
+          const artKey = (t.artist || '').toLowerCase().trim();
+          const titleKey = (t.title || '').toLowerCase().trim();
+
+          // Reject if title is identical to artist (the user's exact complaint!)
+          if (artKey === titleKey) return;
+          if (titleKey.includes('type beat') || titleKey.includes('instrumental')) return;
+
+          // Diversity: max 1 song per artist in recommendations
+          const count = artistCounts.get(artKey) || 0;
+          if (count < 1) {
+            seenIds.add(t.id);
+            artistCounts.set(artKey, count + 1);
+            candidateTracks.push(t);
+          }
+        });
+      });
+
+      if (candidateTracks.length >= limit) {
+        return candidateTracks.slice(0, limit);
+      }
+
+      // If needed, top off with trending tracks (excluding already seen)
+      const trending = await fetchTrendingTracks();
+      trending.forEach((t) => {
+        if (candidateTracks.length >= limit) return;
+        if (!t.id || seenIds.has(t.id)) return;
+        const artKey = (t.artist || '').toLowerCase().trim();
+        const count = artistCounts.get(artKey) || 0;
+        if (count < 1) {
+          seenIds.add(t.id);
+          artistCounts.set(artKey, count + 1);
+          candidateTracks.push(t);
+        }
+      });
+
+      if (candidateTracks.length > 0) {
+        return candidateTracks.slice(0, limit);
+      }
+    }
+
+    // Default cold-start: return top trending verified tracks
+    const fallbackTrending = await fetchTrendingTracks();
+    return fallbackTrending.filter((t) => !excludeIds.has(t.id)).slice(0, limit);
+  } catch {
+    return [];
+  }
+}

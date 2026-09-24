@@ -10,6 +10,7 @@
   "orientation": "portrait",
   "background_color": "#000000",
   "theme_color": "#000000",
+  "prefer_related_applications": false,
   "categories": ["music", "entertainment"],
   "icons": [
     {

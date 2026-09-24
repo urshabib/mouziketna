@@ -27,6 +27,7 @@ import {
   Sliders,
   Image as ImageIcon,
   CheckCheck,
+  Maximize2,
 } from 'lucide-react';
 import {
   getTotalDownloadedSize,
@@ -77,13 +78,8 @@ const LYRICS_COLORS = [
 const PRESETS = [
   { id: 'classic', name: 'Classic Dark', desc: 'Minimal Obsidian & Orange', accentColor: 'orange', accentHex: '#ff6b1a', glass: false, theme: 'dark', tint: 'none', lyrics: 'white' },
   { id: 'glass', name: 'Liquid Glass', desc: 'Translucent Frosted Blur', accentColor: 'orange', accentHex: '#ff8b47', glass: true, theme: 'dark', tint: 'none', lyrics: 'white' },
+  { id: 'midnight', name: 'Midnight Violet', desc: 'Deep Violet Cyber Glow', accentColor: 'purple', accentHex: '#a259ff', glass: true, theme: 'dark', tint: 'purple', lyrics: 'purple' },
   { id: 'daylight', name: 'Daylight', desc: 'Crisp Modern Light Mode', accentColor: 'blue', accentHex: '#3b9dff', glass: false, theme: 'light', tint: 'none', lyrics: 'white' },
-  { id: 'gold', name: 'Gold Luxury', desc: 'Warm Amber & Brass Glow', accentColor: 'gold', accentHex: '#d4af37', glass: false, theme: 'dark', tint: 'gold', lyrics: 'gold' },
-  { id: 'midnight', name: 'Midnight', desc: 'Deep Violet Cyber Glow', accentColor: 'purple', accentHex: '#a259ff', glass: true, theme: 'dark', tint: 'purple', lyrics: 'purple' },
-  { id: 'ocean', name: 'Ocean Wave', desc: 'Cyan & Deep Sea Azure', accentColor: 'ocean', accentHex: '#06b6d4', glass: false, theme: 'dark', tint: 'ocean', lyrics: 'ocean' },
-  { id: 'emerald', name: 'Emerald Forest', desc: 'Lush Pine Atmosphere', accentColor: 'emerald', accentHex: '#10b981', glass: false, theme: 'dark', tint: 'emerald', lyrics: 'emerald' },
-  { id: 'crimson', name: 'Crimson Night', desc: 'Velvet Ruby & Frosted Glass', accentColor: 'red', accentHex: '#e11d48', glass: true, theme: 'dark', tint: 'crimson', lyrics: 'crimson' },
-  { id: 'monochrome', name: 'Monochrome', desc: 'Clean White & Graphite', accentColor: 'mono', accentHex: '#d8d8d8', glass: false, theme: 'dark', tint: 'mono', lyrics: 'white' },
 ];
 
 type SettingsTab = 'all' | 'audio' | 'appearance' | 'app' | 'system';
@@ -94,6 +90,7 @@ export const SettingsView: React.FC = () => {
     syncProfile,
     openCollection,
     downloadedSet,
+    clearAllDownloads,
     setModalConfirm,
     showToast,
     setIsInstallModalOpen,
@@ -288,35 +285,35 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Visual Quality Selector Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
+            {/* Visual Quality Selector Grid (2x2 Horizontal Layout) */}
+            <div className="grid grid-cols-2 gap-2.5 pt-1">
               {[
                 {
                   id: 'stable',
-                  title: 'Balanced (Recommended)',
+                  title: 'Balanced',
                   kbps: '160 kbps',
-                  desc: 'Fast download • Crystal clear sound',
-                  badge: 'Default',
+                  desc: 'Fast download • Crystal clear',
+                  badge: 'Recommended',
                 },
                 {
                   id: 'high',
-                  title: 'Studio High Quality',
+                  title: 'Studio High',
                   kbps: '320 kbps',
-                  desc: 'Full studio master fidelity',
+                  desc: 'Master fidelity lossless',
                   badge: 'Best on WiFi',
                 },
                 {
                   id: 'saver',
                   title: 'Data Saver',
                   kbps: '96 kbps',
-                  desc: 'Saves phone disk space & data',
+                  desc: 'Saves storage & bandwidth',
                   badge: 'Lightweight',
                 },
                 {
                   id: 'ultra',
                   title: 'Ultra Saver',
                   kbps: '48 kbps',
-                  desc: 'Minimal file size for low storage',
+                  desc: 'Ultra minimal file size',
                   badge: 'Compact',
                 },
               ].map((tier) => {
@@ -335,7 +332,7 @@ export const SettingsView: React.FC = () => {
                       });
                       showToast(`Download quality set to ${tier.title}`);
                     }}
-                    className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-2 transition-all cursor-pointer ${
+                    className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-1.5 transition-all cursor-pointer ${
                       isSelected
                         ? 'border-[#ff6b1a] bg-[#ff6b1a]/10 shadow-md shadow-[#ff6b1a]/10'
                         : 'border-white/5 bg-black/40 hover:bg-white/5'
@@ -344,12 +341,12 @@ export const SettingsView: React.FC = () => {
                     <div className="flex items-start justify-between gap-1">
                       <div className="font-bold text-xs text-white leading-tight">{tier.title}</div>
                       {isSelected ? (
-                        <Check className="w-4 h-4 text-[#ff6b1a] stroke-[3] flex-shrink-0" />
+                        <Check className="w-3.5 h-3.5 text-[#ff6b1a] stroke-[3] flex-shrink-0" />
                       ) : (
                         <span className="text-[10px] text-white/30 font-medium">{tier.kbps}</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-white/50 leading-snug">{tier.desc}</p>
+                    <p className="text-[10px] text-white/50 leading-snug line-clamp-1">{tier.desc}</p>
                     <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[10px]">
                       <span className="text-[#ff6b1a] font-semibold">{tier.kbps}</span>
                       <span className="text-white/40">{tier.badge}</span>
@@ -397,17 +394,17 @@ export const SettingsView: React.FC = () => {
 
             {/* Sub-setting: Auto-Cache Quality */}
             {userProfile.autoCachePlayed && (
-              <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <span className="text-xs font-bold text-white/90">Auto-Cache Audio Quality:</span>
                   <p className="text-[11px] text-white/40">Balanced 160k is recommended for fast streaming.</p>
                 </div>
 
-                <div className="flex bg-black/50 p-1 rounded-xl border border-white/10 gap-1 flex-wrap">
+                <div className="flex items-center justify-center bg-black/50 p-1.5 rounded-xl border border-white/10 gap-1.5 w-full sm:w-80">
                   {[
-                    { id: 'stable', label: 'Balanced (160k)' },
-                    { id: 'high', label: 'High (320k)' },
-                    { id: 'saver', label: 'Saver (96k)' },
+                    { id: 'stable', label: 'Balanced', sub: '160k' },
+                    { id: 'high', label: 'High', sub: '320k' },
+                    { id: 'saver', label: 'Saver', sub: '96k' },
                   ].map((opt) => {
                     const current = userProfile.autoCacheQuality || 'stable';
                     const isSelected = current === opt.id;
@@ -415,14 +412,20 @@ export const SettingsView: React.FC = () => {
                       <button
                         key={opt.id}
                         type="button"
-                        onClick={() => syncProfile({ ...userProfile, autoCacheQuality: opt.id as any })}
-                        className={`py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        onClick={() => {
+                          syncProfile({ ...userProfile, autoCacheQuality: opt.id as any });
+                          showToast(`Auto-cache quality set to ${opt.label} (${opt.sub})`);
+                        }}
+                        className={`flex-1 text-center py-2 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           isSelected
-                            ? 'bg-[#ff6b1a] text-black shadow-sm'
-                            : 'text-white/60 hover:text-white'
+                            ? 'bg-[#ff6b1a] text-black shadow-md font-extrabold scale-[1.02]'
+                            : 'text-white/60 hover:text-white hover:bg-white/5'
                         }`}
                       >
-                        {opt.label}
+                        <span>{opt.label}</span>{' '}
+                        <span className={`text-[10px] ${isSelected ? 'text-black/70 font-bold' : 'text-white/40'}`}>
+                          ({opt.sub})
+                        </span>
                       </button>
                     );
                   })}
@@ -546,7 +549,7 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
               {PRESETS.map((p) => {
                 const isSelected = userProfile.activePreset === p.id;
                 return (
@@ -568,6 +571,46 @@ export const SettingsView: React.FC = () => {
                       <span className="font-bold text-xs text-white block truncate">{p.name}</span>
                       <span className="text-[10px] text-white/40 block truncate">{p.desc}</span>
                     </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Global Interface Display Scaling (Centered buttons) */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <Maximize2 className="w-3.5 h-3.5 text-[#ff6b1a]" />
+                <h4 className="font-bold text-xs text-white">Global Display Scale</h4>
+              </div>
+              <p className="text-[11px] text-white/50 mt-0.5">
+                Adjust typography sizing, layout density, and component scales.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center bg-black/50 p-1.5 rounded-xl border border-white/10 gap-1.5 w-full sm:w-72">
+              {[
+                { id: 'small', label: 'Small' },
+                { id: 'default', label: 'Default' },
+                { id: 'large', label: 'Large' },
+              ].map((preset) => {
+                const isSelected = (userProfile.uiScale || 'default') === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => {
+                      syncProfile({ ...userProfile, uiScale: preset.id as any });
+                      showToast(`Display scale set to ${preset.label}`);
+                    }}
+                    className={`flex-1 text-center py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#ff6b1a] text-black shadow-md font-extrabold scale-[1.02]'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <span>{preset.label}</span>
                   </button>
                 );
               })}
@@ -638,52 +681,202 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Color Palettes Grid */}
+          {/* Color Palettes Grid (Curated Signature Colors + Custom Color Picker) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {/* Accent Color Swatches */}
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-2.5">
-              <h4 className="font-bold text-xs text-white">App Highlight Accent Color</h4>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {ACCENTS.map((acc) => (
-                  <button
-                    key={acc.id}
-                    type="button"
-                    onClick={() => syncProfile({ ...userProfile, accentColor: acc.id })}
-                    style={{ backgroundColor: acc.color }}
-                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110 shadow-sm cursor-pointer ${
-                      userProfile.accentColor === acc.id ? 'ring-2 ring-white scale-110' : ''
-                    }`}
-                    title={acc.name}
-                  >
-                    {userProfile.accentColor === acc.id && (
-                      <Check className="w-3.5 h-3.5 text-black stroke-[3]" />
-                    )}
-                  </button>
-                ))}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-white">App Highlight Accent Color</h4>
+                  <p className="text-[11px] text-white/50 mt-0.5">Colors player bars, active icons and buttons.</p>
+                </div>
+                {userProfile.customAccentHex && (
+                  <span className="text-[10px] font-mono text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
+                    {userProfile.customAccentHex.toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {ACCENTS.slice(0, 6).map((acc) => {
+                  const isSelected = userProfile.accentColor === acc.id && !userProfile.customAccentHex;
+                  return (
+                    <button
+                      key={acc.id}
+                      type="button"
+                      onClick={() =>
+                        syncProfile({
+                          ...userProfile,
+                          accentColor: acc.id,
+                          customAccentHex: undefined,
+                        })
+                      }
+                      style={{ backgroundColor: acc.color }}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all hover:scale-110 shadow-sm cursor-pointer ${
+                        isSelected ? 'ring-2 ring-white scale-110' : 'opacity-80 hover:opacity-100'
+                      }`}
+                      title={acc.name}
+                    >
+                      {isSelected && (
+                        <Check className="w-3.5 h-3.5 text-black stroke-[3]" />
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* Custom Color Picker Button */}
+                <label
+                  className={`relative w-7 h-7 rounded-full flex items-center justify-center border cursor-pointer overflow-hidden shadow-sm transition-all hover:scale-110 ${
+                    userProfile.customAccentHex
+                      ? 'ring-2 ring-white scale-110 border-transparent'
+                      : 'border-white/30 hover:border-white'
+                  }`}
+                  style={{
+                    background: userProfile.customAccentHex || 'conic-gradient(from 0deg, #ff6b1a, #a259ff, #3b9dff, #28c76f, #d4af37, #ff6b1a)',
+                  }}
+                  title="Pick Any Custom Color"
+                >
+                  <input
+                    type="color"
+                    value={userProfile.customAccentHex || '#ff6b1a'}
+                    onChange={(e) => {
+                      const hex = e.target.value;
+                      syncProfile({
+                        ...userProfile,
+                        accentColor: hex,
+                        customAccentHex: hex,
+                      });
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  {userProfile.customAccentHex ? (
+                    <Check className="w-3.5 h-3.5 text-black stroke-[3] drop-shadow" />
+                  ) : (
+                    <Palette className="w-3 h-3 text-white drop-shadow pointer-events-none" />
+                  )}
+                </label>
               </div>
             </div>
 
-            {/* Lyrics Karaoke Highlight Color */}
-            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-2.5">
-              <h4 className="font-bold text-xs text-white">Karaoke Lyrics Glowing Color</h4>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {LYRICS_COLORS.map((lyr) => (
-                  <button
-                    key={lyr.id}
-                    type="button"
-                    onClick={() => syncProfile({ ...userProfile, lyricsColor: lyr.id })}
-                    style={{ backgroundColor: lyr.color }}
-                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110 shadow-sm cursor-pointer ${
-                      userProfile.lyricsColor === lyr.id ? 'ring-2 ring-white scale-110' : ''
-                    }`}
-                    title={lyr.name}
-                  >
-                    {userProfile.lyricsColor === lyr.id && (
-                      <Check className="w-3.5 h-3.5 text-black stroke-[3]" />
-                    )}
-                  </button>
-                ))}
+            {/* Lyrics Karaoke Highlight Color with Custom Color Wheel */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-white">Karaoke Lyrics Glowing Color</h4>
+                  <p className="text-[11px] text-white/50 mt-0.5">Colors active singing lyric lines.</p>
+                </div>
+                {userProfile.customLyricsHex && (
+                  <span className="text-[10px] font-mono text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
+                    {userProfile.customLyricsHex.toUpperCase()}
+                  </span>
+                )}
               </div>
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {LYRICS_COLORS.slice(0, 6).map((lyr) => {
+                  const isSelected = userProfile.lyricsColor === lyr.id && !userProfile.customLyricsHex;
+                  return (
+                    <button
+                      key={lyr.id}
+                      type="button"
+                      onClick={() =>
+                        syncProfile({
+                          ...userProfile,
+                          lyricsColor: lyr.id,
+                          customLyricsHex: undefined,
+                        })
+                      }
+                      style={{ backgroundColor: lyr.color }}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all hover:scale-110 shadow-sm cursor-pointer ${
+                        isSelected ? 'ring-2 ring-white scale-110' : 'opacity-80 hover:opacity-100'
+                      }`}
+                      title={lyr.name}
+                    >
+                      {isSelected && (
+                        <Check className="w-3.5 h-3.5 text-black stroke-[3]" />
+                      )}
+                    </button>
+                  );
+                })}
+
+                {/* Custom Lyrics Color Wheel Picker */}
+                <label
+                  className={`relative w-7 h-7 rounded-full flex items-center justify-center border cursor-pointer overflow-hidden shadow-sm transition-all hover:scale-110 ${
+                    userProfile.customLyricsHex
+                      ? 'ring-2 ring-white scale-110 border-transparent'
+                      : 'border-white/30 hover:border-white'
+                  }`}
+                  style={{
+                    background: userProfile.customLyricsHex || 'conic-gradient(from 0deg, #ff007a, #9d4edd, #00f0ff, #00ff88, #ffeb3b, #ff007a)',
+                  }}
+                  title="Pick Custom Lyrics Color Wheel"
+                >
+                  <input
+                    type="color"
+                    value={userProfile.customLyricsHex || '#ff6b1a'}
+                    onChange={(e) => {
+                      const hex = e.target.value;
+                      syncProfile({
+                        ...userProfile,
+                        lyricsColor: 'orange',
+                        customLyricsHex: hex,
+                      });
+                    }}
+                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                  />
+                  {userProfile.customLyricsHex ? (
+                    <Check className="w-3.5 h-3.5 text-black stroke-[3] drop-shadow" />
+                  ) : (
+                    <Palette className="w-3 h-3 text-white drop-shadow pointer-events-none" />
+                  )}
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* Karaoke Lyrics Typography & Distinct Font Personalities */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-bold text-xs text-white">Karaoke Lyrics Font Style</h4>
+                <p className="text-[11px] text-white/50 mt-0.5">
+                  Choose your preferred typography for synchronized karaoke lyrics.
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+              {[
+                { id: 'bebas', label: 'Bold Impact', preview: 'LYRICS', font: "'Bebas Neue', sans-serif" },
+                { id: 'caveat', label: 'Handwritten', preview: 'Singing', font: "'Caveat', cursive" },
+                { id: 'righteous', label: 'Retro Neon', preview: 'Groove', font: "'Righteous', cursive" },
+                { id: 'playfair', label: 'Classic Serif', preview: 'Harmony', font: "'Playfair Display', serif" },
+                { id: 'jetbrains', label: 'Code Mono', preview: '01:23', font: "'JetBrains Mono', monospace" },
+                { id: 'nunito', label: 'Soft Rounded', preview: 'Vibes', font: "'Nunito', sans-serif" },
+                { id: 'poppins', label: 'Modern Sans', preview: 'Modern', font: "'Poppins', sans-serif" },
+                { id: 'inter', label: 'Clean System', preview: 'Clean', font: "'Inter', sans-serif" },
+              ].map((f) => {
+                const isSelected = (userProfile.lyricsFont || 'poppins') === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => {
+                      syncProfile({ ...userProfile, lyricsFont: f.id as any });
+                      showToast(`Lyrics font changed to ${f.label}`);
+                    }}
+                    className={`p-3 rounded-xl border text-center flex flex-col items-center justify-between gap-1.5 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-[#ff6b1a] bg-[#ff6b1a]/15 shadow-md shadow-[#ff6b1a]/10 scale-[1.02]'
+                        : 'border-white/5 bg-black/40 hover:bg-white/5'
+                    }`}
+                  >
+                    <span style={{ fontFamily: f.font }} className="text-xl sm:text-2xl font-black text-white leading-none my-1">
+                      {f.preview}
+                    </span>
+                    <span className="text-[10px] font-bold text-white/70 truncate w-full">
+                      {f.label}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -915,7 +1108,7 @@ export const SettingsView: React.FC = () => {
                   title: 'Clear all offline music?',
                   text: 'This will delete all downloaded audio files from your browser storage.',
                   onConfirm: async () => {
-                    await deleteAllDownloads();
+                    await clearAllDownloads();
                     showToast('All downloads cleared', true);
                   },
                 });

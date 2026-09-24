@@ -18,6 +18,30 @@
   --lyrics-color-rgb: 255, 255, 255;
   --tint-1: transparent;
   --tint-2: transparent;
+  --base-font-size: 16px;
+  --icon-scale: 1;
+  --container-padding: 1rem;
+}
+
+:root[data-ui-scale="small"] {
+  --base-font-size: 14px;
+  --icon-scale: 0.9;
+  --container-padding: 0.75rem;
+  font-size: 14px;
+}
+
+:root[data-ui-scale="default"] {
+  --base-font-size: 16px;
+  --icon-scale: 1;
+  --container-padding: 1rem;
+  font-size: 16px;
+}
+
+:root[data-ui-scale="large"] {
+  --base-font-size: 18px;
+  --icon-scale: 1.1;
+  --container-padding: 1.25rem;
+  font-size: 18px;
 }
 
 :root[data-theme="light"] {
@@ -62,11 +86,26 @@
 :root[data-preset-tint="crimson"] { --tint-1: rgba(225, 29, 72, 0.12); --tint-2: rgba(80, 7, 36, 0.08); }
 :root[data-preset-tint="sunset"]  { --tint-1: rgba(251, 113, 133, 0.15); --tint-2: rgba(251, 146, 60, 0.10); }
 
+:root { --lyrics-font: 'Poppins', sans-serif; --lyrics-font-scale: 1; }
+:root[data-lyrics-font="poppins"]   { --lyrics-font: 'Poppins', sans-serif; --lyrics-font-scale: 1; }
+:root[data-lyrics-font="bebas"]     { --lyrics-font: 'Bebas Neue', Impact, sans-serif; letter-spacing: 0.05em; --lyrics-font-scale: 1.05; }
+:root[data-lyrics-font="caveat"]    { --lyrics-font: 'Caveat', cursive, sans-serif; --lyrics-font-scale: 1.15; }
+:root[data-lyrics-font="playfair"]  { --lyrics-font: 'Playfair Display', Georgia, serif; font-style: italic; --lyrics-font-scale: 1; }
+:root[data-lyrics-font="righteous"] { --lyrics-font: 'Righteous', cursive, sans-serif; letter-spacing: 0.03em; --lyrics-font-scale: 1; }
+:root[data-lyrics-font="jetbrains"] { --lyrics-font: 'JetBrains Mono', monospace; --lyrics-font-scale: 0.95; }
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
   scrollbar-width: none;
   -ms-overflow-style: none;
+}
+
+/* GPU acceleration for responsive micro-interactions and transitions */
+.gpu-layer {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform, opacity;
 }
 
 ::-webkit-scrollbar {

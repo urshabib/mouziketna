@@ -27,6 +27,8 @@ import {
   listDownloads,
   formatBytes,
   deleteAllDownloads,
+  savePersistentPlaylistCover,
+  getPersistentPlaylistCover,
 } from '../services/storage';
 import {
   fetchJsonRetry,
@@ -34,7 +36,10 @@ import {
   normalizeTrack,
   PLAYLIST_ART,
   FALLBACK_ART,
+  getRelatedTracks,
+  getTasteProfileRecommendations,
 } from '../services/api';
+import { PlaylistCover } from '../components/PlaylistCover';
 
 export const CollectionView: React.FC = () => {
   const {
@@ -140,19 +145,54 @@ export const CollectionView: React.FC = () => {
   const loadPlaylistSuggestions = async (plTracks: Track[]) => {
     setLoadingSuggestions(true);
     try {
-      const seed = plTracks.length > 0 ? plTracks[plTracks.length - 1] : null;
-      const seedQuery = seed ? seed.artist : 'Top Hits';
-      const res = await fetchJsonRetry<any>(
-        `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(seedQuery)}&f=song`,
-        2
-      );
-      const items = Array.isArray(res) ? res : res.items || [];
       const plIds = new Set(plTracks.map((t) => t.id));
-      const filtered = items
-        .map((it: any) => normalizeTrack(it, 'song'))
-        .filter((t: Track) => !plIds.has(t.id))
-        .slice(0, 5);
-      setSuggestions(filtered);
+
+      if (plTracks.length > 0) {
+        // Pick up to 3 random seed tracks from this specific playlist
+        const shuffled = [...plTracks].sort(() => Math.random() - 0.5);
+        const seeds = shuffled.slice(0, 3);
+
+        const relatedPromises = seeds.map((s) => getRelatedTracks(s.id));
+        const relatedResults = await Promise.all(relatedPromises);
+
+        const candidateList: Track[] = [];
+        const seenIds = new Set<string>(plIds);
+        const artistCap = new Map<string, number>();
+
+        relatedResults.forEach((tracks) => {
+          tracks.forEach((t: Track) => {
+            if (!t.id || seenIds.has(t.id)) return;
+            const artKey = (t.artist || '').toLowerCase().trim();
+            const titleKey = (t.title || '').toLowerCase().trim();
+
+            // Strict sanity filter: Never suggest a song titled identically to its artist!
+            if (artKey === titleKey) return;
+            if (titleKey.includes('type beat') || titleKey.includes('instrumental') || titleKey.includes('reaction')) return;
+
+            const curCount = artistCap.get(artKey) || 0;
+            // Diversity: maximum 1 track per artist
+            if (curCount < 1) {
+              seenIds.add(t.id);
+              artistCap.set(artKey, curCount + 1);
+              candidateList.push(t);
+            }
+          });
+        });
+
+        if (candidateList.length >= 6) {
+          setSuggestions(candidateList.sort(() => Math.random() - 0.5).slice(0, 6));
+          return;
+        }
+
+        // Top off with taste profile recommendations if needed
+        const tasteRecs = await getTasteProfileRecommendations(userProfile, seenIds, 6 - candidateList.length);
+        candidateList.push(...tasteRecs);
+        setSuggestions(candidateList.slice(0, 6));
+      } else {
+        // Empty playlist: use full multi-factor taste profile recommendations
+        const suggestions = await getTasteProfileRecommendations(userProfile, plIds, 6);
+        setSuggestions(suggestions);
+      }
     } catch {
       setSuggestions([]);
     } finally {
@@ -169,7 +209,9 @@ export const CollectionView: React.FC = () => {
       const dataUrl = reader.result as string;
       const pl = userProfile.customPlaylists.find((p) => p.id === target.id);
       if (pl) {
+        pl.customCover = dataUrl;
         pl.thumb = dataUrl;
+        savePersistentPlaylistCover(target.id!, dataUrl);
         syncProfile();
         showToast('Playlist cover updated');
       }
@@ -257,6 +299,16 @@ export const CollectionView: React.FC = () => {
     showToast(`Moved "${moved.title}" ${direction === 'up' ? 'up' : 'down'}`);
   };
 
+  const checkAutoScroll = (clientY: number) => {
+    const threshold = 100;
+    const scrollStep = 15;
+    if (clientY < threshold) {
+      window.scrollBy({ top: -scrollStep, behavior: 'auto' });
+    } else if (window.innerHeight - clientY < threshold) {
+      window.scrollBy({ top: scrollStep, behavior: 'auto' });
+    }
+  };
+
   const handleTouchStart = (index: number) => {
     touchStartIndexRef.current = index;
     touchCurrentIndexRef.current = index;
@@ -266,6 +318,7 @@ export const CollectionView: React.FC = () => {
   const handleTouchMove = (e: React.TouchEvent) => {
     if (touchStartIndexRef.current === null) return;
     const touch = e.touches[0];
+    checkAutoScroll(touch.clientY);
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
     if (!el) return;
     const row = el.closest('[data-track-index]');
@@ -306,6 +359,7 @@ export const CollectionView: React.FC = () => {
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    checkAutoScroll(e.clientY);
     if (dragOverIndex !== index) {
       setDragOverIndex(index);
     }
@@ -345,6 +399,29 @@ export const CollectionView: React.FC = () => {
         </div>
       );
     }
+    if (target.type === 'custom-playlist') {
+      const pl = userProfile.customPlaylists.find((p) => p.id === target.id);
+      const customCover = (target.id ? getPersistentPlaylistCover(target.id) : null) || pl?.customCover;
+      return (
+        <div className="relative group w-40 h-40 sm:w-52 sm:h-52 rounded-2xl overflow-hidden shadow-2xl flex-shrink-0">
+          <PlaylistCover
+            cover={customCover}
+            tracks={tracks}
+            sizeClass="w-full h-full"
+            roundedClass="rounded-2xl"
+            alt={getTitle()}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 text-white text-xs font-bold transition-opacity cursor-pointer z-10"
+          >
+            <Camera className="w-6 h-6" />
+            <span>Change Cover</span>
+          </button>
+        </div>
+      );
+    }
     if (target.thumb) {
       return (
         <div className="relative group w-40 h-40 sm:w-52 sm:h-52 rounded-2xl overflow-hidden shadow-2xl flex-shrink-0">
@@ -353,30 +430,12 @@ export const CollectionView: React.FC = () => {
             alt={target.title || 'Collection'}
             className="w-full h-full object-cover"
           />
-          {target.type === 'custom-playlist' && (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 text-white text-xs font-bold transition-opacity"
-            >
-              <Camera className="w-6 h-6" />
-              <span>Change Cover</span>
-            </button>
-          )}
         </div>
       );
     }
     return (
       <div className="relative group w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-[#1f1f23] border border-white/10 flex items-center justify-center text-white/40 shadow-2xl flex-shrink-0">
         <Play className="w-16 h-16" />
-        {target.type === 'custom-playlist' && (
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 text-white text-xs font-bold transition-opacity"
-          >
-            <Camera className="w-6 h-6" />
-            <span>Upload Cover</span>
-          </button>
-        )}
       </div>
     );
   };

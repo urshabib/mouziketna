@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { NavigationPane } from '../types';
 import { getAppLogoSrc } from '../services/pwa';
+import { PlaylistCover } from './PlaylistCover';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -169,13 +170,14 @@ export const Sidebar: React.FC = () => {
               onClick={() => openCollection('custom-playlist', pl.id, pl.name, pl.thumb)}
               className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
             >
-              {pl.thumb ? (
-                <img src={pl.thumb} alt={pl.name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-              ) : (
-                <div className="w-10 h-10 rounded-lg bg-[#242426] flex items-center justify-center flex-shrink-0 text-white/40">
-                  <Music className="w-5 h-5" />
-                </div>
-              )}
+              <PlaylistCover
+                cover={pl.thumb}
+                tracks={pl.tracks}
+                sizeClass="w-10 h-10"
+                roundedClass="rounded-lg"
+                alt={pl.name}
+                className="flex-shrink-0"
+              />
               <div className="min-w-0 flex-1">
                 <h5 className="text-sm font-semibold truncate text-white group-hover:text-[#ff6b1a] transition-colors">
                   {pl.name}
@@ -289,7 +291,7 @@ export const TopBar: React.FC = () => {
 
         <span className="hidden sm:inline text-white/20">|</span>
 
-        <h2 className="hidden md:block font-semibold text-sm text-white/70">
+        <h2 className="hidden md:block font-semibold text-sm text-white/70 max-w-[180px] lg:max-w-[280px] truncate overflow-hidden whitespace-nowrap text-ellipsis">
           {getGreeting()}{userProfile.username ? `, ${userProfile.username}` : ''}
         </h2>
       </div>
@@ -300,10 +302,12 @@ export const TopBar: React.FC = () => {
           <button
             id="topbar-install-btn"
             onClick={() => setIsInstallModalOpen(true)}
-            className="flex items-center gap-1.5 bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black px-3.5 py-1.5 rounded-full font-black text-xs transition-all shadow-md shadow-[#ff6b1a]/25 flex-shrink-0 cursor-pointer"
+            className="flex items-center justify-center gap-1.5 bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black p-2 sm:px-3.5 sm:py-1.5 rounded-full font-black text-xs transition-all shadow-md shadow-[#ff6b1a]/25 flex-shrink-0 cursor-pointer"
+            title="Install App"
+            aria-label="Install App"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Install App</span>
+            <Download className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="hidden sm:inline">Install App</span>
           </button>
         )}
 
@@ -324,20 +328,20 @@ export const TopBar: React.FC = () => {
             if (globalUser) setActivePane('account');
             else setIsAuthGateOpen(true);
           }}
-          className="flex items-center gap-2.5 bg-white/10 hover:bg-white/15 px-3 py-1.5 rounded-full border border-white/10 transition-colors"
+          className="flex items-center gap-2 bg-white/10 hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full border border-white/10 transition-colors max-w-[120px] sm:max-w-[170px]"
         >
           {userProfile.avatarUrl ? (
             <img
               src={userProfile.avatarUrl}
               alt="Avatar"
-              className="w-6 h-6 rounded-full object-cover"
+              className="w-6 h-6 rounded-full object-cover flex-shrink-0"
             />
           ) : (
-            <div className="w-6 h-6 rounded-full bg-[#ff6b1a] text-black font-bold text-xs flex items-center justify-center">
+            <div className="w-6 h-6 rounded-full bg-[#ff6b1a] text-black font-bold text-xs flex items-center justify-center flex-shrink-0">
               {userProfile.username ? userProfile.username.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
             </div>
           )}
-          <span className="text-xs font-bold text-white max-w-[100px] truncate">
+          <span className="text-xs font-bold text-white truncate overflow-hidden whitespace-nowrap text-ellipsis">
             {userProfile.username || 'Sign In'}
           </span>
         </button>
