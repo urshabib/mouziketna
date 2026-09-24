@@ -54,6 +54,11 @@ export async function initDownloadsRegistry(): Promise<void> {
           if (rec.id) {
             downloadedIds.add(rec.id);
             downloadedQualityMap.set(rec.id, rec.quality || '320');
+            if (rec.thumbLowRes && !offlineThumbCache.has(rec.id)) {
+              try {
+                offlineThumbCache.set(rec.id, URL.createObjectURL(rec.thumbLowRes));
+              } catch {}
+            }
           }
         });
         resolve();
@@ -229,6 +234,7 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       accentColor: profile.accentColor || 'orange',
       lyricsColor: profile.lyricsColor || 'white',
       presetTint: profile.presetTint || 'none',
+      uiScale: profile.uiScale || 'default',
       activePreset: profile.activePreset || null,
     }));
   } catch {}
@@ -317,7 +323,14 @@ export function tasteEvent(kind: 'play' | 'complete' | 'like' | 'skip' | 'unlike
 }
 
 export function rememberListen(track: Track) {
+  if (!track || !track.id) return;
   tasteEvent('play', track);
+  try {
+    const raw = localStorage.getItem('taste_profile_history');
+    let hist: Track[] = raw ? JSON.parse(raw) : [];
+    hist = [track, ...hist.filter((t) => t.id !== track.id)].slice(0, 30);
+    localStorage.setItem('taste_profile_history', JSON.stringify(hist));
+  } catch {}
 }
 
 export function tasteArtistScore(artist: string): number {
@@ -330,21 +343,46 @@ export function tasteSkippedArtists(): Set<string> {
   return new Set(Object.keys(t.artists).filter((a) => t.artists[a] <= -3));
 }
 
-export function tasteTopSeeds(likedSongs: Track[] = [], n = 3, excludeId: string | null = null): Track[] {
+// Multi-factor taste profile system: combines playback history, saved songs, and playlist content
+export function tasteTopSeeds(
+  likedSongs: Track[] = [],
+  n = 4,
+  excludeId: string | null = null,
+  recentlyPlayed: Track[] = [],
+  playlistSongs: Track[] = []
+): Track[] {
   let hist: Track[] = [];
   try {
     hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
   } catch {}
-  const pool = [...likedSongs, ...hist].filter((t) => t && t.id && t.title && t.id !== excludeId);
+
+  const combinedRecent = [...recentlyPlayed, ...hist];
+  const pool = [...likedSongs, ...combinedRecent, ...playlistSongs].filter(
+    (t) => t && t.id && t.title && t.id !== excludeId
+  );
   const skipped = tasteSkippedArtists();
+
+  // Multi-factor weighting:
+  // - Recently played: up to +5 points for newest listens
+  // - Liked songs: +4 points
+  // - Custom playlist tracks: +2 points
+  // - Taste profile artist affinity: dynamic score
   const scored = pool
-    .map((t) => ({
-      t,
-      score:
-        tasteArtistScore(t.artist) +
-        (likedSongs.some((s) => s.id === t.id) ? 3 : 0) +
-        Math.random() * 2.5,
-    }))
+    .map((t) => {
+      const recentIndex = combinedRecent.findIndex((r) => r.id === t.id);
+      const isLiked = likedSongs.some((s) => s.id === t.id);
+      const isPlaylist = playlistSongs.some((p) => p.id === t.id);
+
+      const recentWeight = recentIndex >= 0 ? Math.max(0, 5 - recentIndex * 0.25) : 0;
+      const likedWeight = isLiked ? 4 : 0;
+      const playlistWeight = isPlaylist ? 2 : 0;
+      const artistAffinity = tasteArtistScore(t.artist);
+
+      return {
+        t,
+        score: artistAffinity + recentWeight + likedWeight + playlistWeight + Math.random() * 1.5,
+      };
+    })
     .filter((x) => !skipped.has(tasteArtistKey(x.t.artist)));
 
   scored.sort((a, b) => b.score - a.score);
@@ -358,4 +396,28 @@ export function tasteTopSeeds(likedSongs: Track[] = [], n = 3, excludeId: string
     if (out.length >= n) break;
   }
   return out;
+}
+
+// Persistent Custom Playlist Cover Storage
+const PL_COVER_PREFIX = 'mouzika_pl_cover_';
+
+export function savePersistentPlaylistCover(playlistId: string, base64Data: string) {
+  try {
+    localStorage.setItem(`${PL_COVER_PREFIX}${playlistId}`, base64Data);
+    ensurePersistentStorageOnce();
+  } catch {}
+}
+
+export function getPersistentPlaylistCover(playlistId: string): string | null {
+  try {
+    return localStorage.getItem(`${PL_COVER_PREFIX}${playlistId}`);
+  } catch {
+    return null;
+  }
+}
+
+export function deletePersistentPlaylistCover(playlistId: string) {
+  try {
+    localStorage.removeItem(`${PL_COVER_PREFIX}${playlistId}`);
+  } catch {}
 }

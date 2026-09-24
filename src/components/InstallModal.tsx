@@ -38,9 +38,19 @@ interface InstallModalProps {
 
 type PlatformTab = 'android' | 'ios' | 'desktop';
 
+const INSTALL_TAB_STORAGE_KEY = 'install_modal_active_tab';
+
 export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) => {
   const { userProfile, syncProfile } = useMusic();
-  const [activeTab, setActiveTab] = useState<PlatformTab>('android');
+  const [activeTab, setActiveTab] = useState<PlatformTab>(() => {
+    try {
+      const saved = localStorage.getItem(INSTALL_TAB_STORAGE_KEY);
+      if (saved === 'android' || saved === 'ios' || saved === 'desktop') {
+        return saved as PlatformTab;
+      }
+    } catch {}
+    return 'android';
+  });
   const [isInstalled, setIsInstalled] = useState(false);
   const [installSuccess, setInstallSuccess] = useState(false);
   const [appName, setAppName] = useState<string>(getStoredAppName());
@@ -49,6 +59,13 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
   const [selectedLogo, setSelectedLogo] = useState<string>(getStoredAppLogo());
   const [isCropperOpen, setIsCropperOpen] = useState(false);
   const [showFileGuide, setShowFileGuide] = useState(false);
+
+  const handleTabChange = (tab: PlatformTab) => {
+    setActiveTab(tab);
+    try {
+      localStorage.setItem(INSTALL_TAB_STORAGE_KEY, tab);
+    } catch {}
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -60,13 +77,18 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
 
-    if (isIosDevice) {
-      setActiveTab('ios');
-    } else if (isAndroidDevice) {
-      setActiveTab('android');
-    } else {
-      setActiveTab('desktop');
-    }
+    try {
+      const savedTab = localStorage.getItem(INSTALL_TAB_STORAGE_KEY);
+      if (!savedTab) {
+        if (isIosDevice) {
+          handleTabChange('ios');
+        } else if (isAndroidDevice) {
+          handleTabChange('android');
+        } else {
+          handleTabChange('desktop');
+        }
+      }
+    } catch {}
 
     setIsInstalled(isStandalone);
     setAppName(getStoredAppName());
@@ -345,7 +367,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
             <div className="flex p-1 rounded-xl bg-white/5 border border-white/10 text-xs font-bold">
               <button
                 type="button"
-                onClick={() => setActiveTab('android')}
+                onClick={() => handleTabChange('android')}
                 className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'android'
                     ? 'bg-[#ff6b1a] text-black shadow-md'
@@ -357,7 +379,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('ios')}
+                onClick={() => handleTabChange('ios')}
                 className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'ios'
                     ? 'bg-[#ff6b1a] text-black shadow-md'
@@ -369,7 +391,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab('desktop')}
+                onClick={() => handleTabChange('desktop')}
                 className={`flex-1 py-2 px-1 rounded-lg flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   activeTab === 'desktop'
                     ? 'bg-[#ff6b1a] text-black shadow-md'

@@ -1,10 +1,27 @@
 // Service Worker for MOUZIKA PWA
-const CACHE_NAME = 'mouzika-pwa-v6';
+const CACHE_NAME = 'mouzika-pwa-v7';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
-// Install event - activate immediately
+const PRECACHE_ASSETS = [
+  './',
+  './index.html',
+  './manifest.json',
+  './favicon.png',
+  './favicon.ico',
+  './icon-192.png',
+  './icon-512.png',
+  './apple-touch-icon.png'
+];
+
+// Install event - precache core shell & activate immediately
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
+        console.warn('[MOUZIKA SW] Precache partial error:', err);
+      });
+    }).then(() => self.skipWaiting())
+  );
 });
 
 // Skip waiting message listener from force refresh
@@ -86,7 +103,7 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request)
       .then((response) => {
         // Clone and cache valid 200 responses for static assets
-        if (response && response.status === 200 && response.type === 'basic') {
+        if (response && response.status === 200) {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseToCache);
@@ -94,15 +111,22 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => {
-        // If network fails (offline), try cache
-        return caches.match(event.request).then((cached) => {
-          if (cached) return cached;
-          if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
-            return caches.match('./index.html') || caches.match('./') || caches.match('/index.html');
-          }
-          return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-        });
+      .catch(async () => {
+        // If network fails (offline), try direct cache match
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+
+        // If navigation request (e.g. opening PWA offline), return cached index.html
+        if (event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html')) {
+          const fallbackIndex =
+            (await caches.match('./index.html')) ||
+            (await caches.match('./')) ||
+            (await caches.match('/index.html')) ||
+            (await caches.match('/'));
+          if (fallbackIndex) return fallbackIndex;
+        }
+
+        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
       })
   );
 });

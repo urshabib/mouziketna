@@ -28,8 +28,12 @@ export interface UserProfile {
   liquidGlass: boolean;
   theme: 'dark' | 'light';
   accentColor: string;
+  customAccentHex?: string;
+  lyricsFont?: 'poppins' | 'bebas' | 'caveat' | 'playfair' | 'righteous' | 'jetbrains' | string;
   lyricsColor: string;
+  customLyricsHex?: string;
   presetTint: string;
+  uiScale?: 'small' | 'default' | 'large';
   activePreset: string | null;
   avatarUrl: string | null;
   isAdmin?: boolean;
@@ -41,6 +45,7 @@ export interface CustomPlaylist {
   tracks: Track[];
   source?: string;
   thumb?: string | null;
+  customCover?: string | null;
 }
 
 export interface SyncedLyricsLine {

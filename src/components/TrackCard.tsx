@@ -4,8 +4,9 @@ import { Track } from '../types';
 import { Play, Heart, Download, MoreVertical, Music2, Check } from 'lucide-react';
 import { isDownloaded, getDownloadQuality } from '../services/storage';
 import { FALLBACK_ART } from '../services/api';
-import { useTrackThumb } from '../services/useTrackThumb';
+import { useTrackThumb, resolveOfflineFallback } from '../services/useTrackThumb';
 import { DownloadBadge } from './DownloadBadge';
+import { useLongPress } from '../hooks/useLongPress';
 
 interface TrackCardProps {
   track: Track;
@@ -25,12 +26,27 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
     removeDownload,
     setActionSheetTrack,
     setActionSheetMeta,
+    downloadedSet,
   } = useMusic();
 
   const thumbSrc = useTrackThumb(track);
+  let displayThumb = thumbSrc;
+  if (displayThumb && typeof displayThumb === 'string') {
+    if (displayThumb.includes('150x150.jpg')) {
+      displayThumb = displayThumb.replace('150x150.jpg', '500x500.jpg');
+    } else if (displayThumb.includes('50x50.jpg')) {
+      displayThumb = displayThumb.replace('50x50.jpg', '500x500.jpg');
+    }
+  }
+
   const isCurrent = activeTrack?.id === track.id;
   const isLiked = userProfile.likedSongs?.some((s) => s.id === track.id);
-  const downloaded = isDownloaded(track.id);
+  const downloaded = (downloadedSet && downloadedSet.has(track.id)) || isDownloaded(track.id);
+
+  const handleTriggerMore = () => {
+    setActionSheetTrack(track);
+    setActionSheetMeta({ collectionId });
+  };
 
   const handleCardClick = () => {
     if (track.type === 'artist') {
@@ -43,19 +59,25 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
     }
   };
 
+  const { handlers: longPressHandlers, handleClick: handleLongPressClick } = useLongPress({
+    onLongPress: handleTriggerMore,
+    onClick: handleCardClick,
+  });
+
   const handleThumbError = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    e.currentTarget.src = FALLBACK_ART;
+    resolveOfflineFallback(track.id, e.currentTarget);
   };
 
   return (
     <div
-      onClick={handleCardClick}
-      className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-xl"
+      onClick={(e) => handleLongPressClick(e)}
+      {...longPressHandlers}
+      className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1 gpu-layer"
     >
       {/* Artwork container */}
       <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-[#18181b] shadow-md">
         <img
-          src={thumbSrc}
+          src={displayThumb}
           alt={track.title}
           onError={handleThumbError}
           loading="lazy"
@@ -72,7 +94,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
               if (onPlay) onPlay();
               else playTrack(track);
             }}
-            className="absolute right-2.5 bottom-2.5 w-11 h-11 rounded-full bg-[#ff6b1a] text-black flex items-center justify-center shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:scale-110 active:scale-95 transition-all duration-200 z-10"
+            className="absolute right-2.5 bottom-2.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#ff6b1a] text-black flex items-center justify-center shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:scale-110 active:scale-95 transition-all duration-200 z-10 cursor-pointer"
             title="Play"
           >
             <Play className="w-5 h-5 fill-black ml-0.5" />
@@ -81,7 +103,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
 
         {/* Live EQ Indicator */}
         {isCurrent && (
-          <div className="absolute left-2.5 bottom-2.5 flex items-end gap-0.5 h-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded-md">
+          <div className="absolute left-2.5 bottom-2.5 flex items-end gap-0.5 h-4 bg-black/70 backdrop-blur-md px-2 py-1 rounded-md shadow-md">
             <span className="w-1 bg-[#ff6b1a] rounded-sm animate-eq-1" />
             <span className="w-1 bg-[#ff6b1a] rounded-sm animate-eq-2" />
             <span className="w-1 bg-[#ff6b1a] rounded-sm animate-eq-3" />

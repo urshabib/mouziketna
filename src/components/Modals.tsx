@@ -19,6 +19,8 @@ import {
   extractSpotifyPlaylistUrl,
   fetchWithTimeout,
 } from '../services/api';
+import { PlaylistCover } from './PlaylistCover';
+import { getPersistentPlaylistCover } from '../services/storage';
 
 export const Modals: React.FC = () => {
   const {
@@ -184,21 +186,32 @@ export const Modals: React.FC = () => {
             {/* List existing playlists if adding a track */}
             {modalAddToPlaylistTrack && userProfile.customPlaylists.length > 0 && (
               <div className="max-h-48 overflow-y-auto flex flex-col gap-1 pr-1">
-                {userProfile.customPlaylists.map((pl) => (
-                  <button
-                    key={pl.id}
-                    onClick={() => handleAddToExisting(pl.id)}
-                    className="flex items-center justify-between p-3 rounded-xl hover:bg-white/10 text-left transition-colors group"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <Music className="w-5 h-5 text-[#ff6b1a] flex-shrink-0" />
-                      <span className="font-semibold text-sm text-white truncate">{pl.name}</span>
-                    </div>
-                    <span className="text-xs text-white/40 group-hover:text-white/60">
-                      {pl.tracks.length} tracks
-                    </span>
-                  </button>
-                ))}
+                {userProfile.customPlaylists.map((pl) => {
+                  const customCover = (pl.id ? getPersistentPlaylistCover(pl.id) : null) || pl.customCover;
+                  return (
+                    <button
+                      key={pl.id}
+                      onClick={() => handleAddToExisting(pl.id)}
+                      className="flex items-center justify-between p-2.5 rounded-xl hover:bg-white/10 text-left transition-colors group cursor-pointer"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 bg-[#252528] shadow-sm flex items-center justify-center">
+                          <PlaylistCover
+                            cover={customCover}
+                            tracks={pl.tracks}
+                            sizeClass="w-8 h-8"
+                            roundedClass="rounded-lg"
+                            alt={pl.name}
+                          />
+                        </div>
+                        <span className="font-semibold text-sm text-white truncate">{pl.name}</span>
+                      </div>
+                      <span className="text-xs text-white/40 group-hover:text-white/60">
+                        {pl.tracks.length} tracks
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             )}
 

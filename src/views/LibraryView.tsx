@@ -10,7 +10,8 @@ import {
   User,
   Trash2,
 } from 'lucide-react';
-import { getTotalDownloadedSize, formatBytes } from '../services/storage';
+import { getTotalDownloadedSize, formatBytes, getPersistentPlaylistCover } from '../services/storage';
+import { PlaylistCover } from '../components/PlaylistCover';
 
 export const LibraryView: React.FC = () => {
   const {
@@ -59,8 +60,52 @@ export const LibraryView: React.FC = () => {
           </div>
         </div>
 
-        {/* Playlists Grid */}
+        {/* Playlists Grid - Custom & Imported Playlists first */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+          {/* User's Custom Playlists (Priority) */}
+          {customPlaylists.map((pl) => {
+            const customCover = (pl.id ? getPersistentPlaylistCover(pl.id) : null) || pl.customCover;
+            return (
+              <div
+                key={pl.id}
+                onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover)}
+                className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
+              >
+                <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-[#18181b] shadow-md group-hover:scale-105 transition-transform duration-300">
+                  <PlaylistCover
+                    cover={customCover}
+                    tracks={pl.tracks}
+                    sizeClass="w-full h-full"
+                    roundedClass="rounded-xl"
+                    alt={pl.name}
+                  />
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setModalConfirm({
+                        title: `Delete "${pl.name}"?`,
+                        text: "The playlist will be permanently removed from your library.",
+                        onConfirm: () => deletePlaylist(pl.id),
+                      });
+                    }}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 flex items-center justify-center text-white/70 hover:text-red-400 transition-all z-10 cursor-pointer"
+                    title="Delete Playlist"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <h4 className="font-bold text-sm text-white truncate">{pl.name}</h4>
+                <p className="text-xs text-white/50 truncate font-medium mt-0.5">
+                  {pl.source ? `${pl.source} • ` : ''}
+                  {pl.tracks?.length || 0} tracks
+                </p>
+              </div>
+            );
+          })}
+
+          {/* Quick Collections: Liked and Downloaded at the bottom */}
           {/* Liked Songs Special Card */}
           <div
             onClick={() => openCollection('liked')}
@@ -88,46 +133,6 @@ export const LibraryView: React.FC = () => {
               {downloadedSet.size} tracks • {downloadSize}
             </p>
           </div>
-
-          {/* User's Custom Playlists */}
-          {customPlaylists.map((pl) => (
-            <div
-              key={pl.id}
-              onClick={() => openCollection('custom-playlist', pl.id, pl.name, pl.thumb)}
-              className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
-            >
-              <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-[#18181b] shadow-md group-hover:scale-105 transition-transform duration-300">
-                {pl.thumb ? (
-                  <img src={pl.thumb} alt={pl.name} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-white/40">
-                    <Music2 className="w-10 h-10" />
-                  </div>
-                )}
-
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setModalConfirm({
-                      title: `Delete "${pl.name}"?`,
-                      text: "The playlist will be permanently removed from your library.",
-                      onConfirm: () => deletePlaylist(pl.id),
-                    });
-                  }}
-                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur-md opacity-0 group-hover:opacity-100 flex items-center justify-center text-white/70 hover:text-red-400 transition-all"
-                  title="Delete Playlist"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              <h4 className="font-bold text-sm text-white truncate">{pl.name}</h4>
-              <p className="text-xs text-white/50 truncate font-medium mt-0.5">
-                {pl.source ? `${pl.source} • ` : ''}
-                {pl.tracks?.length || 0} tracks
-              </p>
-            </div>
-          ))}
         </div>
       </section>
 

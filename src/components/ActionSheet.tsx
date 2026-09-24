@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useMusic } from '../context/MusicContext';
 import {
   Play,
@@ -33,9 +33,32 @@ export const ActionSheet: React.FC = () => {
     showToast,
   } = useMusic();
 
-  if (!actionSheetTrack) return null;
+  const [isClosing, setIsClosing] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const startYRef = useRef(0);
+  const currentDragYRef = useRef(0);
+  const hasMovedRef = useRef(false);
+  const trackCacheRef = useRef(actionSheetTrack);
 
-  const track = actionSheetTrack;
+  if (actionSheetTrack) {
+    trackCacheRef.current = actionSheetTrack;
+  }
+
+  const track = actionSheetTrack || trackCacheRef.current;
+
+  // Reset state when a new track is opened
+  useEffect(() => {
+    if (actionSheetTrack) {
+      setIsClosing(false);
+      setDragY(0);
+      setIsDragging(false);
+      currentDragYRef.current = 0;
+    }
+  }, [actionSheetTrack]);
+
+  if (!track || (!actionSheetTrack && !isClosing)) return null;
+
   const isLiked = userProfile.likedSongs?.some((s) => s.id === track.id);
   const downloaded = isDownloaded(track.id);
   const inCustomPl =
@@ -43,8 +66,15 @@ export const ActionSheet: React.FC = () => {
   const inLiked = actionSheetMeta?.collectionId === 'liked';
 
   const close = () => {
-    setActionSheetTrack(null);
-    setActionSheetMeta(null);
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      setActionSheetTrack(null);
+      setActionSheetMeta(null);
+      setIsClosing(false);
+      setDragY(0);
+      currentDragYRef.current = 0;
+    }, 240);
   };
 
   const handleShare = async () => {
@@ -64,32 +94,149 @@ export const ActionSheet: React.FC = () => {
     close();
   };
 
+  // Gesture handling for the Android top bar and header
+  const handleTouchStart = (e: React.TouchEvent) => {
+    startYRef.current = e.touches[0].clientY;
+    hasMovedRef.current = false;
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startYRef.current;
+    if (Math.abs(diff) > 4) {
+      hasMovedRef.current = true;
+    }
+    if (diff > 0) {
+      // Direct 1:1 pull down tracking
+      currentDragYRef.current = diff;
+      setDragY(diff);
+    } else {
+      // Elastic rubber band resistance for upward drag
+      const resisted = diff * 0.15;
+      currentDragYRef.current = resisted;
+      setDragY(resisted);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    if (currentDragYRef.current > 70) {
+      if (navigator.vibrate) {
+        try {
+          navigator.vibrate(15);
+        } catch {}
+      }
+      close();
+    } else {
+      setDragY(0);
+      currentDragYRef.current = 0;
+    }
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    startYRef.current = e.clientY;
+    hasMovedRef.current = false;
+    setIsDragging(true);
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const diff = ev.clientY - startYRef.current;
+      if (Math.abs(diff) > 4) hasMovedRef.current = true;
+      if (diff > 0) {
+        currentDragYRef.current = diff;
+        setDragY(diff);
+      } else {
+        const resisted = diff * 0.15;
+        currentDragYRef.current = resisted;
+        setDragY(resisted);
+      }
+    };
+
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      setIsDragging(false);
+      if (currentDragYRef.current > 70) {
+        close();
+      } else {
+        setDragY(0);
+        currentDragYRef.current = 0;
+      }
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  };
+
   return (
     <div
       onClick={close}
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center animate-in fade-in duration-200 select-none"
+      style={{
+        opacity: isClosing ? 0 : Math.max(0.15, 1 - Math.max(0, dragY) / 350),
+      }}
+      className={`fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex items-end sm:items-center justify-center select-none transition-opacity duration-200 ${
+        isClosing ? 'pointer-events-none' : ''
+      }`}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-md bg-[#18181b] glass-panel border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col gap-1 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200"
+        style={{
+          transform: isClosing
+            ? 'translateY(100%)'
+            : dragY !== 0
+            ? `translateY(${Math.max(0, dragY)}px)`
+            : 'translateY(0px)',
+          transition: isDragging
+            ? 'none'
+            : 'transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 200ms ease',
+          opacity: isClosing ? 0 : 1,
+        }}
+        className="w-full sm:max-w-md bg-[#18181b] glass-panel border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col gap-1 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200"
       >
-        {/* Grip pill for mobile */}
-        <div className="w-10 h-1 rounded-full bg-white/20 mx-auto mb-4 sm:hidden" />
+        {/* Android Gesture Grab Bar at the top */}
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!hasMovedRef.current) {
+              close();
+            }
+          }}
+          className="w-full flex flex-col items-center justify-center py-2 -mt-1 cursor-grab active:cursor-grabbing touch-none select-none group"
+          title="Drag down or tap to close"
+        >
+          <div className="w-12 h-1.5 rounded-full bg-white/30 group-hover:bg-white/60 group-active:bg-[#ff6b1a] transition-all duration-150" />
+        </div>
 
-        {/* Track Preview Header */}
-        <div className="flex items-center gap-3.5 pb-4 mb-2 border-b border-white/10">
+        {/* Track Preview Header (also draggable down) */}
+        <div
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          className="flex items-center gap-3.5 pb-4 mb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
+        >
           <img
             src={track.thumb || canonicalThumbUrl(track.id)}
             alt={track.title}
-            className="w-14 h-14 rounded-xl object-cover shadow-md flex-shrink-0"
+            className="w-14 h-14 rounded-xl object-cover shadow-md flex-shrink-0 pointer-events-none"
           />
           <div className="min-w-0 flex-1">
             <h4 className="font-bold text-base text-white truncate leading-snug">{track.title}</h4>
             <p className="text-xs text-white/50 truncate font-semibold mt-0.5">{track.artist}</p>
           </div>
           <button
-            onClick={close}
-            className="p-2 text-white/40 hover:text-white rounded-full transition-colors"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              close();
+            }}
+            className="p-2 text-white/40 hover:text-white rounded-full transition-colors cursor-pointer"
+            aria-label="Close menu"
           >
             <X className="w-5 h-5" />
           </button>
@@ -102,7 +249,7 @@ export const ActionSheet: React.FC = () => {
               addToQueue(track, true);
               close();
             }}
-            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <Play className="w-5 h-5 text-white/70" />
             <span>Play Next</span>
@@ -113,7 +260,7 @@ export const ActionSheet: React.FC = () => {
               addToQueue(track, false);
               close();
             }}
-            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <ListPlus className="w-5 h-5 text-white/70" />
             <span>Add to Queue</span>
@@ -124,7 +271,7 @@ export const ActionSheet: React.FC = () => {
               toggleLikeTrack(track);
               close();
             }}
-            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <Heart className={`w-5 h-5 ${isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/70'}`} />
             <span>{isLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}</span>
@@ -136,7 +283,7 @@ export const ActionSheet: React.FC = () => {
               else downloadTrack(track);
               close();
             }}
-            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             {downloaded ? (
               <>
@@ -156,7 +303,7 @@ export const ActionSheet: React.FC = () => {
               setModalAddToPlaylistTrack(track);
               close();
             }}
-            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <FolderPlus className="w-5 h-5 text-white/70" />
             <span>Add to Playlist</span>
@@ -167,7 +314,7 @@ export const ActionSheet: React.FC = () => {
               openCollection('artist', track.artist, track.artist);
               close();
             }}
-            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <User className="w-5 h-5 text-white/70" />
             <span>View Artist</span>
@@ -175,7 +322,7 @@ export const ActionSheet: React.FC = () => {
 
           <button
             onClick={handleShare}
-            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors"
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <Share2 className="w-5 h-5 text-white/70" />
             <span>Share Song</span>
@@ -188,7 +335,7 @@ export const ActionSheet: React.FC = () => {
                 removeTrackFromPlaylist(actionSheetMeta.collectionId!, track.id);
                 close();
               }}
-              className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-red-500/10 text-red-400 font-semibold text-sm transition-colors border-t border-white/5 mt-1"
+              className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-red-500/10 text-red-400 font-semibold text-sm transition-colors border-t border-white/5 mt-1 cursor-pointer"
             >
               <Trash2 className="w-5 h-5" />
               <span>Remove from this Playlist</span>
@@ -202,7 +349,7 @@ export const ActionSheet: React.FC = () => {
                 toggleLikeTrack(track);
                 close();
               }}
-              className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-red-500/10 text-red-400 font-semibold text-sm transition-colors border-t border-white/5 mt-1"
+              className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-red-500/10 text-red-400 font-semibold text-sm transition-colors border-t border-white/5 mt-1 cursor-pointer"
             >
               <Trash2 className="w-5 h-5" />
               <span>Remove from Liked Songs</span>
