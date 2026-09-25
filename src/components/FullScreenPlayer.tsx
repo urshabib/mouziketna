@@ -17,9 +17,13 @@ import {
   Moon,
   Plus,
   Loader2,
+  Maximize2,
+  Flame,
 } from 'lucide-react';
 import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
 import { useTrackThumb } from '../services/useTrackThumb';
+import { getSongHighlights } from '../services/songHighlights';
+import { TrackProgressBar } from './TrackProgressBar';
 import { motion, AnimatePresence } from 'motion/react';
 
 function formatTime(seconds: number): string {
@@ -49,9 +53,12 @@ export const FullScreenPlayer: React.FC = () => {
     userProfile,
     isFullScreenOpen,
     setIsFullScreenOpen,
+    setIsLandscapeStageOpen,
+    isLyricsOpen,
     setIsLyricsOpen,
     setIsQueueOpen,
     setModalAddToPlaylistTrack,
+    currentLyrics,
     sleepTimerRemaining,
     setSleepTimerMinutes,
     setSleepTimerEndOfSong,
@@ -60,6 +67,11 @@ export const FullScreenPlayer: React.FC = () => {
 
   const thumbSrc = useTrackThumb(activeTrack);
   const [isSleepMenuOpen, setIsSleepMenuOpen] = useState(false);
+
+  // Compute Instagram-style famous highlights
+  const highlights = React.useMemo(() => {
+    return getSongHighlights(activeTrack, currentLyrics, duration);
+  }, [activeTrack?.id, currentLyrics.mode, currentLyrics.lines, duration]);
   
   // Gesture states
   const [dragX, setDragX] = useState(0);
@@ -182,7 +194,7 @@ export const FullScreenPlayer: React.FC = () => {
                 Now Playing
               </span>
               {swipeHint && (
-                <span className="text-[10px] font-bold text-[#ff6b1a] animate-pulse">
+                <span className="text-[10px] font-bold text-white/80 animate-pulse">
                   {swipeHint === 'next' ? 'Swipe for Next Track ❯' : '❮ Swipe for Previous Track'}
                 </span>
               )}
@@ -190,9 +202,21 @@ export const FullScreenPlayer: React.FC = () => {
 
             {/* Action icons */}
             <div className="flex items-center gap-1.5 relative">
+              {/* Full Screen Rotate Landscape Mode */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLandscapeStageOpen(true);
+                }}
+                className="p-2 text-white/70 hover:text-white transition-all active:scale-95 cursor-pointer"
+                title="Full Screen Landscape Mode"
+              >
+                <Maximize2 className="w-5 h-5 text-white/70 hover:text-white" />
+              </button>
+
               <button
                 onClick={() => setIsLyricsOpen(true)}
-                className="p-2 text-white/70 hover:text-white transition-colors"
+                className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
                 title="Lyrics"
               >
                 <FileText className="w-5 h-5" />
@@ -282,12 +306,15 @@ export const FullScreenPlayer: React.FC = () => {
           <div className="flex-1 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto my-auto px-2">
             <motion.div
               style={{
+                aspectRatio: '1 / 1',
+                maxHeight: 'min(78vw, 360px, calc(100vh - 280px))',
+                maxWidth: 'min(78vw, 360px, calc(100vh - 280px))',
                 x: dragX,
                 rotate: dragX * 0.04,
                 scale: 1 - Math.min(Math.abs(dragX) / 1000, 0.1),
               }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="w-full aspect-square rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] bg-[#18181b] border border-white/10 relative group cursor-grab active:cursor-grabbing"
+              className="w-full aspect-square rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] bg-[#18181b] border border-white/10 relative group cursor-grab active:cursor-grabbing mx-auto"
             >
               <img
                 src={thumbSrc}
@@ -295,26 +322,32 @@ export const FullScreenPlayer: React.FC = () => {
                 onError={(e) => {
                   e.currentTarget.src = FALLBACK_ART;
                 }}
-                className="w-full h-full object-cover select-none pointer-events-none"
+                className="w-full h-full object-cover aspect-square select-none pointer-events-none rounded-3xl"
+                style={{ aspectRatio: '1 / 1' }}
                 draggable={false}
               />
 
               {/* Visual swipe indicator overlay */}
-              {dragX !== 0 && (
+              {(dragX !== 0 || dragY > 20) && (
                 <div
                   className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity ${
-                    dragX < -30 ? 'bg-black/30' : dragX > 30 ? 'bg-black/30' : 'opacity-0'
+                    Math.abs(dragX) > 25 || dragY > 25 ? 'bg-black/40' : 'opacity-0'
                   }`}
                 >
-                  <div className="bg-black/80 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-xs font-bold text-white flex items-center gap-2 shadow-2xl">
-                    {dragX < 0 ? (
+                  <div className="bg-black/85 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-xs font-bold text-white flex items-center gap-2 shadow-2xl">
+                    {dragY > 25 ? (
+                      <>
+                        <ChevronDown className="w-4 h-4 text-white" />
+                        <span>Swipe down to close</span>
+                      </>
+                    ) : dragX < 0 ? (
                       <>
                         <span>Next Track</span>
-                        <SkipForward className="w-4 h-4 text-[#ff6b1a]" />
+                        <SkipForward className="w-4 h-4 text-white" />
                       </>
                     ) : (
                       <>
-                        <SkipBack className="w-4 h-4 text-[#ff6b1a]" />
+                        <SkipBack className="w-4 h-4 text-white" />
                         <span>Previous Track</span>
                       </>
                     )}
@@ -325,7 +358,7 @@ export const FullScreenPlayer: React.FC = () => {
           </div>
 
           {/* Bottom Track Meta, Timeline & Controls */}
-          <div className="w-full max-w-lg mx-auto flex flex-col gap-5 sm:gap-6 mt-4 sm:mt-6">
+          <div className="w-full max-w-lg mx-auto flex flex-col gap-5 sm:gap-6 mt-5 sm:mt-7">
             {/* Title & Like */}
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1 pr-4">
@@ -350,25 +383,13 @@ export const FullScreenPlayer: React.FC = () => {
               </button>
             </div>
 
-            {/* Progress Scrubber */}
-            <div className="flex flex-col gap-2 no-swipe">
-              <input
-                type="range"
-                min={0}
-                max={duration || 100}
-                value={currentTime}
-                step={0.1}
-                onChange={(e) => seekTo(Number(e.target.value))}
-                className="custom-slider w-full show-thumb"
-                style={{
-                  background: `linear-gradient(to right, var(--accent) ${progressPct}%, #3a3a3c ${progressPct}%)`,
-                }}
-              />
-              <div className="flex justify-between text-xs font-bold text-white/40 tabular-nums">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
+            {/* Progress Scrubber (supports all 4 styles & key parts rectangles) */}
+            <TrackProgressBar
+              currentTime={currentTime}
+              duration={duration}
+              highlights={highlights}
+              seekTo={seekTo}
+            />
 
             {/* Main Controls */}
             <div className="flex items-center justify-between px-2 no-swipe">

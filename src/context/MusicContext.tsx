@@ -104,6 +104,8 @@ interface MusicContextType {
   // Overlays & Sheets
   isFullScreenOpen: boolean;
   setIsFullScreenOpen: (open: boolean) => void;
+  isLandscapeStageOpen: boolean;
+  setIsLandscapeStageOpen: (open: boolean) => void;
   isLyricsOpen: boolean;
   setIsLyricsOpen: (open: boolean) => void;
   isQueueOpen: boolean;
@@ -187,6 +189,9 @@ const defaultProfile: UserProfile = {
   theme: 'dark',
   accentColor: 'orange',
   lyricsColor: 'white',
+  lyricsGlow: 'default',
+  keyPartsDisplay: 'dots',
+  progressBarStyle: 'default',
   presetTint: 'none',
   uiScale: 'default',
   activePreset: 'glass',
@@ -244,6 +249,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Overlays
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
+  const [isLandscapeStageOpen, setIsLandscapeStageOpen] = useState(false);
   const [isLyricsOpen, setIsLyricsOpen] = useState(false);
   const [isQueueOpen, setIsQueueOpen] = useState(false);
   const [actionSheetTrack, setActionSheetTrack] = useState<Track | null>(null);
@@ -286,7 +292,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => [...prev, { id, message, isGray }]);
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 2500);
+    }, 1800);
   }, []);
 
   // Initialize audio elements
@@ -390,7 +396,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         devSettings.uiScale || 'default',
         devSettings.customAccentHex,
         devSettings.lyricsFont,
-        devSettings.customLyricsHex
+        devSettings.customLyricsHex,
+        devSettings.lyricsGlow
       );
     }
 
@@ -437,13 +444,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     uiScale: string = 'default',
     customAccentHex?: string,
     lyricsFont?: string,
-    customLyricsHex?: string
+    customLyricsHex?: string,
+    lyricsGlow?: string
   ) => {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-accent', accent);
     document.documentElement.setAttribute('data-lyrics-color', lyricsColor);
     document.documentElement.setAttribute('data-preset-tint', presetTint);
     document.documentElement.setAttribute('data-ui-scale', uiScale || 'default');
+    document.documentElement.setAttribute('data-lyrics-glow', lyricsGlow || 'default');
     if (lyricsFont) {
       document.documentElement.setAttribute('data-lyrics-font', lyricsFont);
     }
@@ -489,7 +498,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prof.uiScale,
       prof.customAccentHex,
       prof.lyricsFont,
-      prof.customLyricsHex
+      prof.customLyricsHex,
+      prof.lyricsGlow
     );
     if (!globalUser || globalUser === 'admin') return;
     cacheProfileLocally(globalUser, prof);
@@ -554,6 +564,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           theme: devSettings.theme || (p.theme === 'light' ? 'light' : 'dark'),
           accentColor: devSettings.accentColor || p.accentColor || 'orange',
           lyricsColor: devSettings.lyricsColor || p.lyricsColor || 'white',
+          lyricsGlow: devSettings.lyricsGlow || p.lyricsGlow || 'default',
           presetTint: devSettings.presetTint || p.presetTint || 'none',
           uiScale: devSettings.uiScale || p.uiScale || 'default',
           activePreset: devSettings.activePreset || p.activePreset || 'glass',
@@ -561,7 +572,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
         setUserProfile(merged);
         saveDeviceSettings(merged);
-        applyTheme(merged.theme, merged.accentColor, merged.lyricsColor, merged.presetTint, merged.liquidGlass, merged.uiScale);
+        applyTheme(
+          merged.theme,
+          merged.accentColor,
+          merged.lyricsColor,
+          merged.presetTint,
+          merged.liquidGlass,
+          merged.uiScale,
+          merged.customAccentHex,
+          merged.lyricsFont,
+          merged.customLyricsHex,
+          merged.lyricsGlow
+        );
         cacheProfileLocally(user, merged);
       }
       return { success: true };
@@ -1056,9 +1078,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const seekTo = (time: number) => {
     const audio = audioRef.current;
-    if (audio && isFinite(audio.duration)) {
-      audio.currentTime = Math.max(0, Math.min(audio.duration, time));
-      setCurrentTime(audio.currentTime);
+    if (audio && isFinite(audio.duration) && audio.duration > 0) {
+      const targetTime = Math.max(0, Math.min(audio.duration, time));
+      audio.currentTime = targetTime;
+      setCurrentTime(targetTime);
+      setIsBuffering(false);
     }
   };
 
@@ -1244,7 +1268,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       playbackQueueRef.current = copy;
       return copy;
     });
-    showToast(playNext ? `Playing next: ${track.title}` : `Added to queue: ${track.title}`);
   };
 
   const removeFromQueue = (idx: number) => {
@@ -1267,7 +1290,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     playbackQueueRef.current = [];
     setQueueIndex(-1);
     queueIndexRef.current = -1;
-    showToast('Queue cleared', true);
   };
 
   const playQueueIndex = (idx: number) => {
@@ -1781,6 +1803,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         playCollectionFromIndex,
         isFullScreenOpen,
         setIsFullScreenOpen,
+        isLandscapeStageOpen,
+        setIsLandscapeStageOpen,
         isLyricsOpen,
         setIsLyricsOpen,
         isQueueOpen,

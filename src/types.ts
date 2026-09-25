@@ -32,11 +32,22 @@ export interface UserProfile {
   lyricsFont?: 'poppins' | 'bebas' | 'caveat' | 'playfair' | 'righteous' | 'jetbrains' | string;
   lyricsColor: string;
   customLyricsHex?: string;
+  lyricsGlow?: 'off' | 'default' | 'strong';
+  keyPartsDisplay?: 'off' | 'dots' | 'full';
+  progressBarStyle?: 'default' | 'block' | 'wave' | 'neon';
   presetTint: string;
   uiScale?: 'small' | 'default' | 'large';
   activePreset: string | null;
   avatarUrl: string | null;
   isAdmin?: boolean;
+}
+
+export interface SongHighlight {
+  id: string;
+  label: string;
+  startTime: number;
+  endTime: number;
+  type: 'chorus' | 'hook' | 'drop' | 'intro';
 }
 
 export interface CustomPlaylist {

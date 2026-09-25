@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useMusic } from '../context/MusicContext';
 import {
   Play,
@@ -22,6 +22,8 @@ import {
 } from 'lucide-react';
 import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
 import { useTrackThumb } from '../services/useTrackThumb';
+import { TrackProgressBar } from './TrackProgressBar';
+import { getSongHighlights } from '../services/songHighlights';
 
 function formatTime(seconds: number): string {
   if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '0:00';
@@ -58,9 +60,14 @@ export const PlayerBar: React.FC = () => {
     setIsQueueOpen,
     isQueueOpen,
     setModalAddToPlaylistTrack,
+    currentLyrics,
   } = useMusic();
 
   const thumbSrc = useTrackThumb(activeTrack);
+
+  const highlights = useMemo(() => {
+    return getSongHighlights(activeTrack, currentLyrics, duration);
+  }, [activeTrack?.id, currentLyrics.mode, currentLyrics.lines, duration]);
 
   if (!activeTrack) return null;
 
@@ -201,24 +208,16 @@ export const PlayerBar: React.FC = () => {
           </button>
         </div>
 
-        {/* Timeline Slider */}
-        <div className="w-full flex items-center gap-3 text-xs font-semibold text-white/40 tabular-nums">
-          <span className="w-9 text-right">{formatTime(currentTime)}</span>
-          <div className="relative flex-1 flex items-center group">
-            <input
-              type="range"
-              min={0}
-              max={duration || 100}
-              value={currentTime}
-              step={0.1}
-              onChange={(e) => seekTo(Number(e.target.value))}
-              className="custom-slider w-full"
-              style={{
-                background: `linear-gradient(to right, var(--accent) ${progressPct}%, #3a3a3c ${progressPct}%)`,
-              }}
-            />
-          </div>
-          <span className="w-9 text-left">{formatTime(duration)}</span>
+        {/* Timeline Slider adhering to progressBarStyle and keyparts */}
+        <div className="w-full">
+          <TrackProgressBar
+            currentTime={currentTime}
+            duration={duration}
+            highlights={highlights}
+            seekTo={seekTo}
+            inlineTimestamps={true}
+            hideBadges={true}
+          />
         </div>
       </div>
 

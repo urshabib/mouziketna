@@ -296,7 +296,6 @@ export const CollectionView: React.FC = () => {
     if (target.type === 'custom-playlist' && target.id) {
       updatePlaylistTracks(target.id, updated);
     }
-    showToast(`Moved "${moved.title}" ${direction === 'up' ? 'up' : 'down'}`);
   };
 
   const checkAutoScroll = (clientY: number) => {
@@ -357,7 +356,6 @@ export const CollectionView: React.FC = () => {
         if (target.type === 'custom-playlist' && target.id) {
           updatePlaylistTracks(target.id, updated);
         }
-        showToast('Playlist reordered');
       }
     }
     touchStartIndexRef.current = null;
@@ -395,7 +393,6 @@ export const CollectionView: React.FC = () => {
     }
     setDraggedIndex(null);
     setDragOverIndex(null);
-    showToast('Playlist reordered');
   };
 
   const getHeroArt = () => {

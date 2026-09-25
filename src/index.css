@@ -91,6 +91,17 @@
   --lyrics-font-scale: 1;
   --lyrics-letter-spacing: normal;
   --lyrics-font-style: normal;
+  --lyrics-glow-shadow: rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.55) 0 0 14px;
+  --lyrics-glow-filter: drop-shadow(0 0 8px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.55));
+}
+:root[data-lyrics-glow="off"]     { --lyrics-glow-shadow: none; --lyrics-glow-filter: none; }
+:root[data-lyrics-glow="default"] { 
+  --lyrics-glow-shadow: rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.55) 0 0 14px; 
+  --lyrics-glow-filter: drop-shadow(0 0 8px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.55));
+}
+:root[data-lyrics-glow="strong"]  { 
+  --lyrics-glow-shadow: rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.95) 0 0 10px, rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.8) 0 0 24px, rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.5) 0 0 44px; 
+  --lyrics-glow-filter: drop-shadow(0 0 6px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.95)) drop-shadow(0 0 18px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.75)) drop-shadow(0 0 35px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.5));
 }
 :root[data-lyrics-font="poppins"]   { --lyrics-font: 'Poppins', sans-serif; --lyrics-font-scale: 1; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
 :root[data-lyrics-font="bebas"]     { --lyrics-font: 'Bebas Neue', Impact, sans-serif; --lyrics-letter-spacing: 0.05em; --lyrics-font-scale: 1.05; --lyrics-font-style: normal; }
@@ -253,8 +264,13 @@ body.liquid-glass .glass-panel {
   );
 }
 
-.lyric-line.active .lyric-word {
-  text-shadow: rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.45) 0 0 14px;
+.lyric-line.active {
+  filter: var(--lyrics-glow-filter, none);
+}
+
+.lyric-line.active .lyric-word,
+.lyric-glow-active {
+  text-shadow: var(--lyrics-glow-shadow, none);
 }
 
 /* Range input slider styling */

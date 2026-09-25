@@ -330,7 +330,6 @@ export const SettingsView: React.FC = () => {
                         dataSaverLevel: tier.id === 'high' ? 'off' : (tier.id as any),
                         dataSaver: tier.id !== 'high' && tier.id !== 'stable',
                       });
-                      showToast(`Download quality set to ${tier.title}`);
                     }}
                     className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-1.5 transition-all cursor-pointer ${
                       isSelected
@@ -377,7 +376,6 @@ export const SettingsView: React.FC = () => {
                 onClick={() => {
                   const next = !userProfile.autoCachePlayed;
                   syncProfile({ ...userProfile, autoCachePlayed: next });
-                  showToast(next ? 'Auto-cache enabled' : 'Auto-cache disabled');
                 }}
                 className={`w-12 h-7 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${
                   userProfile.autoCachePlayed ? 'bg-[#ff6b1a]' : 'bg-white/20'
@@ -414,7 +412,6 @@ export const SettingsView: React.FC = () => {
                         type="button"
                         onClick={() => {
                           syncProfile({ ...userProfile, autoCacheQuality: opt.id as any });
-                          showToast(`Auto-cache quality set to ${opt.label} (${opt.sub})`);
                         }}
                         className={`flex-1 text-center py-2 px-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           isSelected
@@ -453,7 +450,6 @@ export const SettingsView: React.FC = () => {
                 onClick={() => {
                   const next = !userProfile.downloadLyricsOffline;
                   syncProfile({ ...userProfile, downloadLyricsOffline: next });
-                  showToast(next ? 'Offline lyrics enabled' : 'Offline lyrics disabled');
                 }}
                 className={`w-11 h-6 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${
                   userProfile.downloadLyricsOffline ? 'bg-[#ff6b1a]' : 'bg-white/20'
@@ -602,7 +598,6 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       syncProfile({ ...userProfile, uiScale: preset.id as any });
-                      showToast(`Display scale set to ${preset.label}`);
                     }}
                     className={`flex-1 text-center py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       isSelected
@@ -830,6 +825,163 @@ export const SettingsView: React.FC = () => {
                 </label>
               </div>
             </div>
+
+            {/* Karaoke Lyrics Glow Effect (Off / Default / Strong) */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-white">Karaoke Lyrics Glow Effect</h4>
+                  <p className="text-[11px] text-white/50 mt-0.5">
+                    Control the intensity of the glowing aura around singing lyrics.
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
+                  {userProfile.lyricsGlow || 'default'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                {[
+                  { id: 'off', label: 'Off', desc: 'No glow aura', previewStyle: {} },
+                  {
+                    id: 'default',
+                    label: 'Default',
+                    desc: 'Smooth aura',
+                    previewStyle: {
+                      textShadow: 'rgba(255, 107, 26, 0.65) 0 0 12px',
+                      filter: 'drop-shadow(0 0 8px rgba(255, 107, 26, 0.55))',
+                    },
+                  },
+                  {
+                    id: 'strong',
+                    label: 'Strong',
+                    desc: 'Vibrant neon halo',
+                    previewStyle: {
+                      textShadow:
+                        'rgba(255, 107, 26, 0.95) 0 0 8px, rgba(255, 107, 26, 0.75) 0 0 20px',
+                      filter:
+                        'drop-shadow(0 0 6px rgba(255, 107, 26, 0.95)) drop-shadow(0 0 16px rgba(255, 107, 26, 0.7))',
+                    },
+                  },
+                ].map((opt) => {
+                  const isSelected = (userProfile.lyricsGlow || 'default') === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        syncProfile({ ...userProfile, lyricsGlow: opt.id as any });
+                      }}
+                      className={`p-3 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#ff6b1a]/15 border-[#ff6b1a] text-white shadow-md'
+                          : 'bg-white/[0.02] border-white/5 text-white/70 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                    >
+                      <span
+                        style={opt.previewStyle}
+                        className="text-sm sm:text-base font-black tracking-wide"
+                      >
+                        {opt.label}
+                      </span>
+                      <span className="text-[10px] text-white/40 leading-tight">
+                        {opt.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Key Moments / Highlights Display (Off / Rectangle Markers / Full Parts) */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-white">Song Key Moments & Highlights</h4>
+                  <p className="text-[11px] text-white/50 mt-0.5">
+                    Display bookmarks for famous choruses and main drops on the player scrubber.
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
+                  {userProfile.keyPartsDisplay || 'dots'}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                {[
+                  { id: 'off', label: 'Off', desc: 'Turn everything off' },
+                  { id: 'dots', label: 'Rectangles Only', desc: 'Sleek timeline rectangles' },
+                  { id: 'full', label: 'Full Parts', desc: 'Rectangles + top badges' },
+                ].map((opt) => {
+                  const isSelected = (userProfile.keyPartsDisplay || 'dots') === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        syncProfile({ ...userProfile, keyPartsDisplay: opt.id as any });
+                      }}
+                      className={`p-3 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#ff6b1a]/15 border-[#ff6b1a] text-white shadow-md'
+                          : 'bg-white/[0.02] border-white/5 text-white/70 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                    >
+                      <span className="text-xs sm:text-sm font-black tracking-wide">
+                        {opt.label}
+                      </span>
+                      <span className="text-[10px] text-white/40 leading-tight">
+                        {opt.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Player Progress Bar Style (Default / Thick Bar / Sine Wave / Neon Laser) */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold text-xs text-white">Player Progress Bar Style</h4>
+                  <p className="text-[11px] text-white/50 mt-0.5">
+                    Changes both the normal player and the full-screen stage player.
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
+                  {userProfile.progressBarStyle || 'default'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                {[
+                  { id: 'default', label: 'Classic Slim', desc: 'Default thin line & dot' },
+                  { id: 'block', label: 'Thick Bar', desc: 'Advancing full rectangle' },
+                  { id: 'wave', label: 'Sine Wave', desc: 'Animated zigzag squiggle' },
+                  { id: 'neon', label: 'Neon Laser', desc: 'Radiant beam & laser head' },
+                ].map((opt) => {
+                  const isSelected = (userProfile.progressBarStyle || 'default') === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        syncProfile({ ...userProfile, progressBarStyle: opt.id as any });
+                      }}
+                      className={`p-3 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#ff6b1a]/15 border-[#ff6b1a] text-white shadow-md'
+                          : 'bg-white/[0.02] border-white/5 text-white/70 hover:bg-white/[0.06] hover:text-white'
+                      }`}
+                    >
+                      <span className="text-xs sm:text-sm font-black tracking-wide">
+                        {opt.label}
+                      </span>
+                      <span className="text-[10px] text-white/40 leading-tight">
+                        {opt.desc}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           {/* Karaoke Lyrics Typography & Distinct Font Personalities */}
@@ -860,7 +1012,6 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       syncProfile({ ...userProfile, lyricsFont: f.id as any });
-                      showToast(`Lyrics font changed to ${f.label}`);
                     }}
                     className={`p-3 rounded-xl border text-center flex flex-col items-center justify-between gap-1.5 transition-all cursor-pointer ${
                       isSelected

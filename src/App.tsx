@@ -3,6 +3,7 @@ import { MusicProvider, useMusic } from './context/MusicContext';
 import { Sidebar, MobileNav, TopBar } from './components/Navigation';
 import { PlayerBar, MiniPlayer } from './components/PlayerBar';
 import { FullScreenPlayer } from './components/FullScreenPlayer';
+import { LandscapeStagePlayer } from './components/LandscapeStagePlayer';
 import { LyricsSheet } from './components/LyricsSheet';
 import { QueueDrawer } from './components/QueueDrawer';
 import { ActionSheet } from './components/ActionSheet';
@@ -27,6 +28,8 @@ const AppShell: React.FC = () => {
     setIsInstallModalOpen,
     isFullScreenOpen,
     setIsFullScreenOpen,
+    isLandscapeStageOpen,
+    setIsLandscapeStageOpen,
     isLyricsOpen,
     setIsLyricsOpen,
     isQueueOpen,
@@ -66,6 +69,10 @@ const AppShell: React.FC = () => {
         setIsInstallModalOpen(false);
         return;
       }
+      if (isLandscapeStageOpen) {
+        setIsLandscapeStageOpen(false);
+        return;
+      }
       if (actionSheetTrack) {
         setActionSheetTrack(null);
         return;
@@ -94,12 +101,14 @@ const AppShell: React.FC = () => {
   }, [
     activePane,
     isFullScreenOpen,
+    isLandscapeStageOpen,
     isLyricsOpen,
     isQueueOpen,
     actionSheetTrack,
     isInstallModalOpen,
     goBack,
     setIsFullScreenOpen,
+    setIsLandscapeStageOpen,
     setIsLyricsOpen,
     setIsQueueOpen,
     setActionSheetTrack,
@@ -123,7 +132,7 @@ const AppShell: React.FC = () => {
       const isLeftEdge = startX <= 45;
       const isRightEdge = startX >= screenWidth - 45;
       const isOverlayActive =
-        isFullScreenOpen || isLyricsOpen || isQueueOpen || !!actionSheetTrack || isInstallModalOpen;
+        isLandscapeStageOpen || isFullScreenOpen || isLyricsOpen || isQueueOpen || !!actionSheetTrack || isInstallModalOpen;
 
       isEdgeSwipe = isLeftEdge || isRightEdge || (isOverlayActive && startX <= screenWidth * 0.3);
     };
@@ -141,6 +150,7 @@ const AppShell: React.FC = () => {
         // Left-to-right swipe (standard back gesture)
         if (deltaX > 0) {
           if (isInstallModalOpen) setIsInstallModalOpen(false);
+          else if (isLandscapeStageOpen) setIsLandscapeStageOpen(false);
           else if (actionSheetTrack) setActionSheetTrack(null);
           else if (isLyricsOpen) setIsLyricsOpen(false);
           else if (isQueueOpen) setIsQueueOpen(false);
@@ -150,6 +160,7 @@ const AppShell: React.FC = () => {
         // Right-to-left swipe from right edge (Android right-edge back gesture)
         else if (startX >= window.innerWidth - 45 && deltaX < -55) {
           if (isInstallModalOpen) setIsInstallModalOpen(false);
+          else if (isLandscapeStageOpen) setIsLandscapeStageOpen(false);
           else if (actionSheetTrack) setActionSheetTrack(null);
           else if (isLyricsOpen) setIsLyricsOpen(false);
           else if (isQueueOpen) setIsQueueOpen(false);
@@ -170,12 +181,14 @@ const AppShell: React.FC = () => {
   }, [
     activePane,
     isFullScreenOpen,
+    isLandscapeStageOpen,
     isLyricsOpen,
     isQueueOpen,
     actionSheetTrack,
     isInstallModalOpen,
     goBack,
     setIsFullScreenOpen,
+    setIsLandscapeStageOpen,
     setIsLyricsOpen,
     setIsQueueOpen,
     setActionSheetTrack,
@@ -231,6 +244,7 @@ const AppShell: React.FC = () => {
 
       {/* Fullscreen Overlays & Sheets */}
       <FullScreenPlayer />
+      <LandscapeStagePlayer />
       <LyricsSheet />
       <QueueDrawer />
       <ActionSheet />
@@ -242,21 +256,23 @@ const AppShell: React.FC = () => {
         />
       )}
 
-      {/* Toast Notification Container */}
-      <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none w-full max-w-sm px-4">
-        {toasts.map((toast) => (
-          <div
-            key={toast.id}
-            className={`pointer-events-auto px-4 py-2.5 rounded-full text-xs font-bold shadow-2xl flex items-center justify-center text-center transition-all animate-in fade-in slide-in-from-top-4 duration-200 ${
-              toast.isGray
-                ? 'bg-white/10 text-white backdrop-blur-xl border border-white/10'
-                : 'bg-[#ff6b1a] text-black'
-            }`}
-          >
-            {toast.message}
-          </div>
-        ))}
-      </div>
+      {/* Toast Notification Container (Suppressed in full screen stage mode so it never gets in the way) */}
+      {!isLandscapeStageOpen && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none w-full max-w-sm px-4">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`pointer-events-none px-4 py-2 rounded-full text-xs font-semibold shadow-2xl flex items-center justify-center text-center transition-all animate-in fade-in slide-in-from-top-4 duration-200 ${
+                toast.isGray
+                  ? 'bg-neutral-900/90 text-white backdrop-blur-xl border border-white/10'
+                  : 'bg-[#ff6b1a] text-black font-bold'
+              }`}
+            >
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
