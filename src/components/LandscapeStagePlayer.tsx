@@ -307,25 +307,22 @@ export const LandscapeStagePlayer: React.FC = () => {
     setDragY(0);
   };
 
-  // Dimensions & rotation style: Website itself rotates 90deg on mobile portrait without touching phone OS
-  const stageStyle: React.CSSProperties = shouldRotate
+  // Dimensions & rotation style: Inner container rotates 90deg centered on screen on mobile portrait
+  const innerStageStyle: React.CSSProperties = shouldRotate
     ? {
-        position: 'fixed',
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
         width: `${windowDimensions.height}px`,
         height: `${windowDimensions.width}px`,
-        top: 0,
-        left: `${windowDimensions.width}px`,
-        transform: 'rotate(90deg)',
-        transformOrigin: 'top left',
-        zIndex: 9999,
+        transform: 'translate(-50%, -50%) rotate(90deg)',
         overflow: 'hidden',
       }
     : {
-        position: 'fixed',
+        position: 'absolute',
         inset: 0,
         width: '100%',
         height: '100%',
-        zIndex: 9999,
         overflow: 'hidden',
       };
 
@@ -350,26 +347,29 @@ export const LandscapeStagePlayer: React.FC = () => {
       {isLandscapeStageOpen && (
         <motion.div
           key="landscape-stage-player"
-          initial={{ opacity: 0, scale: 0.97 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.97 }}
-          transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          style={stageStyle}
-          className="bg-[#09090b] text-white flex flex-col overflow-hidden select-none"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="fixed inset-0 w-full h-full z-[9999] overflow-hidden bg-[#09090b] text-white select-none pointer-events-auto"
         >
-          {/* Ambient blurred colorful cinematic background directly matching album art */}
           <div
-            className="absolute inset-0 opacity-40 blur-3xl pointer-events-none -z-10 transition-all duration-1000 scale-125"
-            style={{
-              backgroundImage: `url(${thumbSrc})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/85 pointer-events-none -z-10" />
+            style={innerStageStyle}
+            className="flex flex-col overflow-hidden select-none bg-[#09090b]"
+          >
+            {/* Ambient blurred colorful cinematic background directly matching album art */}
+            <div
+              className="absolute inset-0 opacity-40 blur-3xl pointer-events-none -z-10 transition-all duration-1000 scale-125"
+              style={{
+                backgroundImage: `url(${thumbSrc})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/85 pointer-events-none -z-10" />
 
-          {/* MINIMAL TOP BAR */}
-          <header className="flex-shrink-0 h-10 px-4 sm:px-6 flex items-center justify-between border-b border-white/5 backdrop-blur-md bg-black/30 z-20">
+            {/* MINIMAL TOP BAR */}
+            <header className="flex-shrink-0 h-10 px-4 sm:px-6 flex items-center justify-between border-b border-white/5 backdrop-blur-md bg-black/30 z-20">
             {/* Left: Exit Full Screen */}
             <div className="flex items-center gap-2">
               <button
@@ -831,6 +831,7 @@ export const LandscapeStagePlayer: React.FC = () => {
               </div>
             )}
           </main>
+          </div>
         </motion.div>
       )}
     </AnimatePresence>

@@ -167,7 +167,7 @@ export const FullScreenPlayer: React.FC = () => {
           onMouseDown={handleTouchStart}
           onMouseMove={handleTouchMove}
           onMouseUp={handleTouchEnd}
-          className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#2a1708] via-[#120b05] to-black text-white px-6 sm:px-12 py-6 sm:py-8 pb-[max(1.5rem,env(safe-area-inset-bottom))] overflow-y-auto select-none touch-none"
+          className="fixed inset-0 z-50 flex flex-col justify-between bg-gradient-to-b from-[#2a1708] via-[#120b05] to-black text-white px-5 sm:px-12 pt-3 pb-6 sm:pb-8 overflow-y-auto select-none touch-none"
         >
           {/* Dynamic blurred ambient glow behind art */}
           <div
@@ -180,7 +180,7 @@ export const FullScreenPlayer: React.FC = () => {
           />
 
           {/* Top Header Bar */}
-          <div className="flex items-center justify-between w-full max-w-lg mx-auto mb-4 sm:mb-6">
+          <div className="flex items-center justify-between w-full max-w-lg mx-auto mb-1.5 sm:mb-3 flex-shrink-0">
             <button
               onClick={() => setIsFullScreenOpen(false)}
               className="p-2 -ml-2 text-white/70 hover:text-white transition-colors active:scale-95"
@@ -303,7 +303,7 @@ export const FullScreenPlayer: React.FC = () => {
           </div>
 
           {/* Center Artwork with Horizontal Swipe Motion & Spring Dynamics */}
-          <div className="flex-1 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto my-auto px-2">
+          <div className="flex-1 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto px-2 py-1 flex-shrink-0">
             <motion.div
               style={{
                 aspectRatio: '1 / 1',
@@ -358,14 +358,14 @@ export const FullScreenPlayer: React.FC = () => {
           </div>
 
           {/* Bottom Track Meta, Timeline & Controls */}
-          <div className="w-full max-w-lg mx-auto flex flex-col gap-5 sm:gap-6 mt-5 sm:mt-7">
+          <div className="w-full max-w-lg mx-auto flex flex-col gap-3.5 sm:gap-5 mt-2 sm:mt-3 flex-shrink-0">
             {/* Title & Like */}
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1 pr-4">
-                <h2 className="text-2xl sm:text-3xl font-black text-white truncate leading-tight">
+                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white truncate leading-tight">
                   {activeTrack.title}
                 </h2>
-                <p className="text-base sm:text-lg text-white/60 truncate font-semibold mt-1">
+                <p className="text-sm sm:text-base text-white/60 truncate font-semibold mt-0.5">
                   {activeTrack.artist}
                 </p>
               </div>
