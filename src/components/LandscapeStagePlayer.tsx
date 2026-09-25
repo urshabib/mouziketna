@@ -169,16 +169,51 @@ export const LandscapeStagePlayer: React.FC = () => {
   // Automatically rotate website 90deg on phones held vertically in portrait
   const shouldRotate = manualRotate !== null ? manualRotate : isPortrait;
 
-  // Reset stage settings and prevent window body scrolling when opened (NO F11 browser requestFullscreen)
+  // Native browser fullscreen helpers (Windows F11/Android/iOS standalone)
+  const enterNativeFullscreen = () => {
+    try {
+      const docEl = document.documentElement as any;
+      if (docEl.requestFullscreen) {
+        docEl.requestFullscreen().catch(() => {});
+      } else if (docEl.webkitRequestFullscreen) {
+        docEl.webkitRequestFullscreen();
+      } else if (docEl.mozRequestFullScreen) {
+        docEl.mozRequestFullScreen();
+      } else if (docEl.msRequestFullscreen) {
+        docEl.msRequestFullscreen();
+      }
+    } catch {}
+  };
+
+  const exitNativeFullscreen = () => {
+    try {
+      const doc = document as any;
+      if (doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement) {
+        if (doc.exitFullscreen) {
+          doc.exitFullscreen().catch(() => {});
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        } else if (doc.mozCancelFullScreen) {
+          doc.mozCancelFullScreen();
+        } else if (doc.msExitFullscreen) {
+          doc.msExitFullscreen();
+        }
+      }
+    } catch {}
+  };
+
+  // Reset stage settings, enter native fullscreen and prevent window body scrolling when opened
   useEffect(() => {
     if (isLandscapeStageOpen) {
       setStageLyricsOn(true);
       setManualRotate(null);
+      enterNativeFullscreen();
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       window.scrollTo(0, 0);
       return () => {
         document.body.style.overflow = originalOverflow;
+        exitNativeFullscreen();
       };
     }
   }, [isLandscapeStageOpen]);
@@ -330,17 +365,18 @@ export const LandscapeStagePlayer: React.FC = () => {
   const stageH = shouldRotate ? windowDimensions.width : windowDimensions.height;
   const stageW = shouldRotate ? windowDimensions.height : windowDimensions.width;
 
-  // Split-screen Case 1 (Left column cube calculation - scaled ~5% larger while keeping perfect margin balance):
-  const leftColWidth = Math.min(290, Math.max(175, Math.floor(stageW * 0.35)));
-  const availableVerticalForCube = Math.max(50, stageH - 160);
-  const availableWidthForCube = Math.max(50, leftColWidth - 24);
-  // Capped at 126px (+5% increase) so image, title, controls & rectangular bar have ample room
-  const cubeSize = Math.floor(Math.min(availableWidthForCube * 0.76, availableVerticalForCube * 0.68, 126));
+  // Split-screen Case 1 (Left column cube calculation - scaled ~20% larger):
+  const leftColWidth = Math.min(340, Math.max(190, Math.floor(stageW * 0.38)));
+  const availableVerticalForCube = Math.max(60, stageH - 150);
+  const availableWidthForCube = Math.max(60, leftColWidth - 24);
+  // Capped at 155px (+23% larger) so image, title, controls & rectangular bar are prominent
+  const cubeSize = Math.floor(Math.min(availableWidthForCube * 0.85, availableVerticalForCube * 0.78, 155));
 
-  // Centered Case 2 (no lyrics - scaled ~5% larger):
-  const centerAvailableVertical = Math.max(50, stageH - 160);
-  const centerAvailableWidth = Math.max(50, stageW - 48);
-  const centerCubeSize = Math.floor(Math.min(centerAvailableWidth * 0.25, centerAvailableVertical * 0.68, 132));
+  // Centered Case 2 (no lyrics - scaled ~20% larger):
+  const centerAvailableVertical = Math.max(60, stageH - 150);
+  const centerAvailableWidth = Math.max(60, stageW - 48);
+  // Capped at 165px (+25% larger)
+  const centerCubeSize = Math.floor(Math.min(centerAvailableWidth * 0.30, centerAvailableVertical * 0.78, 165));
 
   return (
     <AnimatePresence>
@@ -553,55 +589,55 @@ export const LandscapeStagePlayer: React.FC = () => {
 
                   {/* Title & Artist aligned under Cover Cube with neat proportions */}
                   <div
-                    style={{ maxWidth: `${Math.max(cubeSize * 1.35, 180)}px` }}
+                    style={{ maxWidth: `${Math.max(cubeSize * 1.35, 200)}px` }}
                     className="text-center w-full px-1 flex flex-col items-center flex-shrink-0 mx-auto mt-3 sm:mt-3.5"
                   >
-                    <h2 className="text-xs sm:text-sm font-bold text-white truncate leading-tight w-full tracking-tight">
+                    <h2 className="text-sm sm:text-base font-bold text-white truncate leading-tight w-full tracking-tight">
                       {activeTrack.title}
                     </h2>
-                    <p className="text-[10px] sm:text-xs text-white/50 font-medium truncate mt-0.5 w-full">
+                    <p className="text-xs sm:text-sm text-white/50 font-medium truncate mt-0.5 w-full">
                       {activeTrack.artist}
                     </p>
                   </div>
 
-                  {/* Minimal 3-Button Controls Deck: ONLY Previous, Play/Pause, Next (smaller, sleeker buttons) */}
+                  {/* Minimal 3-Button Controls Deck: ONLY Previous, Play/Pause, Next */}
                   <div
-                    style={{ maxWidth: `${Math.max(cubeSize * 1.35, 180)}px` }}
+                    style={{ maxWidth: `${Math.max(cubeSize * 1.35, 200)}px` }}
                     className="flex items-center justify-center gap-4 sm:gap-5 w-full flex-shrink-0 py-0.5 mt-2 sm:mt-2.5 mx-auto"
                   >
                     <button
                       type="button"
                       onClick={playPrevious}
-                      className="p-1 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                      className="p-1.5 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
                       title="Previous"
                     >
-                      <SkipBack className="w-3.5 h-3.5 fill-current" />
+                      <SkipBack className="w-4 h-4 fill-current" />
                     </button>
 
-                    {/* Circular White Play/Pause Button - compact and sleek */}
+                    {/* Circular White Play/Pause Button - prominent and sleek */}
                     <button
                       type="button"
                       onClick={togglePlay}
                       disabled={isBuffering}
-                      className="w-7.5 h-7.5 sm:w-8 sm:h-8 rounded-full bg-white text-black flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex-shrink-0"
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white text-black flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex-shrink-0"
                       title={isPlaying ? 'Pause' : 'Play'}
                     >
                       {isBuffering ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <Loader2 className="w-4 h-4 animate-spin" />
                       ) : isPlaying ? (
-                        <Pause className="w-3.5 h-3.5 fill-black" />
+                        <Pause className="w-4 h-4 fill-black" />
                       ) : (
-                        <Play className="w-3.5 h-3.5 fill-black ml-0.5" />
+                        <Play className="w-4 h-4 fill-black ml-0.5" />
                       )}
                     </button>
 
                     <button
                       type="button"
                       onClick={playNext}
-                      className="p-1 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                      className="p-1.5 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
                       title="Next"
                     >
-                      <SkipForward className="w-3.5 h-3.5 fill-current" />
+                      <SkipForward className="w-4 h-4 fill-current" />
                     </button>
                   </div>
 
@@ -611,22 +647,22 @@ export const LandscapeStagePlayer: React.FC = () => {
                     duration={duration}
                     seekTo={seekTo}
                     shouldRotate={shouldRotate}
-                    style={{ width: `${Math.min(Math.max(cubeSize * 1.25, 145), 200)}px` }}
+                    style={{ width: `${Math.min(Math.max(cubeSize * 1.25, 175), 235)}px` }}
                     className="mt-1.5 sm:mt-2"
                   />
                 </div>
 
-                {/* Right Column: Big Flowing Lyrics (Slightly reduced for optimal balance) */}
+                {/* Right Column: Flowing Lyrics with generous top/bottom breathing room */}
                 <div
                   ref={lyricsContainerRef}
-                  className="flex-1 h-full overflow-y-auto pl-3 sm:pl-6 pr-3 sm:pr-6 scrollbar-none flex flex-col py-6"
+                  className="flex-1 h-full overflow-y-auto pl-4 sm:pl-8 pr-4 sm:pr-8 scrollbar-none flex flex-col py-20 sm:py-28"
                   style={{
-                    maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
-                    WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                    maskImage: 'linear-gradient(to bottom, transparent 0%, transparent 8%, black 25%, black 75%, transparent 92%, transparent 100%)',
+                    WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, transparent 8%, black 25%, black 75%, transparent 92%, transparent 100%)',
                   }}
                 >
                   {currentLyrics.mode === 'synced' && Array.isArray(currentLyrics.lines) ? (
-                    <div className="flex flex-col gap-3.5 sm:gap-5 py-12 text-left">
+                    <div className="flex flex-col gap-3.5 sm:gap-4.5 py-12 text-left">
                       {(currentLyrics.lines as SyncedLyricsLine[]).map((line, idx) => {
                         const isActive = idx === activeLineIndex;
                         const isPassed = idx < activeLineIndex;
@@ -646,11 +682,11 @@ export const LandscapeStagePlayer: React.FC = () => {
                             dir={isRtl ? 'rtl' : 'ltr'}
                             style={{
                               fontFamily: 'var(--lyrics-font, "Poppins", sans-serif)',
-                              fontSize: 'calc(1.18em * var(--lyrics-font-scale, 1))',
+                              fontSize: 'calc(1.08em * var(--lyrics-font-scale, 1))',
                               fontStyle: 'var(--lyrics-font-style, normal)',
                               letterSpacing: 'var(--lyrics-letter-spacing, normal)',
                             }}
-                            className={`lyric-line font-black text-lg sm:text-xl md:text-2xl lg:text-3xl leading-snug cursor-pointer transition-all duration-300 ${
+                            className={`lyric-line font-black text-base sm:text-lg md:text-xl lg:text-2xl leading-relaxed cursor-pointer transition-all duration-300 ${
                               isActive
                                 ? 'active scale-[1.03] text-white opacity-100'
                                 : isPassed
@@ -687,9 +723,9 @@ export const LandscapeStagePlayer: React.FC = () => {
                     <div
                       style={{
                         fontFamily: 'var(--lyrics-font, "Poppins", sans-serif)',
-                        fontSize: 'calc(1.1rem * var(--lyrics-font-scale, 1))',
+                        fontSize: 'calc(1.05rem * var(--lyrics-font-scale, 1))',
                       }}
-                      className="whitespace-pre-wrap font-bold text-base sm:text-lg md:text-xl leading-relaxed text-white/80 py-12 my-auto"
+                      className="whitespace-pre-wrap font-bold text-sm sm:text-base md:text-lg leading-relaxed text-white/80 py-12 my-auto"
                     >
                       {typeof currentLyrics.lines === 'string' ? currentLyrics.lines : 'Lyrics loading...'}
                     </div>
@@ -697,7 +733,7 @@ export const LandscapeStagePlayer: React.FC = () => {
                 </div>
               </div>
             ) : (
-              /* CASE 2: Centered Layout (No Lyrics or Lyrics Toggled Off - Scaled ~80% so controls and scrubber never clip) */
+              /* CASE 2: Centered Layout (No Lyrics or Lyrics Toggled Off) */
               <div className="w-full h-full flex flex-col items-center justify-center p-2 sm:p-3 mx-auto overflow-hidden">
                 {/* Cube Cover in center */}
                 <div className="w-full flex items-center justify-center flex-shrink-0">
@@ -768,54 +804,54 @@ export const LandscapeStagePlayer: React.FC = () => {
 
                 {/* Title & Artist under Cover Cube with neat proportions */}
                 <div
-                  style={{ maxWidth: `${Math.max(centerCubeSize * 1.4, 210)}px` }}
+                  style={{ maxWidth: `${Math.max(centerCubeSize * 1.4, 230)}px` }}
                   className="text-center mt-3 sm:mt-3.5 px-2 flex flex-col items-center w-full flex-shrink-0"
                 >
-                  <h2 className="text-xs sm:text-sm font-bold text-white truncate leading-tight w-full">
+                  <h2 className="text-sm sm:text-base font-bold text-white truncate leading-tight w-full">
                     {activeTrack.title}
                   </h2>
-                  <p className="text-[10px] sm:text-xs text-white/50 font-medium mt-0.5 truncate w-full">
+                  <p className="text-xs sm:text-sm text-white/50 font-medium mt-0.5 truncate w-full">
                     {activeTrack.artist}
                   </p>
                 </div>
 
                 {/* Minimal 3 Controls under the title: Previous, Play/Pause, Next */}
                 <div
-                  style={{ maxWidth: `${Math.max(centerCubeSize * 1.4, 210)}px` }}
+                  style={{ maxWidth: `${Math.max(centerCubeSize * 1.4, 230)}px` }}
                   className="flex items-center justify-center gap-4 sm:gap-5 w-full mt-2 sm:mt-2.5 flex-shrink-0"
                 >
                   <button
                     type="button"
                     onClick={playPrevious}
-                    className="p-1 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                    className="p-1.5 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
                     title="Previous"
                   >
-                    <SkipBack className="w-3.5 h-3.5 fill-current" />
+                    <SkipBack className="w-4 h-4 fill-current" />
                   </button>
 
                   <button
                     type="button"
                     onClick={togglePlay}
                     disabled={isBuffering}
-                    className="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex-shrink-0"
+                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white text-black flex items-center justify-center shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex-shrink-0"
                     title={isPlaying ? 'Pause' : 'Play'}
                   >
                     {isBuffering ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin" />
                     ) : isPlaying ? (
-                      <Pause className="w-3.5 h-3.5 fill-black" />
+                      <Pause className="w-4 h-4 fill-black" />
                     ) : (
-                      <Play className="w-3.5 h-3.5 fill-black ml-0.5" />
+                      <Play className="w-4 h-4 fill-black ml-0.5" />
                     )}
                   </button>
 
                   <button
                     type="button"
                     onClick={playNext}
-                    className="p-1 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                    className="p-1.5 text-white/70 hover:text-white hover:scale-105 active:scale-95 transition-all cursor-pointer"
                     title="Next"
                   >
-                    <SkipForward className="w-3.5 h-3.5 fill-current" />
+                    <SkipForward className="w-4 h-4 fill-current" />
                   </button>
                 </div>
 
@@ -825,7 +861,7 @@ export const LandscapeStagePlayer: React.FC = () => {
                   duration={duration}
                   seekTo={seekTo}
                   shouldRotate={shouldRotate}
-                  style={{ width: `${Math.min(Math.max(centerCubeSize * 1.25, 150), 210)}px` }}
+                  style={{ width: `${Math.min(Math.max(centerCubeSize * 1.25, 185), 250)}px` }}
                   className="mt-2 sm:mt-2.5"
                 />
               </div>
