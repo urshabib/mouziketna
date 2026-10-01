@@ -39,7 +39,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          BASE_URL: ${{ steps.pages.outputs.base_path }}
+          BASE_URL: './'
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

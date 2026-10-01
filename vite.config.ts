@@ -4,20 +4,8 @@ import path from 'path';
 import {defineConfig} from 'vite';
 
 export default defineConfig(({command}) => {
-  // Support GitHub Actions deployment, custom domain, or subpath deployment
-  let basePath = process.env.BASE_URL || (command === 'serve' ? '/' : './');
-  if (!process.env.BASE_URL && process.env.GITHUB_REPOSITORY) {
-    const parts = process.env.GITHUB_REPOSITORY.split('/');
-    const repo = parts[1];
-    if (repo && !repo.endsWith('.github.io')) {
-      basePath = `/${repo}/`;
-    } else {
-      basePath = '/';
-    }
-  }
-  if (basePath !== './' && !basePath.endsWith('/')) {
-    basePath += '/';
-  }
+  // Use relative base ('./') for production so assets load on any root, custom domain, or GitHub Pages subpath
+  const basePath = process.env.BASE_URL || (command === 'serve' ? '/' : './');
 
   return {
     base: basePath,
@@ -29,6 +17,7 @@ export default defineConfig(({command}) => {
     },
     build: {
       outDir: 'dist',
+      assetsDir: 'assets',
     },
     server: {
       host: '0.0.0.0',
