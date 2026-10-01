@@ -145,14 +145,8 @@ const REAL_TRENDING_SEARCHES = [
   { label: 'Espresso', query: 'Espresso Sabrina Carpenter', tag: 'Billboard', icon: Zap },
   { label: 'Birds of a Feather', query: 'Birds of a Feather Billie Eilish', tag: 'Hot', icon: Sparkles },
   { label: 'APT.', query: 'Rose Bruno Mars APT', tag: 'Viral', icon: TrendingUp },
-  { label: 'Good Luck, Babe!', query: 'Good Luck Babe Chappell Roan', tag: 'Charts', icon: Flame },
-  { label: 'Not Like Us', query: 'Not Like Us Kendrick Lamar', tag: 'Top Rap', icon: Mic2 },
-  { label: 'A Bar Song (Tipsy)', query: 'A Bar Song Tipsy Shaboozey', tag: 'Hot 100', icon: Disc },
   { label: 'Timeless', query: 'The Weeknd Playboi Carti Timeless', tag: 'New', icon: Zap },
-  { label: 'Beautiful Things', query: 'Beautiful Things Benson Boone', tag: 'Global', icon: Globe2 },
-  { label: 'Lose Control', query: 'Lose Control Teddy Swims', tag: 'Soul', icon: Music2 },
-  { label: 'Taste', query: 'Taste Sabrina Carpenter', tag: 'Viral', icon: Flame },
-  { label: 'Million Dollar Baby', query: 'Million Dollar Baby Tommy Richman', tag: 'Groove', icon: Disc },
+  { label: 'Not Like Us', query: 'Not Like Us Kendrick Lamar', tag: 'Top Rap', icon: Mic2 },
 ];
 
 export const SearchView: React.FC = () => {
@@ -177,6 +171,15 @@ export const SearchView: React.FC = () => {
   const debounceTimerRef = useRef<any>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const hasSearchedRef = useRef(false);
+
+  // Auto-scroll instantly to top on mount so search bar is always front and center
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' });
+    const scrollContainer = document.getElementById('main-scroll-container');
+    if (scrollContainer) {
+      scrollContainer.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, []);
 
   // Click outside search container closes suggestions
   useEffect(() => {
@@ -213,7 +216,7 @@ export const SearchView: React.FC = () => {
     const trimmed = term.trim();
     if (!trimmed) return;
     setRecentSearches((prev) => {
-      const updated = [trimmed, ...prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase())].slice(0, 10);
+      const updated = [trimmed, ...prev.filter((item) => item.toLowerCase() !== trimmed.toLowerCase())].slice(0, 16);
       try {
         localStorage.setItem('recent_searches', JSON.stringify(updated));
       } catch {}
@@ -242,7 +245,7 @@ export const SearchView: React.FC = () => {
     setSuggestions([]);
     clearTimeout(debounceTimerRef.current);
 
-    // Immediately blur input so the mobile keyboard disappears (as requested!)
+    // Immediately blur input so the mobile keyboard disappears
     inputRef.current?.blur();
     setLoading(true);
 
@@ -321,6 +324,7 @@ export const SearchView: React.FC = () => {
           <div className="absolute right-3.5 flex items-center gap-1">
             {query && (
               <button
+                type="button"
                 onClick={() => {
                   hasSearchedRef.current = false;
                   setQuery('');
@@ -337,6 +341,7 @@ export const SearchView: React.FC = () => {
             )}
 
             <button
+              type="button"
               onClick={() => setModalAudioRecognitionOpen(true)}
               className="p-2 text-white/50 hover:text-[#ff6b1a] transition-colors cursor-pointer"
               title="Identify song (Shazam)"
@@ -352,8 +357,9 @@ export const SearchView: React.FC = () => {
             {suggestions.map((item, idx) => (
               <button
                 key={idx}
+                type="button"
                 onClick={() => handleSelectSuggestion(item)}
-                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors"
+                className="flex items-center gap-3 px-4 py-2.5 text-left text-sm text-white/80 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <SearchIcon className="w-4 h-4 text-white/40 flex-shrink-0" />
                 <span className="truncate">{item}</span>
@@ -369,6 +375,7 @@ export const SearchView: React.FC = () => {
           {(['all', 'song', 'playlist', 'artist'] as const).map((f) => (
             <button
               key={f}
+              type="button"
               onClick={() => handleFilterChange(f)}
               className={`px-4 py-1.5 rounded-full text-xs font-bold capitalize transition-all cursor-pointer ${
                 activeFilter === f
@@ -407,25 +414,37 @@ export const SearchView: React.FC = () => {
         </div>
       )}
 
-      {/* Recent Searches (when not searching) */}
+      {/* Recent Searches (Clean 2-line maximum) */}
       {!query && recentSearches.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/50">Recent Searches</h4>
-          <div className="flex flex-wrap gap-2">
-            {recentSearches.map((term, i) => (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/50">Recent Searches</h4>
+            {recentSearches.length > 5 && (
+              <button
+                type="button"
+                onClick={() => setRecentSearches([])}
+                className="text-[11px] font-bold text-white/40 hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2 max-h-20 overflow-hidden">
+            {recentSearches.slice(0, 5).map((term, i) => (
               <div
                 key={i}
                 onClick={() => {
                   setQuery(term);
                   executeSearch(term);
                 }}
-                className="flex items-center gap-2 bg-white/5 hover:bg-white/10 px-3.5 py-1.5 rounded-full border border-white/5 text-xs sm:text-sm text-white/80 cursor-pointer group transition-colors"
+                className="flex items-center gap-2 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full border border-white/5 text-xs sm:text-sm text-white/80 cursor-pointer group transition-colors"
               >
                 <History className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
-                <span>{term}</span>
+                <span className="truncate max-w-[180px]">{term}</span>
                 <button
+                  type="button"
                   onClick={(e) => removeRecentSearch(term, e)}
-                  className="text-white/30 hover:text-white p-0.5 ml-0.5 rounded-full"
+                  className="text-white/30 hover:text-white p-0.5 ml-0.5 rounded-full cursor-pointer"
                   title="Remove search"
                 >
                   <X className="w-3 h-3" />
@@ -436,14 +455,14 @@ export const SearchView: React.FC = () => {
         </div>
       )}
 
-      {/* Trending Searches: Drop down instead of going out of screen, smaller text */}
+      {/* Trending Searches: strictly 2-3 lines */}
       {!query && (
-        <div className="flex flex-col gap-2.5 mt-1">
+        <div className="flex flex-col gap-2 mt-0.5">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-[#ff6b1a]" />
+            <TrendingUp className="w-3.5 h-3.5 text-[#ff6b1a]" />
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/70">Trending Searches</h4>
           </div>
-          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 max-h-28 overflow-hidden">
             {REAL_TRENDING_SEARCHES.map((vib) => {
               const Icon = vib.icon;
               return (
@@ -468,7 +487,7 @@ export const SearchView: React.FC = () => {
         </div>
       )}
 
-      {/* Browse Categories (when no search query) */}
+      {/* Browse Categories (when no search query) with rich animations */}
       {!query && (
         <div className="flex flex-col gap-4 mt-2">
           <div className="flex items-center justify-between">
@@ -484,25 +503,25 @@ export const SearchView: React.FC = () => {
                   onClick={() => {
                     openCollection('playlist', g.query, g.name);
                   }}
-                  className={`group relative rounded-2xl p-4 sm:p-5 aspect-[16/11] bg-gradient-to-br ${g.gradient} ${g.border} cursor-pointer hover:scale-[1.03] active:scale-95 transition-all duration-300 shadow-md flex flex-col justify-between overflow-hidden backdrop-blur-md`}
+                  className={`group relative rounded-2xl p-4 sm:p-5 aspect-[16/11] bg-gradient-to-br ${g.gradient} ${g.border} cursor-pointer hover:scale-[1.04] hover:-translate-y-1 hover:shadow-xl active:scale-95 transition-all duration-300 shadow-md flex flex-col justify-between overflow-hidden backdrop-blur-md`}
                 >
                   {/* Decorative background watermark */}
-                  <Icon className="absolute -bottom-2 -right-2 w-16 h-16 opacity-10 group-hover:opacity-20 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 pointer-events-none" />
+                  <Icon className="absolute -bottom-2 -right-2 w-16 h-16 opacity-10 group-hover:opacity-25 group-hover:scale-125 group-hover:rotate-12 transition-all duration-300 pointer-events-none" />
 
                   {/* Top tag & icon */}
                   <div className="flex items-center justify-between z-10">
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/10 text-white/70 backdrop-blur-sm">
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/10 text-white/70 backdrop-blur-sm group-hover:bg-white/20 transition-colors">
                       {g.tag}
                     </span>
-                    <Icon className={`w-5 h-5 ${g.accentText} opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300`} />
+                    <Icon className={`w-5 h-5 ${g.accentText} opacity-80 group-hover:opacity-100 group-hover:scale-125 transition-all duration-300`} />
                   </div>
 
                   {/* Title & subtext */}
                   <div className="z-10 flex flex-col gap-0.5">
-                    <h4 className="font-extrabold text-sm sm:text-base text-white tracking-tight leading-snug">
+                    <h4 className="font-extrabold text-sm sm:text-base text-white tracking-tight leading-snug group-hover:text-white transition-colors">
                       {g.name}
                     </h4>
-                    <p className="text-[10px] text-white/40 font-medium">Explore Hits</p>
+                    <p className="text-[10px] text-white/40 font-medium group-hover:text-white/60 transition-colors">Explore Hits</p>
                   </div>
                 </div>
               );

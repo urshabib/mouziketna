@@ -17,6 +17,7 @@ import { SettingsView } from './views/SettingsView';
 import { AccountView } from './views/AccountView';
 import { AdminView } from './views/AdminView';
 import { motion, AnimatePresence } from 'motion/react';
+import { checkGitHubRepoForUpdates, forceAppUpdateAndRefresh } from './services/pwa';
 
 const AppShell: React.FC = () => {
   const {
@@ -24,6 +25,7 @@ const AppShell: React.FC = () => {
     setActivePane,
     userProfile,
     toasts,
+    showToast,
     isInstallModalOpen,
     setIsInstallModalOpen,
     isFullScreenOpen,
@@ -194,6 +196,40 @@ const AppShell: React.FC = () => {
     setActionSheetTrack,
     setIsInstallModalOpen,
   ]);
+
+  // Automatic GitHub Repository Update Check & Auto-Restart
+  useEffect(() => {
+    const handleUpdateFound = async () => {
+      showToast('New update released on GitHub! Refreshing app...', true);
+      setTimeout(async () => {
+        await forceAppUpdateAndRefresh();
+      }, 1200);
+    };
+
+    // 1. Check on app mount (after initial 3s grace period)
+    const initialTimer = setTimeout(() => {
+      checkGitHubRepoForUpdates(handleUpdateFound);
+    }, 3000);
+
+    // 2. Check periodically every 5 minutes
+    const interval = setInterval(() => {
+      checkGitHubRepoForUpdates(handleUpdateFound);
+    }, 5 * 60 * 1000);
+
+    // 3. Check when returning to the tab / window focus
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkGitHubRepoForUpdates(handleUpdateFound);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [showToast]);
 
   return (
     <div

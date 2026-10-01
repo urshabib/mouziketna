@@ -24,7 +24,7 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
     e.currentTarget.src = FALLBACK_ART;
   };
 
-  // 1. Explicit custom cover uploaded or assigned (persisted cover or data/blob URL)
+  // 1. Explicit custom cover uploaded or assigned
   const isCustomUploaded = Boolean(
     cover &&
       (cover.startsWith('data:') ||
@@ -40,7 +40,7 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
           alt={alt}
           onError={handleImgError}
           loading="lazy"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover pointer-events-none"
         />
       </div>
     );
@@ -61,7 +61,7 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
               alt={t.title || 'Track art'}
               onError={handleImgError}
               loading="lazy"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover scale-110 pointer-events-none"
             />
           </div>
         ))}
@@ -79,7 +79,7 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
           alt={tracks[0]?.title || alt}
           onError={handleImgError}
           loading="lazy"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover pointer-events-none"
         />
       </div>
     );

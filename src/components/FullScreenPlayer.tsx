@@ -19,6 +19,7 @@ import {
   Loader2,
   Maximize2,
   Flame,
+  Disc,
 } from 'lucide-react';
 import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
 import { useTrackThumb } from '../services/useTrackThumb';
@@ -67,6 +68,23 @@ export const FullScreenPlayer: React.FC = () => {
 
   const thumbSrc = useTrackThumb(activeTrack);
   const [isSleepMenuOpen, setIsSleepMenuOpen] = useState(false);
+  const [isCdView, setIsCdView] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('mouzika_player_cd_view') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleCdView = () => {
+    setIsCdView((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('mouzika_player_cd_view', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Compute Instagram-style famous highlights
   const highlights = React.useMemo(() => {
@@ -202,6 +220,18 @@ export const FullScreenPlayer: React.FC = () => {
 
             {/* Action icons */}
             <div className="flex items-center gap-1.5 relative">
+              {/* CD Disc / Square Artwork Toggle */}
+              <button
+                type="button"
+                onClick={toggleCdView}
+                className={`p-2 transition-all active:scale-95 cursor-pointer rounded-full ${
+                  isCdView ? 'text-[#ff6b1a] bg-[#ff6b1a]/15' : 'text-white/70 hover:text-white'
+                }`}
+                title={isCdView ? 'Switch to Square Cover' : 'Switch to Spinning Vinyl CD'}
+              >
+                <Disc className={`w-5 h-5 ${isCdView && isPlaying ? 'animate-spin' : ''}`} />
+              </button>
+
               {/* Full Screen Rotate Landscape Mode */}
               <button
                 type="button"
@@ -302,7 +332,7 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
           </div>
 
-          {/* Center Artwork with Horizontal Swipe Motion & Spring Dynamics */}
+          {/* Center Artwork with Horizontal Swipe Motion & Spring Dynamics (Tap to toggle Vinyl CD / Square Cover) */}
           <div className="flex-1 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto px-2 py-1 flex-shrink-0">
             <motion.div
               style={{
@@ -314,18 +344,92 @@ export const FullScreenPlayer: React.FC = () => {
                 scale: 1 - Math.min(Math.abs(dragX) / 1000, 0.1),
               }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="w-full aspect-square rounded-3xl overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] bg-[#18181b] border border-white/10 relative group cursor-grab active:cursor-grabbing mx-auto"
+              className={`w-full aspect-square ${
+                isCdView ? 'rounded-full' : 'rounded-3xl'
+              } shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] relative group cursor-grab active:cursor-grabbing mx-auto select-none`}
             >
-              <img
-                src={thumbSrc}
-                alt={activeTrack.title}
-                onError={(e) => {
-                  e.currentTarget.src = FALLBACK_ART;
-                }}
-                className="w-full h-full object-cover aspect-square select-none pointer-events-none rounded-3xl"
-                style={{ aspectRatio: '1 / 1' }}
-                draggable={false}
-              />
+              {isCdView ? (
+                /* Realistic Vinyl CD Rotating Disc with enlarged artwork */
+                <div
+                  onClick={() => {
+                    if (Math.abs(dragX) < 8 && Math.abs(dragY) < 8) {
+                      toggleCdView();
+                    }
+                  }}
+                  className="w-full h-full rounded-full relative overflow-hidden bg-[#0c0c0e] flex items-center justify-center shadow-[0_20px_60px_rgba(0,0,0,0.95)] border-2 border-zinc-700/60 cursor-pointer"
+                  style={{
+                    background: 'radial-gradient(circle, #1c1c1f 0%, #0a0a0c 65%, #040404 100%)',
+                  }}
+                  title="Click to switch back to square artwork"
+                >
+                  {/* Concentric Vinyl Grooves */}
+                  <div
+                    className="absolute inset-0 rounded-full pointer-events-none opacity-35"
+                    style={{
+                      background:
+                        'repeating-radial-gradient(circle, rgba(255,255,255,0.08) 0, rgba(255,255,255,0.08) 1.5px, transparent 2px, transparent 5px)',
+                    }}
+                  />
+
+                  {/* Spinning Disc Body synced with isPlaying */}
+                  <div
+                    className={`w-full h-full rounded-full flex items-center justify-center ${
+                      isPlaying ? 'animate-[spin_10s_linear_infinite]' : ''
+                    }`}
+                    style={{
+                      animationPlayState: isPlaying ? 'running' : 'paused',
+                    }}
+                  >
+                    {/* Vinyl Center Art Label (Enlarged ~76% so cover art is prominent) */}
+                    <div className="w-[76%] h-[76%] rounded-full overflow-hidden relative shadow-2xl border-4 border-black/95 flex items-center justify-center">
+                      <img
+                        src={thumbSrc}
+                        alt={activeTrack.title}
+                        onError={(e) => {
+                          e.currentTarget.src = FALLBACK_ART;
+                        }}
+                        className="w-full h-full object-cover rounded-full pointer-events-none select-none"
+                        draggable={false}
+                      />
+                      {/* Center Spindle Hole (Dark center inside) */}
+                      <div className="absolute w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#0d0905] border-[3px] border-zinc-400 shadow-inner flex items-center justify-center z-10">
+                        <div className="w-3 h-3 rounded-full bg-black shadow-inner" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Realistic Glossy Sheen Overlay */}
+                  <div
+                    className="absolute inset-0 rounded-full pointer-events-none"
+                    style={{
+                      background:
+                        'conic-gradient(from 45deg, transparent 0deg, rgba(255,255,255,0.13) 40deg, transparent 80deg, transparent 180deg, rgba(255,255,255,0.13) 220deg, transparent 260deg)',
+                    }}
+                  />
+                </div>
+              ) : (
+                /* Square Cover with Smooth Clean Rounded Corners (Zero black corner artifacts on swipe) */
+                <div
+                  onClick={() => {
+                    if (Math.abs(dragX) < 8 && Math.abs(dragY) < 8) {
+                      toggleCdView();
+                    }
+                  }}
+                  className="w-full h-full rounded-3xl overflow-hidden relative cursor-pointer shadow-2xl"
+                  title="Click to switch to spinning Vinyl CD view"
+                >
+                  <img
+                    src={thumbSrc}
+                    alt={activeTrack.title}
+                    onError={(e) => {
+                      e.currentTarget.src = FALLBACK_ART;
+                    }}
+                    className="w-full h-full object-cover rounded-3xl select-none pointer-events-none"
+                    style={{ aspectRatio: '1 / 1' }}
+                    draggable={false}
+                  />
+                </div>
+              )}
 
               {/* Visual swipe indicator overlay */}
               {(dragX !== 0 || dragY > 20) && (

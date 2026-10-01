@@ -22,6 +22,7 @@ import {
   FolderPlus,
   ArrowUpDown,
   X,
+  Edit3,
 } from 'lucide-react';
 import {
   listDownloads,
@@ -57,6 +58,7 @@ export const CollectionView: React.FC = () => {
     setModalAddSongByLinkPlId,
     setModalConfirm,
     deletePlaylist,
+    renamePlaylist,
     addTrackToPlaylist,
     updatePlaylistTracks,
     addMultipleTracksToPlaylist,
@@ -70,6 +72,8 @@ export const CollectionView: React.FC = () => {
   const [downloadSize, setDownloadSize] = useState('0 MB');
   const [suggestions, setSuggestions] = useState<Track[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [nameInput, setNameInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Multi-select & Drag-and-drop state
@@ -488,9 +492,65 @@ export const CollectionView: React.FC = () => {
           <span className="text-xs font-black uppercase tracking-widest text-white/50">
             {target.type === 'artist' ? 'Artist' : 'Playlist'}
           </span>
-          <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-none break-words">
-            {getTitle()}
-          </h2>
+          {isRenaming && target.type === 'custom-playlist' && target.id ? (
+            <div className="flex items-center gap-2 max-w-lg">
+              <input
+                type="text"
+                autoFocus
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (nameInput.trim()) {
+                      renamePlaylist(target.id!, nameInput.trim());
+                      setIsRenaming(false);
+                    }
+                  } else if (e.key === 'Escape') {
+                    setIsRenaming(false);
+                  }
+                }}
+                className="w-full bg-[#1c1c1e] border border-[#ff6b1a] rounded-xl px-3 py-2 text-2xl sm:text-3xl font-black text-white focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (nameInput.trim()) {
+                    renamePlaylist(target.id!, nameInput.trim());
+                    setIsRenaming(false);
+                  }
+                }}
+                className="px-4 py-2.5 rounded-xl bg-[#ff6b1a] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsRenaming(false)}
+                className="p-2.5 rounded-xl bg-white/10 text-white/70 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center sm:justify-start gap-2.5 group/title">
+              <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight leading-none break-words">
+                {getTitle()}
+              </h2>
+              {target.type === 'custom-playlist' && target.id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNameInput(getTitle());
+                    setIsRenaming(true);
+                  }}
+                  className="p-2 text-white/40 hover:text-[#ff6b1a] hover:bg-white/5 rounded-xl transition-all cursor-pointer"
+                  title="Rename Playlist"
+                >
+                  <Edit3 className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          )}
           <p className="text-sm font-semibold text-white/50">{getSubtitle()}</p>
 
           {/* Action buttons */}

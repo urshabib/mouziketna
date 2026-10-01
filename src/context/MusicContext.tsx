@@ -159,6 +159,7 @@ interface MusicContextType {
   // Likes & Playlists
   toggleLikeTrack: (track: Track) => void;
   createPlaylist: (name: string, firstTrack?: Track) => void;
+  renamePlaylist: (plId: string, newName: string) => void;
   deletePlaylist: (plId: string) => void;
   removeTrackFromPlaylist: (plId: string, trackId: string) => void;
   addTrackToPlaylist: (plId: string, track: Track) => void;
@@ -1658,6 +1659,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast(`Created playlist "${name}"`);
   };
 
+  const renamePlaylist = (plId: string, newName: string) => {
+    const pl = userProfile.customPlaylists.find((p) => p.id === plId);
+    if (!pl) return;
+    const cleanName = newName.trim();
+    if (!cleanName) return;
+    const updated = { ...pl, name: cleanName };
+    syncProfile({
+      ...userProfile,
+      customPlaylists: userProfile.customPlaylists.map((p) => (p.id === plId ? updated : p)),
+    });
+    if (collectionTarget?.id === plId) {
+      setCollectionTarget({ ...collectionTarget, title: cleanName });
+    }
+    showToast(`Playlist renamed to "${cleanName}"`);
+  };
+
   const deletePlaylist = (plId: string) => {
     syncProfile({
       ...userProfile,
@@ -1846,6 +1863,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toasts,
         toggleLikeTrack,
         createPlaylist,
+        renamePlaylist,
         deletePlaylist,
         removeTrackFromPlaylist,
         addTrackToPlaylist,

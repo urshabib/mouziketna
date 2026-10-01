@@ -587,6 +587,46 @@ export async function promptPwaInstall(): Promise<{ outcome: 'accepted' | 'dismi
   }
 }
 
+const GITHUB_REPO_COMMITS_URL = 'https://api.github.com/repos/urshabib/mouziketna/commits?per_page=1';
+const GITHUB_COMMIT_KEY = 'mouziketna_github_last_commit';
+
+/**
+ * Checks GitHub repository for new releases / commits.
+ * Triggers app force refresh if a new version is published.
+ */
+export async function checkGitHubRepoForUpdates(onUpdateFound?: () => void): Promise<boolean> {
+  if (typeof window === 'undefined' || !navigator.onLine) return false;
+  try {
+    const res = await fetch(GITHUB_REPO_COMMITS_URL, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+      cache: 'no-store',
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const latestSha = Array.isArray(data) && data[0]?.sha ? data[0].sha : (data?.sha || null);
+    if (!latestSha) return false;
+
+    const storedSha = localStorage.getItem(GITHUB_COMMIT_KEY);
+    if (!storedSha) {
+      // First run: save current commit baseline
+      localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
+      return false;
+    }
+
+    if (storedSha !== latestSha) {
+      console.log(`[MOUZIKETNA] New release found on GitHub (${storedSha.slice(0, 7)} -> ${latestSha.slice(0, 7)}). Auto updating app...`);
+      localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
+      if (onUpdateFound) {
+        onUpdateFound();
+      }
+      return true;
+    }
+  } catch (e) {
+    // Gracefully ignore network errors or rate limit
+  }
+  return false;
+}
+
 // Automatically apply stored app name & logo on initial bundle evaluation
 if (typeof window !== 'undefined') {
   const savedName = getStoredAppName();

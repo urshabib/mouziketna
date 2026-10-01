@@ -36,7 +36,7 @@ export interface UserProfile {
   keyPartsDisplay?: 'off' | 'dots' | 'full';
   progressBarStyle?: 'default' | 'block' | 'wave' | 'neon';
   presetTint: string;
-  uiScale?: 'small' | 'default' | 'large';
+  uiScale?: 'small' | 'default' | 'large' | 'extraLarge';
   activePreset: string | null;
   avatarUrl: string | null;
   isAdmin?: boolean;

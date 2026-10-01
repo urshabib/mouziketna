@@ -166,8 +166,12 @@ export const SettingsView: React.FC = () => {
     const tests = [
       { name: 'Cloudflare Worker API', url: `${NEW_HUB_BACKEND}/api/list-users` },
       { name: 'Primary Saavn Resolver', url: 'https://fast-saavn.vercel.app/api?title=test&artist=test' },
-      { name: 'Omada Invidious Mirror', url: 'https://yt.omada.cafe/api/v1/videos/dQw4w9WgXcQ' },
-      { name: 'Schenkel Invidious Mirror', url: 'https://invidious.schenkel.eti.br/api/v1/videos/dQw4w9WgXcQ' },
+      { name: 'Omada Invidious Mirror', url: 'https://yt.omada.cafe/api/v1/stats' },
+      { name: 'Schenkel Invidious Mirror', url: 'https://invidious.schenkel.eti.br/api/v1/stats' },
+      { name: 'Kemonomimi Invidious Mirror', url: 'https://invidious.kemonomimi.nl/api/v1/stats' },
+      { name: 'EchoStreamz Mirror', url: 'https://echostreamz.com/api/v1/stats' },
+      { name: 'Piped Coffee API', url: 'https://api.piped.private.coffee/trending?region=US' },
+      { name: 'LRCLIB Synced Lyrics API', url: 'https://lrclib.net/api/get?track_name=test&artist_name=test' },
     ];
 
     const results: Record<string, { status: string; latency?: number }> = {};
@@ -585,11 +589,12 @@ export const SettingsView: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center justify-center bg-black/50 p-1.5 rounded-xl border border-white/10 gap-1.5 w-full sm:w-72">
+            <div className="flex items-center justify-center bg-black/50 p-1.5 rounded-xl border border-white/10 gap-1.5 w-full sm:w-80">
               {[
                 { id: 'small', label: 'Small' },
                 { id: 'default', label: 'Default' },
                 { id: 'large', label: 'Large' },
+                { id: 'extraLarge', label: 'Extra' },
               ].map((preset) => {
                 const isSelected = (userProfile.uiScale || 'default') === preset.id;
                 return (

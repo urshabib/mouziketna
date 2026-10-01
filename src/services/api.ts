@@ -7,6 +7,10 @@ export const STREAM_MIRRORS = [
   'https://yt.omada.cafe/api/v1/videos/',
   'https://invidious.schenkel.eti.br/api/v1/videos/',
   'https://invidious.kemonomimi.nl/api/v1/videos/',
+  'https://echostreamz.com/api/v1/videos/',
+  'https://inv.nadeko.net/api/v1/videos/',
+  'https://invidious.privacyredirect.com/api/v1/videos/',
+  'https://yewtu.be/api/v1/videos/',
 ];
 
 export const FALLBACK_ART = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300';
