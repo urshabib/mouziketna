@@ -129,7 +129,7 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
   };
 
   return (
-    <div className="relative w-full h-full flex flex-col justify-between overflow-hidden select-none">
+    <div className="relative w-full h-full flex flex-col justify-between overflow-hidden select-none bg-transparent">
       {/* Keyframes for Pure Kinetic Typography (Snappy, instant attack, perfectly timed) */}
       <style>{`
         @keyframes popBounce {
@@ -227,16 +227,8 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
         }
       `}</style>
 
-      {/* Atmospheric Ambient Backdrop with reactive cover glow */}
-      <div
-        className="absolute inset-0 pointer-events-none transition-all duration-700 opacity-60 z-0"
-        style={{
-          background: `radial-gradient(circle at 50% 50%, rgba(${dominantColor.r}, ${dominantColor.g}, ${dominantColor.b}, 0.28) 0%, rgba(12,12,15,0.85) 60%, #000000 100%)`,
-        }}
-      />
-
-      {/* Main Kinetic Canvas Area (Centered, clean, distraction-free) */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-8 text-center max-w-2xl mx-auto w-full my-auto">
+      {/* Main Kinetic Canvas Area (Centered, clean, distraction-free, seamless background) */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-8 text-center max-w-2xl mx-auto w-full my-auto bg-transparent">
         {/* Previous Lyric Context (subtle preview) */}
         {currentLineIndex > 0 && plan && (
           <div

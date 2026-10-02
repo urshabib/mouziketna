@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useMusic } from '../context/MusicContext';
-import { ChevronDown, RefreshCw, Loader2, Music2, ArrowDownCircle, Sparkles } from 'lucide-react';
+import { ChevronDown, RefreshCw, Loader2, Music2, Sparkles } from 'lucide-react';
 import { SyncedLyricsLine } from '../types';
 import { LyricsPlus } from './AiLyricsReel';
+import { useTrackThumb } from '../services/useTrackThumb';
 
 export const LyricsSheet: React.FC = () => {
   const {
@@ -15,6 +16,7 @@ export const LyricsSheet: React.FC = () => {
     retryLyrics,
   } = useMusic();
 
+  const thumbSrc = useTrackThumb(activeTrack);
   const bodyRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLParagraphElement | null>(null);
 
@@ -25,7 +27,7 @@ export const LyricsSheet: React.FC = () => {
     setIsLyricsPlusActive((prev) => !prev);
   };
 
-  // User navigation state & 3s idle return timer
+  // User navigation state & 3s idle return timer (silent in background without showing popups)
   const [isUserNavigating, setIsUserNavigating] = useState(false);
   const idleTimerRef = useRef<any>(null);
 
@@ -60,7 +62,7 @@ export const LyricsSheet: React.FC = () => {
     }
   }, [activeLineIndex, isLyricsOpen, isUserNavigating]);
 
-  // Register user scroll/swipe inside lyrics body
+  // Register user scroll/swipe inside lyrics body (resumes sync silently after 3s)
   const handleUserScroll = () => {
     setIsUserNavigating(true);
     if (idleTimerRef.current) {
@@ -127,8 +129,18 @@ export const LyricsSheet: React.FC = () => {
         transform: headerDragY > 0 ? `translateY(${headerDragY}px)` : undefined,
         transition: headerDragY === 0 ? 'transform 0.25s ease-out' : 'none',
       }}
-      className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#1c1208] via-black to-black text-white px-5 sm:px-8 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] select-none"
+      className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#2a1708] via-[#120b05] to-black text-white px-5 sm:px-8 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] select-none overflow-hidden"
     >
+      {/* Dynamic blurred ambient glow behind lyrics matching FullScreenPlayer */}
+      <div
+        className="absolute inset-0 opacity-35 blur-3xl pointer-events-none -z-10 transition-all duration-700"
+        style={{
+          backgroundImage: `url(${thumbSrc})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      />
+
       {/* Top Header & Grab Section (Only section that handles swipe-down to dismiss) */}
       <div
         onTouchStart={handleHeaderTouchStart}
@@ -137,7 +149,7 @@ export const LyricsSheet: React.FC = () => {
         onMouseDown={handleHeaderTouchStart}
         onMouseMove={handleHeaderTouchMove}
         onMouseUp={handleHeaderTouchEnd}
-        className="w-full max-w-2xl mx-auto flex-shrink-0 cursor-grab active:cursor-grabbing pb-3 touch-none select-none border-b border-white/10"
+        className="w-full max-w-2xl mx-auto flex-shrink-0 cursor-grab active:cursor-grabbing pb-3 touch-none select-none border-b border-white/10 relative z-20"
       >
         {/* Swipe Handle Indicator */}
         <div className="flex justify-center pt-1 pb-2">
@@ -147,7 +159,7 @@ export const LyricsSheet: React.FC = () => {
         <div className="flex items-center justify-between">
           <button
             onClick={() => setIsLyricsOpen(false)}
-            className="p-2 -ml-2 text-white/70 hover:text-white transition-colors"
+            className="p-2 -ml-2 text-white/70 hover:text-white transition-colors cursor-pointer"
             title="Close Lyrics"
           >
             <ChevronDown className="w-7 h-7" />
@@ -192,9 +204,9 @@ export const LyricsSheet: React.FC = () => {
         </div>
       </div>
 
-      {/* Lyrics+ Ultra Motion Mode */}
+      {/* Lyrics+ Ultra Motion Mode (Seamless 100% transparent blend with the exact same background) */}
       {isLyricsPlusActive ? (
-        <div className="flex-1 w-full max-w-2xl mx-auto flex flex-col relative overflow-hidden py-2">
+        <div className="flex-1 w-full max-w-2xl mx-auto flex flex-col relative py-2 z-10 bg-transparent overflow-hidden">
           <LyricsPlus
             activeTrack={activeTrack}
             currentTime={currentTime}
@@ -212,7 +224,7 @@ export const LyricsSheet: React.FC = () => {
           onScroll={handleUserScroll}
           onTouchMove={handleUserScroll}
           onWheel={handleUserScroll}
-          className="flex-1 overflow-y-auto max-w-2xl w-full mx-auto py-8 sm:py-12 px-2 flex flex-col gap-6 relative"
+          className="flex-1 overflow-y-auto max-w-2xl w-full mx-auto py-8 sm:py-12 px-2 flex flex-col gap-6 relative z-10"
         >
         {currentLyrics.mode === 'loading' && (
           <div className="flex flex-col items-center justify-center my-auto gap-3 text-white/50">
@@ -226,7 +238,7 @@ export const LyricsSheet: React.FC = () => {
             <p className="text-white/60 font-medium text-sm">Couldn't load lyrics right now.</p>
             <button
               onClick={retryLyrics}
-              className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors"
+              className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
             >
               Try Again
             </button>
@@ -239,7 +251,7 @@ export const LyricsSheet: React.FC = () => {
             <p className="text-white/50 font-medium text-sm">No lyrics found for this song.</p>
             <button
               onClick={retryLyrics}
-              className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors"
+              className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
             >
               Search Again
             </button>
@@ -329,19 +341,6 @@ export const LyricsSheet: React.FC = () => {
           Lyrics powered by LRCLIB & Lyrics+
         </div>
       </div>
-      )}
-
-      {/* Synchronizing pill button appears while user is manually navigating */}
-      {isUserNavigating && currentLyrics.mode === 'synced' && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-          <button
-            onClick={resumeSyncNow}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#ff6b1a] text-black font-extrabold text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all animate-bounce"
-          >
-            <ArrowDownCircle className="w-4 h-4" />
-            <span>Syncing in 3s (Tap to jump)</span>
-          </button>
-        </div>
       )}
     </div>
   );
