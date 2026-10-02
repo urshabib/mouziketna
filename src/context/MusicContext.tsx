@@ -46,6 +46,7 @@ import {
   tasteSkippedArtists,
   tasteTopSeeds,
 } from '../services/storage';
+import { ensureAudioGraph, setBaseAudioVolume, resumeAudioContext } from '../services/audioEnhancer';
 
 interface Toast {
   id: string;
@@ -300,8 +301,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     const audio = new Audio();
     audio.preload = 'auto';
+    audio.crossOrigin = 'anonymous';
     audio.volume = volume / 100;
     audioRef.current = audio;
+    ensureAudioGraph(audio);
+    setBaseAudioVolume(volume);
 
     const prefetchAudio = new Audio();
     prefetchAudio.preload = 'auto';
@@ -310,6 +314,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const onPlay = () => {
       setIsPlaying(true);
+      ensureAudioGraph(audio);
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
       }
@@ -340,9 +345,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
     };
+    let lastTrackSec = 0;
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
       updatePositionState();
+
+      // Accumulate listening seconds
+      const curSec = Math.floor(audio.currentTime);
+      if (curSec !== lastTrackSec && curSec > 0) {
+        lastTrackSec = curSec;
+        listeningSecondsAccumRef.current += 1;
+        if (listeningSecondsAccumRef.current >= 45) {
+          listeningSecondsAccumRef.current = 0;
+          recordListeningMinute(1);
+        }
+      }
+
       // Auto prefetch check: trigger at 18s left in song
       if (
         !hasPrefetchedNextRef.current &&
@@ -570,6 +588,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           uiScale: devSettings.uiScale || p.uiScale || 'default',
           activePreset: devSettings.activePreset || p.activePreset || 'glass',
           avatarUrl: p.avatarUrl || null,
+          stats: p.stats || userProfile.stats || { totalMinutesListened: 0, totalTracksPlayed: 0, topSongs: [], topArtists: [] },
         };
         setUserProfile(merged);
         saveDeviceSettings(merged);
@@ -779,13 +798,132 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   };
 
+  const lastStatsSyncTimeRef = useRef(0);
+  const listeningSecondsAccumRef = useRef(0);
+
+  const recordListeningMinute = useCallback((mins = 1) => {
+    const track = activeTrackRef.current;
+    if (!track || !track.id) return;
+
+    setUserProfile((prev) => {
+      const stats = prev.stats || {
+        totalMinutesListened: 0,
+        totalTracksPlayed: 0,
+        topSongs: [],
+        topArtists: [],
+      };
+
+      // 1. Update top songs
+      const topSongs = [...(stats.topSongs || [])];
+      const songIdx = topSongs.findIndex((s) => s.id === track.id);
+      if (songIdx >= 0) {
+        topSongs[songIdx] = {
+          ...topSongs[songIdx],
+          minutesListened: (topSongs[songIdx].minutesListened || 0) + mins,
+          lastPlayed: Date.now(),
+        };
+      } else {
+        topSongs.push({
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          thumb: track.thumb,
+          playCount: 1,
+          minutesListened: mins,
+          lastPlayed: Date.now(),
+        });
+      }
+      topSongs.sort((a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2));
+
+      // 2. Update top artists
+      const topArtists = [...(stats.topArtists || [])];
+      const artistName = track.artist || 'Unknown';
+      const artistIdx = topArtists.findIndex((a) => a.name.toLowerCase() === artistName.toLowerCase());
+      if (artistIdx >= 0) {
+        topArtists[artistIdx] = {
+          ...topArtists[artistIdx],
+          minutesListened: (topArtists[artistIdx].minutesListened || 0) + mins,
+          playCount: (topArtists[artistIdx].playCount || 0) + 1,
+        };
+      } else {
+        topArtists.push({
+          name: artistName,
+          playCount: 1,
+          minutesListened: mins,
+          thumb: track.thumb,
+        });
+      }
+      topArtists.sort((a, b) => (b.minutesListened || 0) - (a.minutesListened || 0));
+
+      const updatedStats = {
+        totalMinutesListened: (stats.totalMinutesListened || 0) + mins,
+        totalTracksPlayed: stats.totalTracksPlayed || 0,
+        topSongs: topSongs.slice(0, 30),
+        topArtists: topArtists.slice(0, 20),
+        lastUpdated: Date.now(),
+      };
+
+      const updatedProf = { ...prev, stats: updatedStats };
+      saveDeviceSettings(updatedProf);
+
+      // Debounce server syncing to once every 20s
+      if (globalUser && globalUser !== 'admin' && Date.now() - lastStatsSyncTimeRef.current > 20000) {
+        lastStatsSyncTimeRef.current = Date.now();
+        cacheProfileLocally(globalUser, updatedProf);
+        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatedProf),
+        }).catch(() => {});
+      }
+      return updatedProf;
+    });
+  }, [globalUser]);
+
   const recordPlaybackSync = useCallback((track: Track) => {
     if (!track || !track.id) return;
     rememberListen(track);
+    resumeAudioContext();
+
     setUserProfile((prev) => {
       const prevRecent = prev.recentlyPlayed || [];
       const updated = [track, ...prevRecent.filter((t) => t.id !== track.id)].slice(0, 30);
-      const updatedProf = { ...prev, recentlyPlayed: updated };
+
+      const stats = prev.stats || {
+        totalMinutesListened: 0,
+        totalTracksPlayed: 0,
+        topSongs: [],
+        topArtists: [],
+      };
+
+      const topSongs = [...(stats.topSongs || [])];
+      const songIdx = topSongs.findIndex((s) => s.id === track.id);
+      if (songIdx >= 0) {
+        topSongs[songIdx] = {
+          ...topSongs[songIdx],
+          playCount: (topSongs[songIdx].playCount || 0) + 1,
+          lastPlayed: Date.now(),
+        };
+      } else {
+        topSongs.push({
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          thumb: track.thumb,
+          playCount: 1,
+          minutesListened: 1,
+          lastPlayed: Date.now(),
+        });
+      }
+      topSongs.sort((a, b) => ((b.playCount || 0) * 3 + (b.minutesListened || 0)) - ((a.playCount || 0) * 3 + (a.minutesListened || 0)));
+
+      const updatedStats = {
+        ...stats,
+        totalTracksPlayed: (stats.totalTracksPlayed || 0) + 1,
+        topSongs: topSongs.slice(0, 30),
+      };
+
+      const updatedProf = { ...prev, recentlyPlayed: updated, stats: updatedStats };
       saveDeviceSettings(updatedProf);
       if (globalUser && globalUser !== 'admin') {
         cacheProfileLocally(globalUser, updatedProf);
@@ -1099,6 +1237,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setVolume(v);
     setIsMuted(v === 0);
     localStorage.setItem('hub_volume', String(v));
+    setBaseAudioVolume(v);
     if (audioRef.current) {
       audioRef.current.volume = v / 100;
     }

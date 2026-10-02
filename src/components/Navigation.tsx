@@ -324,11 +324,9 @@ export const TopBar: React.FC = () => {
 
         {/* Profile Chip */}
         <button
-          onClick={() => {
-            if (globalUser) setActivePane('account');
-            else setIsAuthGateOpen(true);
-          }}
-          className="flex items-center gap-2 bg-white/10 hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full border border-white/10 transition-colors max-w-[120px] sm:max-w-[170px]"
+          onClick={() => setActivePane('account')}
+          className="flex items-center gap-2 bg-white/10 hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full border border-white/10 transition-colors max-w-[120px] sm:max-w-[170px] cursor-pointer"
+          title="View Listening Statistics & Profile"
         >
           {userProfile.avatarUrl ? (
             <img
@@ -342,7 +340,7 @@ export const TopBar: React.FC = () => {
             </div>
           )}
           <span className="text-xs font-bold text-white truncate overflow-hidden whitespace-nowrap text-ellipsis">
-            {userProfile.username || 'Sign In'}
+            {userProfile.username || 'Profile'}
           </span>
         </button>
       </div>

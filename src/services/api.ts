@@ -98,31 +98,82 @@ export function cleanArtistName(item: any): string {
   return 'Various Artists';
 }
 
+export function upgradeThumbQuality(url: string | null | undefined): string {
+  if (!url) return FALLBACK_ART;
+  if (url.startsWith('blob:') || url.startsWith('data:')) return url;
+  
+  // High-res YouTube Music / Google User Content covers (upgrade to pristine 800x800)
+  if (url.includes('googleusercontent.com') || url.includes('yt3.ggpht.com') || url.includes('ggpht.com')) {
+    if (/=w\d+-h\d+/.test(url)) {
+      return url.replace(/=w\d+-h\d+[^?&]*/, '=w800-h800-l90-rj');
+    }
+    if (/=s\d+/.test(url)) {
+      return url.replace(/=s\d+[^?&]*/, '=s800-c-k-c0x00ffffff-no-rj');
+    }
+    return `${url}=w800-h800-l90-rj`;
+  }
+
+  // JioSaavn thumbnails upgrade to 500x500 HD
+  if (url.includes('saavncdn.com')) {
+    return url.replace(/150x150\.jpg/g, '500x500.jpg').replace(/50x50\.jpg/g, '500x500.jpg');
+  }
+
+  // High-res YouTube Video Thumbnails (upgrade to maxresdefault with hqdefault fallback 800x800)
+  if (url.includes('ytimg.com')) {
+    const idMatch = url.match(/\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})\//);
+    if (idMatch && idMatch[1]) {
+      return canonicalThumbUrl(idMatch[1]);
+    }
+    return url.replace(/\/(?:mqdefault|default)\.(?:webp|jpg)/, '/maxresdefault.jpg');
+  }
+
+  // Wsrv.nl URLs - bump to 800x800
+  if (url.includes('wsrv.nl/?url=')) {
+    return url.replace(/w=\d+/, 'w=800').replace(/h=\d+/, 'h=800').replace(/q=\d+/, 'q=90');
+  }
+
+  return url;
+}
+
 export function getTrackThumbnail(item: any): string {
   if (!item) return FALLBACK_ART;
-  if (typeof item === 'string' && (item.startsWith('http') || item.includes('googleusercontent') || item.includes('ytimg'))) {
-    return item;
+  if (typeof item === 'string') {
+    if (item.startsWith('http') || item.includes('googleusercontent') || item.includes('ytimg')) {
+      return upgradeThumbQuality(item);
+    }
   }
   if (item.img && typeof item.img === 'string') {
-    if (item.img.startsWith('http')) return item.img;
-    if (item.img.startsWith('/')) return `https://wsrv.nl/?url=https://yt3.googleusercontent.com${item.img}`;
-    return `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${item.img}/default.webp`;
+    if (item.img.startsWith('http')) return upgradeThumbQuality(item.img);
+    if (item.img.startsWith('/')) {
+      return `https://lh3.googleusercontent.com${item.img}=w800-h800-l90-rj`;
+    }
+    return canonicalThumbUrl(item.img);
   }
   if (item.thumbnails && Array.isArray(item.thumbnails) && item.thumbnails.length > 0) {
-    return item.thumbnails[item.thumbnails.length - 1].url || item.thumbnails[0].url;
+    // Sort to pick the highest resolution thumbnail
+    const sorted = [...item.thumbnails].sort((a, b) => {
+      const aArea = (a.width || 0) * (a.height || 0);
+      const bArea = (b.width || 0) * (b.height || 0);
+      return bArea - aArea;
+    });
+    const bestUrl = sorted[0]?.url || item.thumbnails[item.thumbnails.length - 1].url;
+    if (bestUrl) return upgradeThumbQuality(bestUrl);
   }
-  if (item.thumbnail && typeof item.thumbnail === 'string') return item.thumbnail;
+  if (item.thumbnail && typeof item.thumbnail === 'string') return upgradeThumbQuality(item.thumbnail);
   const targetId = item.id || item.playlistId || item.videoId || item.browseId;
   if (typeof targetId === 'string' && targetId.length > 0) {
-    if (targetId.startsWith('/')) return `https://wsrv.nl/?url=https://yt3.googleusercontent.com${targetId}`;
+    if (targetId.startsWith('/')) return `https://lh3.googleusercontent.com${targetId}=w800-h800-l90-rj`;
     if (targetId.startsWith('PL') || targetId.startsWith('OL') || targetId.startsWith('RD')) return PLAYLIST_ART;
-    return `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${targetId}/mqdefault.webp`;
+    return canonicalThumbUrl(targetId);
   }
   return FALLBACK_ART;
 }
 
 export function canonicalThumbUrl(id: string): string {
-  return `https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/${id}/mqdefault.webp`;
+  if (!id || id.length !== 11) {
+    return FALLBACK_ART;
+  }
+  return `https://wsrv.nl/?url=https://i.ytimg.com/vi/${id}/maxresdefault.jpg&default=https://i.ytimg.com/vi/${id}/hqdefault.jpg&w=800&h=800&fit=cover&q=90&output=webp`;
 }
 
 export function corsSafeThumbUrl(url: string | null): string | null {

@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useMusic } from '../context/MusicContext';
-import { ChevronDown, RefreshCw, Loader2, Music2 } from 'lucide-react';
+import { ChevronDown, RefreshCw, Loader2, Music2, ArrowDownCircle, Sparkles } from 'lucide-react';
 import { SyncedLyricsLine } from '../types';
+import { LyricsPlus } from './AiLyricsReel';
 
 export const LyricsSheet: React.FC = () => {
   const {
@@ -16,6 +17,21 @@ export const LyricsSheet: React.FC = () => {
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const activeLineRef = useRef<HTMLParagraphElement | null>(null);
+
+  // Lyrics+ mode toggle (default off, switches to ultra motion lyrics with embedded emojis)
+  const [isLyricsPlusActive, setIsLyricsPlusActive] = useState<boolean>(false);
+
+  const handleToggleLyricsPlus = () => {
+    setIsLyricsPlusActive((prev) => !prev);
+  };
+
+  // User navigation state & 3s idle return timer
+  const [isUserNavigating, setIsUserNavigating] = useState(false);
+  const idleTimerRef = useRef<any>(null);
+
+  // Top header swipe-down dismiss gesture
+  const headerTouchStart = useRef<number | null>(null);
+  const [headerDragY, setHeaderDragY] = useState(0);
 
   // Find active line index
   const activeLineIndex = React.useMemo(() => {
@@ -34,49 +50,170 @@ export const LyricsSheet: React.FC = () => {
     return idx;
   }, [currentLyrics, currentTime]);
 
-  // Smooth scroll active lyric line into view
+  // Smooth scroll active lyric line into view ONLY when not actively navigating
   useEffect(() => {
-    if (activeLineRef.current && isLyricsOpen) {
+    if (!isUserNavigating && activeLineRef.current && isLyricsOpen) {
       activeLineRef.current.scrollIntoView({
         behavior: 'smooth',
         block: 'center',
       });
     }
-  }, [activeLineIndex, isLyricsOpen]);
+  }, [activeLineIndex, isLyricsOpen, isUserNavigating]);
+
+  // Register user scroll/swipe inside lyrics body
+  const handleUserScroll = () => {
+    setIsUserNavigating(true);
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+    }
+    idleTimerRef.current = setTimeout(() => {
+      setIsUserNavigating(false);
+      if (activeLineRef.current) {
+        activeLineRef.current.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }
+    }, 3000);
+  };
+
+  const resumeSyncNow = () => {
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+    }
+    setIsUserNavigating(false);
+    if (activeLineRef.current) {
+      activeLineRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, []);
+
+  // Header swipe down handlers (isolated to the top non-lyrics section)
+  const handleHeaderTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    headerTouchStart.current = clientY;
+  };
+
+  const handleHeaderTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
+    if (headerTouchStart.current === null) return;
+    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const diff = clientY - headerTouchStart.current;
+    if (diff > 0) {
+      setHeaderDragY(diff);
+    }
+  };
+
+  const handleHeaderTouchEnd = () => {
+    if (headerDragY > 70) {
+      setIsLyricsOpen(false);
+    }
+    headerTouchStart.current = null;
+    setHeaderDragY(0);
+  };
 
   if (!isLyricsOpen || !activeTrack) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#1c1208] via-black to-black text-white px-6 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] animate-in fade-in slide-in-from-bottom-6 duration-300 select-none">
-      {/* Header */}
-      <div className="flex items-center justify-between max-w-2xl w-full mx-auto pb-4 border-b border-white/10">
-        <button
-          onClick={() => setIsLyricsOpen(false)}
-          className="p-2 -ml-2 text-white/70 hover:text-white transition-colors"
-          title="Close Lyrics"
-        >
-          <ChevronDown className="w-7 h-7" />
-        </button>
-
-        <div className="text-center min-w-0 flex-1 px-4">
-          <h4 className="text-sm font-black text-white truncate">{activeTrack.title}</h4>
-          <p className="text-xs text-white/50 truncate font-semibold mt-0.5">{activeTrack.artist}</p>
+    <div
+      style={{
+        transform: headerDragY > 0 ? `translateY(${headerDragY}px)` : undefined,
+        transition: headerDragY === 0 ? 'transform 0.25s ease-out' : 'none',
+      }}
+      className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#1c1208] via-black to-black text-white px-5 sm:px-8 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] select-none"
+    >
+      {/* Top Header & Grab Section (Only section that handles swipe-down to dismiss) */}
+      <div
+        onTouchStart={handleHeaderTouchStart}
+        onTouchMove={handleHeaderTouchMove}
+        onTouchEnd={handleHeaderTouchEnd}
+        onMouseDown={handleHeaderTouchStart}
+        onMouseMove={handleHeaderTouchMove}
+        onMouseUp={handleHeaderTouchEnd}
+        className="w-full max-w-2xl mx-auto flex-shrink-0 cursor-grab active:cursor-grabbing pb-3 touch-none select-none border-b border-white/10"
+      >
+        {/* Swipe Handle Indicator */}
+        <div className="flex justify-center pt-1 pb-2">
+          <div className="w-12 h-1.5 rounded-full bg-white/30" />
         </div>
 
-        <button
-          onClick={retryLyrics}
-          className="p-2 text-white/50 hover:text-white transition-colors"
-          title="Refresh Lyrics"
-        >
-          <RefreshCw className="w-5 h-5" />
-        </button>
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setIsLyricsOpen(false)}
+            className="p-2 -ml-2 text-white/70 hover:text-white transition-colors"
+            title="Close Lyrics"
+          >
+            <ChevronDown className="w-7 h-7" />
+          </button>
+
+          <div className="text-center min-w-0 flex-1 px-4">
+            <h4 className="text-sm font-black text-white truncate">{activeTrack.title}</h4>
+            <p className="text-xs text-white/50 truncate font-semibold mt-0.5">{activeTrack.artist}</p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Catchy, modern Lyrics+ Ultra Motion toggle */}
+            <button
+              type="button"
+              onClick={handleToggleLyricsPlus}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-sm ${
+                isLyricsPlusActive
+                  ? 'bg-gradient-to-r from-[#ff6b1a] via-amber-500 to-orange-400 text-black shadow-[0_0_15px_rgba(255,107,26,0.6)] scale-105'
+                  : 'bg-white/10 hover:bg-white/20 text-white/80 hover:text-white border border-white/10'
+              }`}
+              title={isLyricsPlusActive ? 'Switch to Standard Lyrics' : 'Switch to Lyrics+ Ultra Motion'}
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${isLyricsPlusActive ? 'fill-black text-black' : 'text-[#ff6b1a]'}`} />
+              <span className="tracking-wide">Lyrics+</span>
+              <span
+                className={`text-[9px] px-1 py-0.5 rounded font-extrabold uppercase leading-none tracking-wider ${
+                  isLyricsPlusActive ? 'bg-black/25 text-black' : 'bg-[#ff6b1a]/25 text-[#ff6b1a]'
+                }`}
+              >
+                Ultra
+              </span>
+            </button>
+
+            <button
+              onClick={retryLyrics}
+              className="p-2 text-white/50 hover:text-white transition-colors cursor-pointer"
+              title="Refresh Lyrics"
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Lyrics Body */}
-      <div
-        ref={bodyRef}
-        className="flex-1 overflow-y-auto max-w-2xl w-full mx-auto py-12 px-2 flex flex-col gap-6"
-      >
+      {/* Lyrics+ Ultra Motion Mode */}
+      {isLyricsPlusActive ? (
+        <div className="flex-1 w-full max-w-2xl mx-auto flex flex-col relative overflow-hidden py-2">
+          <LyricsPlus
+            activeTrack={activeTrack}
+            currentTime={currentTime}
+            syncedLines={currentLyrics.mode === 'synced' && Array.isArray(currentLyrics.lines) ? currentLyrics.lines : []}
+            onSeek={(time) => {
+              seekTo(time);
+              resumeSyncNow();
+            }}
+          />
+        </div>
+      ) : (
+        /* Classic Lyrics Body (Protected from swipe dismiss so user can scroll up/down freely) */
+        <div
+          ref={bodyRef}
+          onScroll={handleUserScroll}
+          onTouchMove={handleUserScroll}
+          onWheel={handleUserScroll}
+          className="flex-1 overflow-y-auto max-w-2xl w-full mx-auto py-8 sm:py-12 px-2 flex flex-col gap-6 relative"
+        >
         {currentLyrics.mode === 'loading' && (
           <div className="flex flex-col items-center justify-center my-auto gap-3 text-white/50">
             <Loader2 className="w-8 h-8 animate-spin text-[#ff6b1a]" />
@@ -141,7 +278,10 @@ export const LyricsSheet: React.FC = () => {
                 <p
                   key={idx}
                   ref={isActive ? (activeLineRef as any) : null}
-                  onClick={() => seekTo(line.time)}
+                  onClick={() => {
+                    seekTo(line.time);
+                    resumeSyncNow();
+                  }}
                   dir={isRtl ? 'rtl' : 'ltr'}
                   style={{
                     fontFamily: 'var(--lyrics-font, "Poppins", sans-serif)',
@@ -158,7 +298,6 @@ export const LyricsSheet: React.FC = () => {
                   }`}
                 >
                   {words.map((word, wIdx) => {
-                    // Estimated per-word wipe
                     let wordWipe = 0;
                     if (isPassed) wordWipe = 1;
                     else if (isActive) {
@@ -190,6 +329,20 @@ export const LyricsSheet: React.FC = () => {
           Lyrics powered by LRCLIB & Lyrics+
         </div>
       </div>
+      )}
+
+      {/* Synchronizing pill button appears while user is manually navigating */}
+      {isUserNavigating && currentLyrics.mode === 'synced' && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <button
+            onClick={resumeSyncNow}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#ff6b1a] text-black font-extrabold text-xs shadow-2xl hover:scale-105 active:scale-95 transition-all animate-bounce"
+          >
+            <ArrowDownCircle className="w-4 h-4" />
+            <span>Syncing in 3s (Tap to jump)</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

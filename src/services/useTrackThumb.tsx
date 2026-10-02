@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Track } from '../types';
-import { canonicalThumbUrl, FALLBACK_ART } from './api';
+import { canonicalThumbUrl, FALLBACK_ART, upgradeThumbQuality } from './api';
 import { getOfflineThumbUrl, isDownloaded, getOfflineThumbUrlSync } from './storage';
 
 export function useTrackThumb(track: Track | null | undefined): string {
@@ -12,7 +12,7 @@ export function useTrackThumb(track: Track | null | undefined): string {
     }
     // If track.thumb is a dead blob URL from a previous session, do not use it
     if (track.thumb && !track.thumb.startsWith('blob:')) {
-      return track.thumb;
+      return upgradeThumbQuality(track.thumb);
     }
     return canonicalThumbUrl(track.id);
   };
@@ -42,12 +42,12 @@ export function useTrackThumb(track: Track | null | undefined): string {
         if (active && offUrl) {
           setSrc(offUrl);
         } else if (active) {
-          const cleanThumb = track.thumb && !track.thumb.startsWith('blob:') ? track.thumb : null;
+          const cleanThumb = track.thumb && !track.thumb.startsWith('blob:') ? upgradeThumbQuality(track.thumb) : null;
           setSrc(cleanThumb || canonicalThumbUrl(track.id));
         }
       });
     } else {
-      const cleanThumb = track.thumb && !track.thumb.startsWith('blob:') ? track.thumb : null;
+      const cleanThumb = track.thumb && !track.thumb.startsWith('blob:') ? upgradeThumbQuality(track.thumb) : null;
       setSrc(cleanThumb || canonicalThumbUrl(track.id));
     }
 

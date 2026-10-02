@@ -1,4 +1,5 @@
 import { DownloadRecord, LyricsData, Track, UserProfile } from '../types';
+import { generateLyricsPlusPlan } from './aiLyricsReel';
 
 const DL_DB_NAME = 'mouzika-downloads';
 const DL_DB_VERSION = 1;
@@ -203,6 +204,12 @@ export async function saveDownloadLyrics(id: string, lyrics: LyricsData): Promis
     if (record) {
       record.lyricsData = lyrics;
       await saveDownload(record);
+    }
+    // Also pre-generate and cache the animated Lyrics+ plan for 100% offline availability
+    if (lyrics.mode === 'synced' && Array.isArray(lyrics.lines)) {
+      try {
+        generateLyricsPlusPlan(id, lyrics.lines);
+      } catch {}
     }
   } catch {}
 }

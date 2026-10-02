@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useMusic } from '../context/MusicContext';
 import {
   ChevronDown,
+  ChevronUp,
   Play,
   Pause,
   SkipBack,
@@ -18,21 +19,29 @@ import {
   Plus,
   Loader2,
   Maximize2,
-  Flame,
   Disc,
+  SlidersHorizontal,
+  RotateCcw as ResetIcon,
+  Sparkles,
+  Zap,
+  Waves,
 } from 'lucide-react';
-import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
+import { FALLBACK_ART } from '../services/api';
 import { useTrackThumb } from '../services/useTrackThumb';
 import { getSongHighlights } from '../services/songHighlights';
 import { TrackProgressBar } from './TrackProgressBar';
 import { motion, AnimatePresence } from 'motion/react';
+import { NvsVisualizer } from './NvsVisualizer';
+import {
+  setBassBoostMode,
+  setVolumeBoostPercent,
+  resetBoostSettings,
+  subscribeAudioEnhancer,
+  getAudioBoosterState,
+  BassBoostMode,
+} from '../services/audioEnhancer';
 
-function formatTime(seconds: number): string {
-  if (isNaN(seconds) || !isFinite(seconds) || seconds < 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s < 10 ? '0' : ''}${s}`;
-}
+export type PlayerViewMode = 'square' | 'cd' | 'spectrum' | 'waveform';
 
 export const FullScreenPlayer: React.FC = () => {
   const {
@@ -55,7 +64,6 @@ export const FullScreenPlayer: React.FC = () => {
     isFullScreenOpen,
     setIsFullScreenOpen,
     setIsLandscapeStageOpen,
-    isLyricsOpen,
     setIsLyricsOpen,
     setIsQueueOpen,
     setModalAddToPlaylistTrack,
@@ -68,19 +76,63 @@ export const FullScreenPlayer: React.FC = () => {
 
   const thumbSrc = useTrackThumb(activeTrack);
   const [isSleepMenuOpen, setIsSleepMenuOpen] = useState(false);
-  const [isCdView, setIsCdView] = useState<boolean>(() => {
+  const [isBoosterMenuOpen, setIsBoosterMenuOpen] = useState(false);
+
+  // Once clicked, remove the new booster notification badge permanently
+  const [hasSeenBooster, setHasSeenBooster] = useState(() => {
     try {
-      return localStorage.getItem('mouzika_player_cd_view') === 'true';
+      return localStorage.getItem('mouzika_audio_booster_seen') === 'true';
     } catch {
       return false;
     }
   });
 
-  const toggleCdView = () => {
-    setIsCdView((prev) => {
-      const next = !prev;
+  const handleToggleBooster = () => {
+    setIsBoosterMenuOpen((prev) => !prev);
+    setIsSleepMenuOpen(false);
+    if (!hasSeenBooster) {
+      setHasSeenBooster(true);
       try {
-        localStorage.setItem('mouzika_player_cd_view', String(next));
+        localStorage.setItem('mouzika_audio_booster_seen', 'true');
+      } catch {}
+    }
+  };
+
+  // Audio Booster Settings state
+  const [boosterSettings, setBoosterSettings] = useState(() => getAudioBoosterState());
+
+  useEffect(() => {
+    return subscribeAudioEnhancer((settings) => {
+      setBoosterSettings(settings);
+    });
+  }, []);
+
+  // View modes: 'square' | 'cd' | 'visualizer'
+  const [viewMode, setViewMode] = useState<PlayerViewMode>(() => {
+    try {
+      const saved = localStorage.getItem('mouzika_player_view_mode') as PlayerViewMode;
+      if (saved === 'square' || saved === 'cd' || saved === 'spectrum' || saved === 'waveform') {
+        return saved;
+      }
+      if ((saved as any) === 'visualizer') return 'spectrum';
+      // Migrate from old CD setting
+      if (localStorage.getItem('mouzika_player_cd_view') === 'true') {
+        return 'cd';
+      }
+    } catch {}
+    return 'square';
+  });
+
+  const cycleViewMode = () => {
+    setViewMode((prev) => {
+      let next: PlayerViewMode = 'square';
+      if (prev === 'square') next = 'cd';
+      else if (prev === 'cd') next = 'spectrum';
+      else if (prev === 'spectrum') next = 'waveform';
+      else if (prev === 'waveform') next = 'square';
+
+      try {
+        localStorage.setItem('mouzika_player_view_mode', next);
       } catch {}
       return next;
     });
@@ -90,33 +142,29 @@ export const FullScreenPlayer: React.FC = () => {
   const highlights = React.useMemo(() => {
     return getSongHighlights(activeTrack, currentLyrics, duration);
   }, [activeTrack?.id, currentLyrics.mode, currentLyrics.lines, duration]);
-  
+
   // Gesture states
   const [dragX, setDragX] = useState(0);
   const [dragY, setDragY] = useState(0);
-  const [isSwiping, setIsSwiping] = useState(false);
-  const [swipeHint, setSwipeHint] = useState<'next' | 'prev' | null>(null);
+  const [swipeHint, setSwipeHint] = useState<'next' | 'prev' | 'lyrics' | 'dismiss' | null>(null);
 
   const startCoords = useRef<{ x: number; y: number } | null>(null);
-  const activeDirection = useRef<'horizontal' | 'vertical' | null>(null);
+  const activeDirection = useRef<'horizontal' | 'vertical-down' | 'vertical-up' | null>(null);
 
   if (!isFullScreenOpen || !activeTrack) return null;
 
   const isLiked = userProfile.likedSongs?.some((s) => s.id === activeTrack.id);
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
-  // Touch & Pointer Gesture Handlers for Swipe-to-Skip and Swipe-Down-to-Dismiss
+  // Touch & Pointer Gesture Handlers for Swipe-to-Skip, Swipe-Down-to-Dismiss, and Swipe-Up-for-Lyrics
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
-    // Avoid intercepting slider or button taps
     const target = e.target as HTMLElement;
-    if (target.closest('input, button, a, .no-swipe')) return;
+    if (target.closest('input, button, a, .no-swipe, .popover-menu')) return;
 
     const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
     const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
 
     startCoords.current = { x: clientX, y: clientY };
     activeDirection.current = null;
-    setIsSwiping(true);
   };
 
   const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
@@ -129,10 +177,12 @@ export const FullScreenPlayer: React.FC = () => {
     const diffY = clientY - startCoords.current.y;
 
     if (!activeDirection.current) {
-      if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY)) {
+      if (Math.abs(diffX) > 12 && Math.abs(diffX) > Math.abs(diffY)) {
         activeDirection.current = 'horizontal';
-      } else if (diffY > 10 && diffY > Math.abs(diffX)) {
-        activeDirection.current = 'vertical';
+      } else if (diffY > 12 && diffY > Math.abs(diffX)) {
+        activeDirection.current = 'vertical-down';
+      } else if (diffY < -12 && Math.abs(diffY) > Math.abs(diffX)) {
+        activeDirection.current = 'vertical-up';
       }
     }
 
@@ -141,9 +191,15 @@ export const FullScreenPlayer: React.FC = () => {
       if (diffX < -40) setSwipeHint('next');
       else if (diffX > 40) setSwipeHint('prev');
       else setSwipeHint(null);
-    } else if (activeDirection.current === 'vertical') {
+    } else if (activeDirection.current === 'vertical-down') {
       if (diffY > 0) {
         setDragY(diffY);
+        setSwipeHint('dismiss');
+      }
+    } else if (activeDirection.current === 'vertical-up') {
+      if (diffY < 0) {
+        setDragY(diffY * 0.45);
+        setSwipeHint('lyrics');
       }
     }
   };
@@ -155,18 +211,19 @@ export const FullScreenPlayer: React.FC = () => {
       } else if (dragX > 55) {
         playPrevious();
       }
-    } else if (activeDirection.current === 'vertical') {
-      if (dragY > 120) {
+    } else if (activeDirection.current === 'vertical-down') {
+      if (dragY > 110) {
         setIsFullScreenOpen(false);
       }
+    } else if (activeDirection.current === 'vertical-up' || dragY < -45) {
+      setIsLyricsOpen(true);
     }
 
-    // Reset
+    // Reset gesture states
     startCoords.current = null;
     activeDirection.current = null;
     setDragX(0);
     setDragY(0);
-    setIsSwiping(false);
     setSwipeHint(null);
   };
 
@@ -198,7 +255,7 @@ export const FullScreenPlayer: React.FC = () => {
           />
 
           {/* Top Header Bar */}
-          <div className="flex items-center justify-between w-full max-w-lg mx-auto mb-1.5 sm:mb-3 flex-shrink-0">
+          <div className="flex items-center justify-between w-full max-w-lg mx-auto mb-1 sm:mb-2 flex-shrink-0">
             <button
               onClick={() => setIsFullScreenOpen(false)}
               className="p-2 -ml-2 text-white/70 hover:text-white transition-colors active:scale-95"
@@ -213,25 +270,19 @@ export const FullScreenPlayer: React.FC = () => {
               </span>
               {swipeHint && (
                 <span className="text-[10px] font-bold text-white/80 animate-pulse">
-                  {swipeHint === 'next' ? 'Swipe for Next Track ❯' : '❮ Swipe for Previous Track'}
+                  {swipeHint === 'next'
+                    ? 'Swipe for Next Track ❯'
+                    : swipeHint === 'prev'
+                    ? '❮ Swipe for Previous Track'
+                    : swipeHint === 'lyrics'
+                    ? '▲ Swipe up for Lyrics'
+                    : '▼ Swipe down to close'}
                 </span>
               )}
             </div>
 
             {/* Action icons */}
             <div className="flex items-center gap-1.5 relative">
-              {/* CD Disc / Square Artwork Toggle */}
-              <button
-                type="button"
-                onClick={toggleCdView}
-                className={`p-2 transition-all active:scale-95 cursor-pointer rounded-full ${
-                  isCdView ? 'text-[#ff6b1a] bg-[#ff6b1a]/15' : 'text-white/70 hover:text-white'
-                }`}
-                title={isCdView ? 'Switch to Square Cover' : 'Switch to Spinning Vinyl CD'}
-              >
-                <Disc className={`w-5 h-5 ${isCdView && isPlaying ? 'animate-spin' : ''}`} />
-              </button>
-
               {/* Full Screen Rotate Landscape Mode */}
               <button
                 type="button"
@@ -241,9 +292,10 @@ export const FullScreenPlayer: React.FC = () => {
                 className="p-2 text-white/70 hover:text-white transition-all active:scale-95 cursor-pointer"
                 title="Full Screen Landscape Mode"
               >
-                <Maximize2 className="w-5 h-5 text-white/70 hover:text-white" />
+                <Maximize2 className="w-5 h-5" />
               </button>
 
+              {/* Lyrics button */}
               <button
                 onClick={() => setIsLyricsOpen(true)}
                 className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
@@ -252,10 +304,153 @@ export const FullScreenPlayer: React.FC = () => {
                 <FileText className="w-5 h-5" />
               </button>
 
+              {/* BASS BOOSTER & VOLUME BOOSTER BUTTON WITH ATTENTION BADGE */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={handleToggleBooster}
+                  className={`p-2 transition-all relative rounded-full active:scale-95 cursor-pointer ${
+                    boosterSettings.bassMode !== 'off' || boosterSettings.volumeBoost > 100
+                      ? 'text-[#ff6b1a] bg-[#ff6b1a]/20 shadow-[0_0_12px_rgba(255,107,26,0.4)]'
+                      : 'text-white/70 hover:text-white'
+                  }`}
+                  title="Bass & Volume Booster"
+                >
+                  <SlidersHorizontal className="w-5 h-5" />
+                  {/* Static clean orange notification badge until clicked the first time */}
+                  {!hasSeenBooster && (
+                    <span className="absolute top-1 right-1 flex h-2 w-2 items-center justify-center">
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-[#ff6b1a] shadow-sm" />
+                    </span>
+                  )}
+                </button>
+
+                {/* Bass Boost & Volume Booster Popover */}
+                {isBoosterMenuOpen && (
+                  <>
+                    {/* Backdrop to close on outside click */}
+                    <div
+                      className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]"
+                      onClick={() => setIsBoosterMenuOpen(false)}
+                    />
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      className="popover-menu fixed z-50 top-16 right-3 left-3 sm:left-auto sm:right-6 sm:w-80 max-w-[340px] mx-auto sm:mx-0 max-h-[calc(100vh-80px)] overflow-y-auto bg-[#19191d]/98 backdrop-blur-2xl rounded-3xl sm:rounded-2xl p-4 sm:p-5 border border-white/20 shadow-[0_25px_60px_rgba(0,0,0,0.95)] flex flex-col gap-4 text-sm font-semibold select-none animate-in fade-in zoom-in-95 duration-200"
+                      style={{ overscrollBehavior: 'contain' }}
+                    >
+                    {/* Header with Title and Reset Button */}
+                    <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-[#ff6b1a]" />
+                        <span className="text-xs uppercase font-extrabold tracking-wider text-white">
+                          Audio Booster
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetBoostSettings}
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+                        title="Reset to default settings"
+                      >
+                        <ResetIcon className="w-3 h-3" />
+                        <span>Reset</span>
+                      </button>
+                    </div>
+
+                    {/* Section 1: Bass Boost (off, on, on+ boost) */}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white/80">Bass Boost</span>
+                        <span className="text-[11px] font-extrabold text-[#ff6b1a] uppercase tracking-wide">
+                          {boosterSettings.bassMode === 'off'
+                            ? 'Off'
+                            : boosterSettings.bassMode === 'on'
+                            ? 'On'
+                            : 'On+ Boost'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 p-1 bg-black/60 rounded-xl border border-white/10">
+                        {(['off', 'on', 'boost'] as BassBoostMode[]).map((mode) => {
+                          const isActive = boosterSettings.bassMode === mode;
+                          const label = mode === 'off' ? 'Off' : mode === 'on' ? 'On' : 'On+ Boost';
+                          return (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => setBassBoostMode(mode)}
+                              className={`py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                                isActive
+                                  ? 'bg-[#ff6b1a] text-black shadow-lg scale-[1.02]'
+                                  : 'text-white/60 hover:text-white hover:bg-white/5'
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Section 2: Volume Booster (100% to 200%) */}
+                    <div className="flex flex-col gap-2 pt-1 border-t border-white/10">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-white/80">Volume Booster</span>
+                        <span
+                          className={`text-xs font-black px-2 py-0.5 rounded-md ${
+                            boosterSettings.volumeBoost > 100
+                              ? 'bg-[#ff6b1a]/20 text-[#ff6b1a] border border-[#ff6b1a]/30'
+                              : 'bg-white/10 text-white/70'
+                          }`}
+                        >
+                          {boosterSettings.volumeBoost}% {boosterSettings.volumeBoost === 200 ? 'MAX' : ''}
+                        </span>
+                      </div>
+
+                      {/* Slider 100% to 200% */}
+                      <input
+                        type="range"
+                        min="100"
+                        max="200"
+                        step="1"
+                        value={boosterSettings.volumeBoost}
+                        onChange={(e) => setVolumeBoostPercent(Number(e.target.value))}
+                        className="w-full accent-[#ff6b1a] bg-white/20 h-1.5 rounded-lg cursor-pointer"
+                      />
+
+                      {/* Quick Presets Underneath */}
+                      <div className="grid grid-cols-4 gap-1.5 pt-1">
+                        {[100, 130, 160, 200].map((pct) => (
+                          <button
+                            key={pct}
+                            type="button"
+                            onClick={() => setVolumeBoostPercent(pct)}
+                            className={`py-1 rounded-lg text-[11px] font-bold transition-all ${
+                              boosterSettings.volumeBoost === pct
+                                ? 'bg-[#ff6b1a] text-black font-extrabold'
+                                : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                            }`}
+                          >
+                            {pct}%{pct === 100 ? ' (Def)' : pct === 200 ? ' (Max)' : ''}
+                          </button>
+                        ))}
+                      </div>
+
+                      <p className="text-[10px] text-white/40 pt-1 leading-snug">
+                        Amplifies audio output up to 200% via hardware DSP. Saved in cache.
+                      </p>
+                    </div>
+                  </div>
+                  </>
+                )}
+              </div>
+
               {/* Sleep Timer Popover */}
               <div className="relative">
                 <button
-                  onClick={() => setIsSleepMenuOpen(!isSleepMenuOpen)}
+                  onClick={() => {
+                    setIsSleepMenuOpen(!isSleepMenuOpen);
+                    setIsBoosterMenuOpen(false);
+                  }}
                   className={`p-2 transition-colors relative ${
                     sleepTimerRemaining !== null ? 'text-[#ff6b1a]' : 'text-white/70 hover:text-white'
                   }`}
@@ -270,7 +465,10 @@ export const FullScreenPlayer: React.FC = () => {
                 </button>
 
                 {isSleepMenuOpen && (
-                  <div className="absolute right-0 top-10 w-44 bg-[#1f1f23] rounded-2xl p-2 border border-white/10 shadow-2xl z-50 flex flex-col gap-1 text-sm font-semibold">
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    className="popover-menu fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-11 max-w-[260px] mx-auto sm:mx-0 bg-[#1f1f23]/98 backdrop-blur-2xl rounded-2xl p-2 border border-white/15 shadow-2xl z-50 flex flex-col gap-1 text-sm font-semibold"
+                  >
                     <span className="text-[10px] uppercase font-bold text-white/40 px-3 py-1">Sleep Timer</span>
                     <button
                       onClick={() => { setSleepTimerMinutes(5); setIsSleepMenuOpen(false); }}
@@ -332,7 +530,7 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
           </div>
 
-          {/* Center Artwork with Horizontal Swipe Motion & Spring Dynamics (Tap to toggle Vinyl CD / Square Cover) */}
+          {/* Center Artwork with Horizontal Swipe Motion & Spring Dynamics (Tap to cycle: Square -> CD -> NVS Visualizer) */}
           <div className="flex-1 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto px-2 py-1 flex-shrink-0">
             <motion.div
               style={{
@@ -345,22 +543,50 @@ export const FullScreenPlayer: React.FC = () => {
               }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className={`w-full aspect-square ${
-                isCdView ? 'rounded-full' : 'rounded-3xl'
+                viewMode !== 'square' ? 'rounded-full' : 'rounded-3xl'
               } shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] relative group cursor-grab active:cursor-grabbing mx-auto select-none`}
             >
-              {isCdView ? (
-                /* Realistic Vinyl CD Rotating Disc with enlarged artwork */
+              {viewMode === 'spectrum' ? (
+                /* 3. Spicetify / NCS Circular Spectrum Visualizer */
+                <NvsVisualizer
+                  thumbSrc={thumbSrc}
+                  trackTitle={activeTrack.title}
+                  isPlaying={isPlaying}
+                  currentTime={currentTime}
+                  mode="ncs"
+                  onNextView={() => {
+                    if (Math.abs(dragX) < 8 && Math.abs(dragY) < 8) {
+                      cycleViewMode();
+                    }
+                  }}
+                />
+              ) : viewMode === 'waveform' ? (
+                /* 4. Fluid Waveform Visualizer */
+                <NvsVisualizer
+                  thumbSrc={thumbSrc}
+                  trackTitle={activeTrack.title}
+                  isPlaying={isPlaying}
+                  currentTime={currentTime}
+                  mode="wave"
+                  onNextView={() => {
+                    if (Math.abs(dragX) < 8 && Math.abs(dragY) < 8) {
+                      cycleViewMode();
+                    }
+                  }}
+                />
+              ) : viewMode === 'cd' ? (
+                /* 2. Realistic Vinyl CD Rotating Disc */
                 <div
                   onClick={() => {
                     if (Math.abs(dragX) < 8 && Math.abs(dragY) < 8) {
-                      toggleCdView();
+                      cycleViewMode();
                     }
                   }}
                   className="w-full h-full rounded-full relative overflow-hidden bg-[#0c0c0e] flex items-center justify-center shadow-[0_20px_60px_rgba(0,0,0,0.95)] border-2 border-zinc-700/60 cursor-pointer"
                   style={{
                     background: 'radial-gradient(circle, #1c1c1f 0%, #0a0a0c 65%, #040404 100%)',
                   }}
-                  title="Click to switch back to square artwork"
+                  title="Click to switch to NVS Visualizer"
                 >
                   {/* Concentric Vinyl Grooves */}
                   <div
@@ -380,7 +606,7 @@ export const FullScreenPlayer: React.FC = () => {
                       animationPlayState: isPlaying ? 'running' : 'paused',
                     }}
                   >
-                    {/* Vinyl Center Art Label (Enlarged ~76% so cover art is prominent) */}
+                    {/* Vinyl Center Art Label */}
                     <div className="w-[76%] h-[76%] rounded-full overflow-hidden relative shadow-2xl border-4 border-black/95 flex items-center justify-center">
                       <img
                         src={thumbSrc}
@@ -391,7 +617,7 @@ export const FullScreenPlayer: React.FC = () => {
                         className="w-full h-full object-cover rounded-full pointer-events-none select-none"
                         draggable={false}
                       />
-                      {/* Center Spindle Hole (Dark center inside) */}
+                      {/* Center Spindle Hole */}
                       <div className="absolute w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#0d0905] border-[3px] border-zinc-400 shadow-inner flex items-center justify-center z-10">
                         <div className="w-3 h-3 rounded-full bg-black shadow-inner" />
                       </div>
@@ -408,11 +634,11 @@ export const FullScreenPlayer: React.FC = () => {
                   />
                 </div>
               ) : (
-                /* Square Cover with Smooth Clean Rounded Corners (Zero black corner artifacts on swipe) */
+                /* 1. Classic Square Cover */
                 <div
                   onClick={() => {
                     if (Math.abs(dragX) < 8 && Math.abs(dragY) < 8) {
-                      toggleCdView();
+                      cycleViewMode();
                     }
                   }}
                   className="w-full h-full rounded-3xl overflow-hidden relative cursor-pointer shadow-2xl"
@@ -432,10 +658,10 @@ export const FullScreenPlayer: React.FC = () => {
               )}
 
               {/* Visual swipe indicator overlay */}
-              {(dragX !== 0 || dragY > 20) && (
+              {(dragX !== 0 || Math.abs(dragY) > 20) && (
                 <div
                   className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity ${
-                    Math.abs(dragX) > 25 || dragY > 25 ? 'bg-black/40' : 'opacity-0'
+                    Math.abs(dragX) > 25 || Math.abs(dragY) > 25 ? 'bg-black/40' : 'opacity-0'
                   }`}
                 >
                   <div className="bg-black/85 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-xs font-bold text-white flex items-center gap-2 shadow-2xl">
@@ -443,6 +669,11 @@ export const FullScreenPlayer: React.FC = () => {
                       <>
                         <ChevronDown className="w-4 h-4 text-white" />
                         <span>Swipe down to close</span>
+                      </>
+                    ) : dragY < -25 ? (
+                      <>
+                        <ChevronUp className="w-4 h-4 text-white" />
+                        <span>Swipe up for Lyrics</span>
                       </>
                     ) : dragX < 0 ? (
                       <>
@@ -487,7 +718,7 @@ export const FullScreenPlayer: React.FC = () => {
               </button>
             </div>
 
-            {/* Progress Scrubber (supports all 4 styles & key parts rectangles) */}
+            {/* Progress Scrubber */}
             <TrackProgressBar
               currentTime={currentTime}
               duration={duration}

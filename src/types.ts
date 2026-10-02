@@ -8,6 +8,31 @@ export interface Track {
   duration?: number;
 }
 
+export interface SongPlayStat {
+  id: string;
+  title: string;
+  artist: string;
+  thumb?: string | null;
+  playCount: number;
+  minutesListened: number;
+  lastPlayed: number;
+}
+
+export interface ArtistPlayStat {
+  name: string;
+  playCount: number;
+  minutesListened: number;
+  thumb?: string | null;
+}
+
+export interface UserStats {
+  totalMinutesListened: number;
+  totalTracksPlayed: number;
+  topSongs: SongPlayStat[];
+  topArtists: ArtistPlayStat[];
+  lastUpdated?: number;
+}
+
 export interface UserProfile {
   username: string;
   likedSongs: Track[];
@@ -15,6 +40,7 @@ export interface UserProfile {
   favouriteArtists: Track[];
   favouriteAlbums: Track[];
   recentlyPlayed: Track[];
+  stats?: UserStats;
   dataSaver: boolean;
   dataSaverLevel: 'off' | 'saver' | 'ultra';
   downloadQuality?: 'stable' | 'high' | 'saver' | 'ultra';
