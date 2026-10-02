@@ -212,8 +212,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [navHistory, setNavHistory] = useState<NavigationPane[]>(['home']);
   const [collectionTarget, setCollectionTarget] = useState<MusicContextType['collectionTarget']>(null);
 
-  const [globalUser, setGlobalUser] = useState<string | null>(() => localStorage.getItem('hub_active_user') || null);
-  const [globalPass, setGlobalPass] = useState<string | null>(() => localStorage.getItem('hub_active_pass') || null);
+  const [globalUser, setGlobalUser] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('hub_active_user') || null;
+    } catch {
+      return null;
+    }
+  });
+  const [globalPass, setGlobalPass] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('hub_active_pass') || null;
+    } catch {
+      return null;
+    }
+  });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const dev = loadDeviceSettings();
     return dev ? { ...defaultProfile, ...dev } : defaultProfile;
@@ -226,7 +238,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isBuffering, setIsBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(() => Number(localStorage.getItem('hub_volume') ?? 50));
+  const [volume, setVolume] = useState(() => {
+    try {
+      return Number(localStorage.getItem('hub_volume') ?? 50);
+    } catch {
+      return 50;
+    }
+  });
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
@@ -431,8 +449,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     // Auto-login on launch if saved
-    const savedUser = localStorage.getItem('hub_active_user');
-    const savedPass = localStorage.getItem('hub_active_pass');
+    let savedUser: string | null = null;
+    let savedPass: string | null = null;
+    try {
+      savedUser = localStorage.getItem('hub_active_user');
+      savedPass = localStorage.getItem('hub_active_pass');
+    } catch {}
     if (savedUser && savedPass) {
       if (savedUser !== 'admin') {
         const cached = restoreProfileFromCache(savedUser);
@@ -543,8 +565,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       setGlobalUser(user);
       setGlobalPass(pass);
-      localStorage.setItem('hub_active_user', user);
-      localStorage.setItem('hub_active_pass', pass);
+      try {
+        localStorage.setItem('hub_active_user', user);
+        localStorage.setItem('hub_active_pass', pass);
+      } catch {}
       setIsAuthGateOpen(false);
 
       if (data.isAdmin) {
@@ -613,8 +637,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const logout = () => {
-    localStorage.removeItem('hub_active_user');
-    localStorage.removeItem('hub_active_pass');
+    try {
+      localStorage.removeItem('hub_active_user');
+      localStorage.removeItem('hub_active_pass');
+    } catch {}
     setGlobalUser(null);
     setGlobalPass(null);
     setUserProfile(defaultProfile);
@@ -1236,7 +1262,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const v = Math.max(0, Math.min(100, vol));
     setVolume(v);
     setIsMuted(v === 0);
-    localStorage.setItem('hub_volume', String(v));
+    try {
+      localStorage.setItem('hub_volume', String(v));
+    } catch {}
     setBaseAudioVolume(v);
     if (audioRef.current) {
       audioRef.current.volume = v / 100;

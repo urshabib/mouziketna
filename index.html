@@ -14,6 +14,50 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="MOUZIKETNA" />
+
+    <script>
+      // 1. GitHub Pages Trailing Slash & Subpath Normalizer
+      // Prevents 404 asset failures when visited at https://username.github.io/repo without trailing slash
+      (function() {
+        var l = window.location;
+        var p = l.pathname;
+        if (!p.endsWith('/') && !p.split('/').pop().includes('.')) {
+          l.replace(p + '/' + l.search + l.hash);
+          return;
+        }
+
+        // 2. SPA URL Recovery for GitHub Pages 404 redirects
+        if (l.search && l.search[1] === '/') {
+          var decoded = l.search.slice(1).split('&').map(function(s) {
+            return s.replace(/~and~/g, '&');
+          }).join('?');
+          window.history.replaceState(null, null, l.pathname.slice(0, -1) + decoded + l.hash);
+        }
+
+        // 3. Dynamic Chunk Loading Auto-Recovery (Purges stale service worker caches on deployment)
+        window.addEventListener('error', function(e) {
+          if (e && e.message && (
+            e.message.indexOf('Failed to fetch dynamically imported module') !== -1 ||
+            e.message.indexOf('Loading chunk') !== -1 ||
+            e.message.indexOf('Importing a module script failed') !== -1
+          )) {
+            if (!sessionStorage.getItem('__mouzika_chunk_reload')) {
+              sessionStorage.setItem('__mouzika_chunk_reload', '1');
+              if ('caches' in window) {
+                caches.keys().then(function(names) {
+                  return Promise.all(names.map(function(n) { return caches.delete(n); }));
+                }).finally(function() {
+                  window.location.reload();
+                });
+              } else {
+                window.location.reload();
+              }
+            }
+          }
+        }, true);
+      })();
+    </script>
+
     <link rel="manifest" href="./manifest.json" />
     <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png" />
     <link rel="icon" type="image/png" href="./favicon.png" />
@@ -62,4 +106,3 @@
     </script>
   </body>
 </html>
-

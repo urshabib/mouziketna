@@ -627,14 +627,18 @@ export async function checkGitHubRepoForUpdates(onUpdateFound?: () => void): Pro
   return false;
 }
 
-// Automatically apply stored app name & logo on initial bundle evaluation
+// Automatically apply stored app name & logo on initial bundle evaluation safely
 if (typeof window !== 'undefined') {
-  const savedName = getStoredAppName();
-  if (savedName) {
-    applyCustomAppName(savedName);
-  }
-  const savedLogo = getStoredAppLogo();
-  if (savedLogo) {
-    applyCustomAppLogo(savedLogo);
+  try {
+    const savedName = getStoredAppName();
+    if (savedName) {
+      applyCustomAppName(savedName).catch(() => {});
+    }
+    const savedLogo = getStoredAppLogo();
+    if (savedLogo) {
+      applyCustomAppLogo(savedLogo).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('[MOUZIKA] PWA init notice:', e);
   }
 }
