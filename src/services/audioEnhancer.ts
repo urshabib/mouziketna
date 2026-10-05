@@ -131,43 +131,41 @@ function applyFilters() {
       midMudScoop.gain.setTargetAtTime(-0.6, t, 0.02); // Subtle boxiness reduction
 
       // Vocal Presence & Intelligibility: words and singer vocals remain upfront and bright
-      vocalClarityFilter.gain.setTargetAtTime(isVocalClarityActive ? 2.8 : 2.0, t, 0.02);
+      vocalClarityFilter.gain.setTargetAtTime(isVocalClarityActive ? 2.6 : 0, t, 0.02);
       highAirFilter.gain.setTargetAtTime(1.2, t, 0.02); // 11kHz air sheen
 
       // Headroom attenuation (-1.2dB) prevents low-end from causing output clipping
       headroomGainNode.gain.setTargetAtTime(0.88, t, 0.02);
 
       // Transparent safety ceiling limiter (only catches extreme transients near 0dB)
-      limiterNode.threshold.setTargetAtTime(-0.3, t, 0.02);
-      limiterNode.ratio.setTargetAtTime(12, t, 0.02);
+      limiterNode.threshold.setTargetAtTime(-0.5, t, 0.02);
+      limiterNode.ratio.setTargetAtTime(6, t, 0.02);
     } else if (currentBassMode === 'boost') {
       // 3. ULTRA DEEP CLUB BASS + PROTECTED VOCAL INTELLIGIBILITY:
       // Replaces the old distorted "ambulance boost" with clean, deep, physical low-end
       // without muffling vocals or destroying speech clarity!
-      subRumbleCut.frequency.setTargetAtTime(25, t, 0.02); // Infrasonic barrier
-      subBassPeaking.gain.setTargetAtTime(4.2, t, 0.02); // 58Hz Deep rich sub bass
-      bassLowShelf.gain.setTargetAtTime(2.8, t, 0.02); // 90Hz Solid kick punch
+      subRumbleCut.frequency.setTargetAtTime(22, t, 0.02); // Infrasonic barrier
+      subBassPeaking.gain.setTargetAtTime(4.6, t, 0.02); // 58Hz Deep rich sub bass
+      bassLowShelf.gain.setTargetAtTime(3.0, t, 0.02); // 90Hz Solid kick punch
       midMudScoop.gain.setTargetAtTime(-1.4, t, 0.02); // Clear out 300Hz mud band
 
       // Vocal Presence & Consonants: Increased to 3.6dB so lyrics punch right through the deep bass!
-      vocalClarityFilter.gain.setTargetAtTime(isVocalClarityActive ? 3.6 : 2.8, t, 0.02);
-      highAirFilter.gain.setTargetAtTime(2.0, t, 0.02); // 12kHz High sheen
+      vocalClarityFilter.gain.setTargetAtTime(isVocalClarityActive ? 3.6 : 0, t, 0.02);
+      highAirFilter.gain.setTargetAtTime(1.8, t, 0.02); // 12kHz High sheen
 
       // Headroom compensation (-2.2dB) ensures heavy bass never forces limiter into pump distortion
       headroomGainNode.gain.setTargetAtTime(0.78, t, 0.02);
 
-      limiterNode.threshold.setTargetAtTime(-0.4, t, 0.02);
-      limiterNode.ratio.setTargetAtTime(14, t, 0.02);
+      limiterNode.threshold.setTargetAtTime(-0.8, t, 0.02);
+      limiterNode.ratio.setTargetAtTime(8, t, 0.02);
     }
   }
 
   if (boostGainNode && audioCtx) {
     const t = audioCtx.currentTime;
-    const normalizedBase = Math.max(0, Math.min(100, currentBaseVolume)) / 100;
-    // Clean volume multiplier (1.0 to 2.0)
+    // Pure clean volume multiplier (1.0x to 2.0x) - does not color audio, add bass or compress
     const boostMultiplier = Math.max(100, Math.min(200, currentVolumeBoost)) / 100;
-    const finalGain = normalizedBase * boostMultiplier;
-    boostGainNode.gain.setTargetAtTime(finalGain, t, 0.02);
+    boostGainNode.gain.setTargetAtTime(boostMultiplier, t, 0.02);
   }
 }
 
@@ -254,7 +252,7 @@ export function ensureAudioGraph(audio: HTMLAudioElement) {
       analyserNode.smoothingTimeConstant = 0.72;
 
       // Connect DSP chain:
-      // source -> subRumbleCut -> subBassPeaking -> bassLowShelf -> midMudScoop -> vocalClarityFilter -> highAirFilter -> headroomGain -> boostGain -> limiter -> analyser -> destination
+      // source -> subRumbleCut -> subBassPeaking -> bassLowShelf -> midMudScoop -> vocalClarityFilter -> highAirFilter -> headroomGain -> limiter -> boostGain -> analyser -> destination
       sourceNode.connect(subRumbleCut);
       subRumbleCut.connect(subBassPeaking);
       subBassPeaking.connect(bassLowShelf);
@@ -262,9 +260,9 @@ export function ensureAudioGraph(audio: HTMLAudioElement) {
       midMudScoop.connect(vocalClarityFilter);
       vocalClarityFilter.connect(highAirFilter);
       highAirFilter.connect(headroomGainNode);
-      headroomGainNode.connect(boostGainNode);
-      boostGainNode.connect(limiterNode);
-      limiterNode.connect(analyserNode);
+      headroomGainNode.connect(limiterNode);
+      limiterNode.connect(boostGainNode);
+      boostGainNode.connect(analyserNode);
       analyserNode.connect(audioCtx.destination);
 
       isConnected = true;

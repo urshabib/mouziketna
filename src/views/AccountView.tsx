@@ -19,12 +19,9 @@ import {
   Disc,
   RefreshCw,
   Loader2,
-  ThumbsUp,
-  ThumbsDown,
 } from 'lucide-react';
 import { TrackThumbImage } from '../services/useTrackThumb';
 import { Track } from '../types';
-import { getExplicitInterestedTracks, getExplicitNotInterestedTracks } from '../services/storage';
 
 export const AccountView: React.FC = () => {
   const {
@@ -266,55 +263,6 @@ export const AccountView: React.FC = () => {
             <span className="text-xs text-white/50 font-semibold truncate">
               {topArtist ? formatHoursAndMinutes(topArtist.minutesListened) : 'Start listening'}
             </span>
-          </div>
-        </div>
-      </section>
-
-      {/* Music Taste Tuning Section */}
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-[#ff6b1a]" />
-            <h3 className="text-lg font-black text-white">Your Music Taste</h3>
-          </div>
-          <span className="text-[11px] font-bold text-white/40">Smart Recommendation Tuning</span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div
-            onClick={() => openCollection('playlist', 'music-taste', 'Your Music Taste')}
-            className="p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 transition-all cursor-pointer flex items-center justify-between group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#ff6b1a]/20 border border-[#ff6b1a]/30 flex items-center justify-center text-[#ff6b1a]">
-                <ThumbsUp className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-white group-hover:text-[#ff6b1a] transition-colors">
-                  Interested Songs ({getExplicitInterestedTracks().length})
-                </h4>
-                <p className="text-xs text-white/50">Prioritized in smart suggestions & radio</p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-[#ff6b1a] bg-[#ff6b1a]/10 px-2.5 py-1 rounded-full">View</span>
-          </div>
-
-          <div
-            onClick={() => openCollection('playlist', 'music-taste-excluded', 'Excluded Songs')}
-            className="p-4 rounded-2xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 transition-all cursor-pointer flex items-center justify-between group"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400">
-                <ThumbsDown className="w-5 h-5" />
-              </div>
-              <div>
-                <h4 className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">
-                  Not Interested ({getExplicitNotInterestedTracks().length})
-                </h4>
-                <p className="text-xs text-white/50">Filtered out from suggestions & autoplay</p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-red-400 bg-red-500/10 px-2.5 py-1 rounded-full">View</span>
           </div>
         </div>
       </section>
