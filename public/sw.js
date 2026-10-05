@@ -1,15 +1,17 @@
 // Service Worker for MOUZIKA PWA
-const CACHE_NAME = 'mouzika-pwa-v8';
+const CACHE_NAME = 'mouzika-pwa-v9';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
-// Precache only static unchanging shell assets (NOT index.html or chunk hashes)
+// Precache static shell assets (including predictable production bundles)
 const PRECACHE_ASSETS = [
   './manifest.json',
   './favicon.png',
   './favicon.ico',
   './icon-192.png',
   './icon-512.png',
-  './apple-touch-icon.png'
+  './apple-touch-icon.png',
+  './assets/index.css',
+  './assets/index.js'
 ];
 
 // Install event - precache core shell & activate immediately

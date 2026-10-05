@@ -129,17 +129,20 @@ export const LyricsSheet: React.FC = () => {
         transform: headerDragY > 0 ? `translateY(${headerDragY}px)` : undefined,
         transition: headerDragY === 0 ? 'transform 0.25s ease-out' : 'none',
       }}
-      className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-[#2a1708] via-[#120b05] to-black text-white px-5 sm:px-8 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] select-none overflow-hidden"
+      className="fixed inset-0 z-50 flex flex-col bg-[#08080a] text-white px-5 sm:px-8 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] select-none overflow-hidden rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
     >
       {/* Dynamic blurred ambient glow behind lyrics matching FullScreenPlayer */}
-      <div
-        className="absolute inset-0 opacity-35 blur-3xl pointer-events-none -z-10 transition-all duration-700"
-        style={{
-          backgroundImage: `url(${thumbSrc})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
-      />
+      <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+        <div
+          className="absolute -inset-24 opacity-60 blur-3xl scale-125 transition-all duration-700 pointer-events-none"
+          style={{
+            backgroundImage: `url(${thumbSrc})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+          }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/45 to-black/85" />
+      </div>
 
       {/* Top Header & Grab Section (Only section that handles swipe-down to dismiss) */}
       <div

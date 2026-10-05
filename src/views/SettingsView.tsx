@@ -94,6 +94,7 @@ export const SettingsView: React.FC = () => {
     setModalConfirm,
     showToast,
     setIsInstallModalOpen,
+    setIsWidgetsModalOpen,
   } = useMusic();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('all');
@@ -261,6 +262,33 @@ export const SettingsView: React.FC = () => {
             );
           })}
         </div>
+      </div>
+
+      {/* PHONE WIDGETS PROMO CARD */}
+      <div className="p-4 rounded-3xl bg-gradient-to-r from-[#2a1708] via-[#1a120c] to-[#120d09] border border-[#ff6b1a]/30 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl bg-[#ff6b1a]/20 border border-[#ff6b1a]/40 flex items-center justify-center text-[#ff6b1a] flex-shrink-0 shadow-lg shadow-[#ff6b1a]/20">
+            <Layers className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="text-sm font-black text-white flex items-center gap-2">
+              <span>Home & Lock Screen Widgets</span>
+              <span className="text-[10px] bg-[#ff6b1a] text-black font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                iOS & Android
+              </span>
+            </h4>
+            <p className="text-xs text-white/60 mt-0.5">
+              Spotify-style live Now Playing widget & Most Played Songs rotation on your phone.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsWidgetsModalOpen(true)}
+          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#ff6b1a] text-black font-black text-xs transition-transform hover:scale-105 active:scale-95 shadow-md shadow-[#ff6b1a]/25 cursor-pointer whitespace-nowrap text-center"
+        >
+          Open Widget Studio
+        </button>
       </div>
 
       {/* 1. AUDIO & DOWNLOADS */}

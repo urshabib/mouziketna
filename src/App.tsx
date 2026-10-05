@@ -9,6 +9,7 @@ import { QueueDrawer } from './components/QueueDrawer';
 import { ActionSheet } from './components/ActionSheet';
 import { Modals } from './components/Modals';
 import { InstallModal } from './components/InstallModal';
+import { WidgetsCenterModal } from './components/WidgetsCenterModal';
 import { HomeView } from './views/HomeView';
 import { SearchView } from './views/SearchView';
 import { LibraryView } from './views/LibraryView';
@@ -28,6 +29,8 @@ const AppShell: React.FC = () => {
     showToast,
     isInstallModalOpen,
     setIsInstallModalOpen,
+    isWidgetsModalOpen,
+    setIsWidgetsModalOpen,
     isFullScreenOpen,
     setIsFullScreenOpen,
     isLandscapeStageOpen,
@@ -231,6 +234,20 @@ const AppShell: React.FC = () => {
     };
   }, [showToast]);
 
+  // Handle widget launcher query parameter (?widget=nowplaying or ?widget=topsongs)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('widget')) {
+        setIsWidgetsModalOpen(true);
+      }
+      const pane = params.get('pane');
+      if (pane && ['home', 'search', 'library', 'account', 'settings', 'admin'].includes(pane)) {
+        setActivePane(pane as any);
+      }
+    } catch {}
+  }, [setIsWidgetsModalOpen, setActivePane]);
+
   return (
     <div
       className={`relative flex h-screen w-screen overflow-hidden bg-[#0d0905] text-[#f5f5f7] font-['Plus_Jakarta_Sans',sans-serif] ${themeClass} ${glassClass} ${tintClass}`}
@@ -289,6 +306,12 @@ const AppShell: React.FC = () => {
         <InstallModal
           isOpen={isInstallModalOpen}
           onClose={() => setIsInstallModalOpen(false)}
+        />
+      )}
+      {isWidgetsModalOpen && (
+        <WidgetsCenterModal
+          isOpen={isWidgetsModalOpen}
+          onClose={() => setIsWidgetsModalOpen(false)}
         />
       )}
 

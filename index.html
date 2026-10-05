@@ -78,6 +78,32 @@
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script type="module">
+      // GitHub Pages Root Deployment Auto-Detection:
+      // If deployed to static GitHub Pages from root without Vite dev server, load production assets
+      if (!window.__MOUZIKA_DEV_LOADED__) {
+        setTimeout(function() {
+          var root = document.getElementById('root');
+          if (root && root.children.length === 0) {
+            console.log('[MOUZIKA] Loading static production bundle for GitHub Pages root hosting...');
+            if (!document.querySelector('link[href*="index.css"]')) {
+              var css = document.createElement('link');
+              css.rel = 'stylesheet';
+              css.crossOrigin = 'anonymous';
+              css.href = './assets/index.css';
+              document.head.appendChild(css);
+            }
+            if (!document.querySelector('script[src*="index.js"]')) {
+              var js = document.createElement('script');
+              js.type = 'module';
+              js.crossOrigin = 'anonymous';
+              js.src = './assets/index.js';
+              document.body.appendChild(js);
+            }
+          }
+        }, 350);
+      }
+    </script>
     <script>
       // Global PWA prompt capture
       window.__deferredPrompt = null;

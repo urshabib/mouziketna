@@ -11,6 +11,10 @@ import {
   User,
   X,
   Check,
+  Sparkles,
+  Ban,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { isDownloaded } from '../services/storage';
 import { canonicalThumbUrl } from '../services/api';
@@ -31,6 +35,9 @@ export const ActionSheet: React.FC = () => {
     removeTrackFromPlaylist,
     openCollection,
     showToast,
+    tuneMusicTaste,
+    isTuneInterested,
+    isTuneDisliked,
   } = useMusic();
 
   const [isClosing, setIsClosing] = useState(false);
@@ -276,6 +283,47 @@ export const ActionSheet: React.FC = () => {
             <Heart className={`w-5 h-5 ${isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/70'}`} />
             <span>{isLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}</span>
           </button>
+
+          {/* Music Taste Tuning (Interested / Not Interested) */}
+          <div className="my-1 py-1 px-1 bg-white/5 rounded-2xl border border-white/10 flex flex-col gap-0.5">
+            <button
+              onClick={() => {
+                tuneMusicTaste(track, 'more');
+                close();
+              }}
+              className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer group"
+              title="Add to Music Taste (Interested) — Boost in smart suggestions"
+            >
+              <div className="flex items-center gap-3">
+                <ThumbsUp className={`w-4 h-4 ${isTuneInterested(track.id) ? 'text-[#ff6b1a] fill-[#ff6b1a]' : 'text-[#ff6b1a]'}`} />
+                <span className="group-hover:text-[#ff6b1a] transition-colors">
+                  {isTuneInterested(track.id) ? 'Added to Music Taste' : 'Add to Music Taste (Interested)'}
+                </span>
+              </div>
+              <span className="text-[10px] text-[#ff6b1a] font-extrabold bg-[#ff6b1a]/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                {isTuneInterested(track.id) ? 'Tuned ✓' : 'More like this'}
+              </span>
+            </button>
+
+            <button
+              onClick={() => {
+                tuneMusicTaste(track, 'less');
+                close();
+              }}
+              className="flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-red-500/10 text-white font-semibold text-sm transition-colors cursor-pointer group"
+              title="Remove from Music Taste (Not Interested) — Exclude from smart suggestions"
+            >
+              <div className="flex items-center gap-3">
+                <ThumbsDown className={`w-4 h-4 ${isTuneDisliked(track.id) ? 'text-red-400 fill-red-400' : 'text-red-400'}`} />
+                <span className="group-hover:text-red-400 transition-colors">
+                  {isTuneDisliked(track.id) ? 'Removed from Music Taste' : 'Remove from Music Taste (Not Interested)'}
+                </span>
+              </div>
+              <span className="text-[10px] text-red-400 font-extrabold bg-red-500/20 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                {isTuneDisliked(track.id) ? 'Excluded ✕' : 'Less like this'}
+              </span>
+            </button>
+          </div>
 
           <button
             onClick={() => {

@@ -37,5 +37,62 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "Now Playing Widget",
+      "short_name": "Now Playing",
+      "description": "Open live playback widget",
+      "url": "./?widget=nowplaying",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Most Played Songs",
+      "short_name": "Top Songs",
+      "description": "View heavy rotation top tracks",
+      "url": "./?widget=topsongs",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Search Music",
+      "short_name": "Search",
+      "description": "Search any track, artist or album",
+      "url": "./?pane=search",
+      "icons": [{ "src": "./icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "widgets": [
+    {
+      "name": "Now Playing Widget",
+      "description": "Current song playback controls and artwork",
+      "tag": "now-playing",
+      "template": "widget-now-playing",
+      "ms_ac_template": "widget.json",
+      "data": "widget-data.json",
+      "type": "application/json",
+      "screenshots": [
+        {
+          "src": "./icon-512.png",
+          "sizes": "512x512",
+          "label": "Now Playing Widget"
+        }
+      ]
+    },
+    {
+      "name": "Top Played Songs Widget",
+      "description": "Quick stream your most played songs",
+      "tag": "top-songs",
+      "template": "widget-top-songs",
+      "ms_ac_template": "widget.json",
+      "data": "widget-data.json",
+      "type": "application/json",
+      "screenshots": [
+        {
+          "src": "./icon-512.png",
+          "sizes": "512x512",
+          "label": "Top Played Songs Widget"
+        }
+      ]
+    }
   ]
 }

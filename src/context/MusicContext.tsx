@@ -45,6 +45,12 @@ import {
   tasteEvent,
   tasteSkippedArtists,
   tasteTopSeeds,
+  addExplicitInterested,
+  addExplicitNotInterested,
+  isExplicitInterested,
+  isExplicitNotInterested,
+  getExplicitInterestedTracks,
+  getExplicitNotInterestedTracks,
 } from '../services/storage';
 import { ensureAudioGraph, setBaseAudioVolume, resumeAudioContext } from '../services/audioEnhancer';
 
@@ -131,6 +137,18 @@ interface MusicContextType {
   setModalConfirm: (conf: { title: string; text: string; onConfirm: () => void } | null) => void;
   isInstallModalOpen: boolean;
   setIsInstallModalOpen: (open: boolean) => void;
+  isWidgetsModalOpen: boolean;
+  setIsWidgetsModalOpen: (open: boolean) => void;
+
+  // Music Taste Tuning
+  tuneMusicTaste: (track: Track, direction: 'more' | 'less') => void;
+  isTuneInterested: (trackId: string) => boolean;
+  isTuneDisliked: (trackId: string) => boolean;
+
+  // Cloud Sync
+  forceProfileServerSync: (forcedProfile?: UserProfile) => Promise<boolean>;
+  isSyncingToServer: boolean;
+  lastServerSyncTime: number | null;
 
   // Downloads
   downloadedSet: Set<string>;
@@ -291,6 +309,109 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
     return false;
   });
+  const [isWidgetsModalOpen, setIsWidgetsModalOpen] = useState(false);
+
+  // Cloudflare Batch & Quota-Protected Server Syncing
+  const [isSyncingToServer, setIsSyncingToServer] = useState(false);
+  const [lastServerSyncTime, setLastServerSyncTime] = useState<number | null>(() => {
+    try {
+      const saved = localStorage.getItem('mouzika_last_server_sync_time');
+      return saved ? Number(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const pendingSyncProfRef = useRef<UserProfile | null>(null);
+  const isSyncDirtyRef = useRef(false);
+  const lastServerSyncTimestampRef = useRef<number>(0);
+
+  const flushProfileToServer = useCallback(
+    async (forcedProfile?: UserProfile): Promise<boolean> => {
+      const profToSync = forcedProfile || pendingSyncProfRef.current || userProfile;
+      if (!globalUser || globalUser === 'admin') return false;
+
+      // Ensure local cache has the most recent changes immediately
+      cacheProfileLocally(globalUser, profToSync);
+
+      try {
+        setIsSyncingToServer(true);
+        const now = Date.now();
+        lastServerSyncTimestampRef.current = now;
+        setLastServerSyncTime(now);
+        try {
+          localStorage.setItem('mouzika_last_server_sync_time', String(now));
+        } catch {}
+
+        // Full consolidated profile payload with listening stats and explicit music taste
+        const payload = {
+          ...profToSync,
+          username: globalUser,
+          stats: profToSync.stats || userProfile.stats || {
+            totalMinutesListened: 0,
+            totalTracksPlayed: 0,
+            topSongs: [],
+            topArtists: [],
+            lastUpdated: now,
+          },
+          explicitInterested: getExplicitInterestedTracks(),
+          explicitNotInterested: getExplicitNotInterestedTracks(),
+        };
+
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+          isSyncDirtyRef.current = false;
+          pendingSyncProfRef.current = null;
+          return true;
+        }
+        return false;
+      } catch (err) {
+        // Retained safely in localStorage cache to retry later
+        return false;
+      } finally {
+        setIsSyncingToServer(false);
+      }
+    },
+    [globalUser, userProfile]
+  );
+
+  // Periodic Background Batch Sync:
+  // Runs every 10 minutes, checking if local changes are dirty, drastically reducing Cloudflare daily requests
+  useEffect(() => {
+    const PERIODIC_SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes
+    const intervalId = setInterval(() => {
+      if (isSyncDirtyRef.current && globalUser && globalUser !== 'admin') {
+        flushProfileToServer();
+      }
+    }, PERIODIC_SYNC_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, [globalUser, flushProfileToServer]);
+
+  // Flush pending changes when user switches away, minimizes app, or closes window
+  useEffect(() => {
+    const handleFlushOnLeave = () => {
+      if (isSyncDirtyRef.current && globalUser && globalUser !== 'admin') {
+        flushProfileToServer();
+      }
+    };
+    window.addEventListener('beforeunload', handleFlushOnLeave);
+    const handleVis = () => {
+      if (document.visibilityState === 'hidden') {
+        handleFlushOnLeave();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+    return () => {
+      window.removeEventListener('beforeunload', handleFlushOnLeave);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
+  }, [globalUser, flushProfileToServer]);
 
   // Downloads
   const [downloadedSet, setDownloadedSet] = useState<Set<string>>(new Set());
@@ -448,14 +569,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
     };
 
-    // Auto-login on launch if saved
+    // Auto-login on launch if saved or cached
     let savedUser: string | null = null;
     let savedPass: string | null = null;
+    let isGuest = false;
     try {
       savedUser = localStorage.getItem('hub_active_user');
       savedPass = localStorage.getItem('hub_active_pass');
+      isGuest = localStorage.getItem('hub_is_guest') === 'true';
     } catch {}
-    if (savedUser && savedPass) {
+
+    if (savedUser) {
+      // User is already signed in! Keep them directly in their account without showing the welcome screen
+      setGlobalUser(savedUser);
+      setIsAuthGateOpen(false);
+
       if (savedUser !== 'admin') {
         const cached = restoreProfileFromCache(savedUser);
         if (cached) {
@@ -465,8 +593,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setUserProfile((prev) => ({ ...prev, ...cached }));
         }
       }
-      login(savedUser, savedPass);
+
+      if (savedPass) {
+        // Silently sync profile in background
+        login(savedUser, savedPass).catch(() => {});
+      }
+    } else if (isGuest) {
+      // User previously chose to continue as guest
+      setIsAuthGateOpen(false);
     } else {
+      // New visitor or logged out: show welcome screen with login / signup / continue as guest
       setIsAuthGateOpen(true);
     }
 
@@ -544,12 +680,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
     if (!globalUser || globalUser === 'admin') return;
     cacheProfileLocally(globalUser, prof);
-
-    fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(prof),
-    }).catch(() => {});
+    pendingSyncProfRef.current = prof;
+    isSyncDirtyRef.current = true;
   }, [userProfile, globalUser]);
 
   const login = async (user: string, pass: string) => {
@@ -585,6 +717,36 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             return t;
           });
         };
+
+        const localCached = restoreProfileFromCache(user);
+        const localStats = localCached?.stats || userProfile.stats;
+        const serverStats = p.stats;
+
+        // Intelligent stat merge: preserve all minutes listened and counts
+        const mergedStats = {
+          totalMinutesListened: Math.max(serverStats?.totalMinutesListened || 0, localStats?.totalMinutesListened || 0),
+          totalTracksPlayed: Math.max(serverStats?.totalTracksPlayed || 0, localStats?.totalTracksPlayed || 0),
+          topSongs: (serverStats?.topSongs && serverStats.topSongs.length > 0)
+            ? serverStats.topSongs
+            : (localStats?.topSongs || []),
+          topArtists: (serverStats?.topArtists && serverStats.topArtists.length > 0)
+            ? serverStats.topArtists
+            : (localStats?.topArtists || []),
+          lastUpdated: Math.max(serverStats?.lastUpdated || 0, localStats?.lastUpdated || 0, Date.now()),
+        };
+
+        // Restore explicit music taste preferences from cloud if present
+        if (p.explicitInterested && Array.isArray(p.explicitInterested)) {
+          try {
+            localStorage.setItem('mouzika_taste_explicit_interested', JSON.stringify(p.explicitInterested));
+          } catch {}
+        }
+        if (p.explicitNotInterested && Array.isArray(p.explicitNotInterested)) {
+          try {
+            localStorage.setItem('mouzika_taste_explicit_not_interested', JSON.stringify(p.explicitNotInterested));
+          } catch {}
+        }
+
         const merged: UserProfile = {
           ...userProfile,
           username: p.username || user,
@@ -612,7 +774,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           uiScale: devSettings.uiScale || p.uiScale || 'default',
           activePreset: devSettings.activePreset || p.activePreset || 'glass',
           avatarUrl: p.avatarUrl || null,
-          stats: p.stats || userProfile.stats || { totalMinutesListened: 0, totalTracksPlayed: 0, topSongs: [], topArtists: [] },
+          stats: mergedStats,
         };
         setUserProfile(merged);
         saveDeviceSettings(merged);
@@ -640,6 +802,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       localStorage.removeItem('hub_active_user');
       localStorage.removeItem('hub_active_pass');
+      localStorage.removeItem('hub_is_guest');
     } catch {}
     setGlobalUser(null);
     setGlobalPass(null);
@@ -648,7 +811,31 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('Logged out', true);
   };
 
-  // Next Track Algorithmic Discovery
+  // Music Taste Tuning
+  const tuneMusicTaste = useCallback((track: Track, direction: 'more' | 'less') => {
+    if (!track || !track.id) return;
+    if (direction === 'more') {
+      addExplicitInterested(track);
+      showToast(`Added to your Music Taste — More like this`, true);
+    } else {
+      addExplicitNotInterested(track);
+      showToast(`Tuned out — Less like this`, true);
+      if (activeTrackRef.current?.id === track.id) {
+        if (playNextRef.current) playNextRef.current();
+      }
+    }
+    syncProfile();
+  }, [showToast, syncProfile]);
+
+  const isTuneInterested = useCallback((trackId: string) => {
+    return isExplicitInterested(trackId);
+  }, []);
+
+  const isTuneDisliked = useCallback((trackId: string) => {
+    return isExplicitNotInterested(trackId);
+  }, []);
+
+  // Next Track Algorithmic Discovery with explicit taste prioritization
   const getNextAlgorithmTrack = async (seed: Track): Promise<Track | null> => {
     try {
       const res = await fetchWithTimeout(
@@ -666,10 +853,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             thumb: canonicalThumbUrl(it.id || it.videoId),
             type: 'song' as const,
           }))
-          .filter((t: Track) => t.id && t.id !== seed.id);
+          .filter((t: Track) => t.id && t.id !== seed.id && !isExplicitNotInterested(t.id));
 
         if (candidates.length > 0) {
-          return candidates[Math.floor(Math.random() * Math.min(5, candidates.length))];
+          // Sort candidates: prioritize explicit interested songs & artists, avoid disliked
+          const sorted = candidates.sort((a: Track, b: Track) => {
+            const aScore = (isExplicitInterested(a.id) ? 15 : 0) + tasteArtistScore(a.artist);
+            const bScore = (isExplicitInterested(b.id) ? 15 : 0) + tasteArtistScore(b.artist);
+            return bScore - aScore;
+          });
+          return sorted[Math.floor(Math.random() * Math.min(3, sorted.length))];
         }
       }
     } catch {}
@@ -892,15 +1085,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedProf = { ...prev, stats: updatedStats };
       saveDeviceSettings(updatedProf);
 
-      // Debounce server syncing to once every 20s
-      if (globalUser && globalUser !== 'admin' && Date.now() - lastStatsSyncTimeRef.current > 20000) {
-        lastStatsSyncTimeRef.current = Date.now();
+      // Save locally immediately; queued for periodic/exit batch sync
+      if (globalUser && globalUser !== 'admin') {
         cacheProfileLocally(globalUser, updatedProf);
-        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedProf),
-        }).catch(() => {});
+        pendingSyncProfRef.current = updatedProf;
+        isSyncDirtyRef.current = true;
       }
       return updatedProf;
     });
@@ -951,29 +1140,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       const updatedProf = { ...prev, recentlyPlayed: updated, stats: updatedStats };
       saveDeviceSettings(updatedProf);
+
+      // Save locally immediately; batch sync periodically without hammering server on each track click
       if (globalUser && globalUser !== 'admin') {
         cacheProfileLocally(globalUser, updatedProf);
-        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updatedProf),
-        }).catch(() => {});
-        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/record-playback`, 4000, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: globalUser,
-            track: {
-              id: track.id,
-              title: track.title,
-              artist: track.artist,
-              thumb: track.thumb,
-              album: track.album,
-              type: track.type || 'song',
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(() => {});
+        pendingSyncProfRef.current = updatedProf;
+        isSyncDirtyRef.current = true;
       }
       return updatedProf;
     });
@@ -2011,6 +2183,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setModalConfirm,
         isInstallModalOpen,
         setIsInstallModalOpen,
+        isWidgetsModalOpen,
+        setIsWidgetsModalOpen,
+        tuneMusicTaste,
+        isTuneInterested,
+        isTuneDisliked,
+        forceProfileServerSync: flushProfileToServer,
+        isSyncingToServer,
+        lastServerSyncTime,
         downloadedSet,
         downloadQualityMap: downloadedQualityMap,
         downloadTrack,

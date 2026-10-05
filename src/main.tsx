@@ -7,6 +7,7 @@ import './index.css';
 // Signal to host environments that the React bundle has loaded
 if (typeof window !== 'undefined') {
   (window as any).__mouzikaLoaded = true;
+  (window as any).__MOUZIKA_DEV_LOADED__ = true;
 }
 
 createRoot(document.getElementById('root')!).render(

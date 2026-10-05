@@ -85,6 +85,16 @@ export const CollectionView: React.FC = () => {
   const [showAddToPlaylistMenu, setShowAddToPlaylistMenu] = useState(false);
   const touchStartIndexRef = useRef<number | null>(null);
   const touchCurrentIndexRef = useRef<number | null>(null);
+  const touchHoldTimerRef = useRef<any>(null);
+  const touchActiveReorderIndexRef = useRef<number | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const [reorderingTrackIndex, setReorderingTrackIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (touchHoldTimerRef.current) clearTimeout(touchHoldTimerRef.current);
+    };
+  }, []);
 
   const target = collectionTarget;
   if (!target) return null;
@@ -131,6 +141,18 @@ export const CollectionView: React.FC = () => {
         setLoading(false);
       }
     } else if (target.type === 'playlist') {
+      if (target.id === 'music-taste') {
+        const { getExplicitInterestedTracks } = await import('../services/storage');
+        setTracks(getExplicitInterestedTracks());
+        setLoading(false);
+        return;
+      }
+      if (target.id === 'music-taste-excluded') {
+        const { getExplicitNotInterestedTracks } = await import('../services/storage');
+        setTracks(getExplicitNotInterestedTracks());
+        setLoading(false);
+        return;
+      }
       try {
         const res = await fetchJsonRetry<any>(
           `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(target.title || '')}&f=song`,
@@ -312,21 +334,56 @@ export const CollectionView: React.FC = () => {
     }
   };
 
-  const handleTouchStart = (index: number) => {
-    touchStartIndexRef.current = index;
-    touchCurrentIndexRef.current = index;
-    setDraggedIndex(index);
-    if (navigator.vibrate) {
-      try {
-        navigator.vibrate(25);
-      } catch {}
+  const handleTouchStart = (e: React.TouchEvent, index: number) => {
+    if (touchHoldTimerRef.current) {
+      clearTimeout(touchHoldTimerRef.current);
+      touchHoldTimerRef.current = null;
     }
+    touchActiveReorderIndexRef.current = null;
+
+    const touch = e.touches[0];
+    if (!touch) return;
+    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+
+    // Strictly require 0.5s (500ms) long-press to unlock reordering
+    // to prevent accidental reordering when swiping from left of screen
+    touchHoldTimerRef.current = setTimeout(() => {
+      touchActiveReorderIndexRef.current = index;
+      touchStartIndexRef.current = index;
+      touchCurrentIndexRef.current = index;
+      setDraggedIndex(index);
+      setReorderingTrackIndex(index);
+      if (navigator.vibrate) {
+        try {
+          navigator.vibrate([35, 30, 35]);
+        } catch {}
+      }
+    }, 500);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (touchStartIndexRef.current === null) return;
     const touch = e.touches[0];
     if (!touch) return;
+
+    // If 0.5s hold hasn't triggered yet:
+    if (touchActiveReorderIndexRef.current === null) {
+      if (touchStartPosRef.current) {
+        const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+        const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+        // Finger moved > 8px before 500ms: user is scrolling or edge-swiping!
+        // Immediately abort reordering and allow normal scrolling!
+        if (dx > 8 || dy > 8) {
+          if (touchHoldTimerRef.current) {
+            clearTimeout(touchHoldTimerRef.current);
+            touchHoldTimerRef.current = null;
+          }
+        }
+      }
+      return;
+    }
+
+    // Long press (0.5s) triggered! User intentionally held to reorder this track!
+    if (e.cancelable) e.preventDefault();
     checkAutoScroll(touch.clientY);
     let el = document.elementFromPoint(touch.clientX, touch.clientY);
     if (!el || !el.closest('[data-track-index]')) {
@@ -349,8 +406,13 @@ export const CollectionView: React.FC = () => {
   };
 
   const handleTouchEnd = () => {
-    if (touchStartIndexRef.current !== null && touchCurrentIndexRef.current !== null) {
-      const from = touchStartIndexRef.current;
+    if (touchHoldTimerRef.current) {
+      clearTimeout(touchHoldTimerRef.current);
+      touchHoldTimerRef.current = null;
+    }
+
+    if (touchActiveReorderIndexRef.current !== null && touchCurrentIndexRef.current !== null) {
+      const from = touchActiveReorderIndexRef.current;
       const to = touchCurrentIndexRef.current;
       if (from !== to && from >= 0 && to >= 0 && from < tracks.length && to < tracks.length) {
         const updated = [...tracks];
@@ -362,10 +424,13 @@ export const CollectionView: React.FC = () => {
         }
       }
     }
+    touchActiveReorderIndexRef.current = null;
     touchStartIndexRef.current = null;
     touchCurrentIndexRef.current = null;
+    touchStartPosRef.current = null;
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setReorderingTrackIndex(null);
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -795,12 +860,14 @@ export const CollectionView: React.FC = () => {
             <div
               key={`${t.id}-${idx}`}
               data-track-index={idx}
-              draggable={target.type === 'custom-playlist' && !isSelectMode}
-              onDragStart={(e) => handleDragStart(e, idx)}
               onDragOver={(e) => handleDragOver(e, idx)}
               onDrop={(e) => handleDrop(e, idx)}
               className={`transition-all rounded-xl ${
                 dragOverIndex === idx ? 'border-t-2 border-[#ff6b1a] bg-[#ff6b1a]/10' : ''
+              } ${
+                reorderingTrackIndex === idx
+                  ? 'ring-2 ring-[#ff6b1a] shadow-2xl bg-[#ff6b1a]/20 scale-[1.02] z-20'
+                  : ''
               }`}
             >
               <TrackRow
@@ -821,9 +888,10 @@ export const CollectionView: React.FC = () => {
                     ? {
                         draggable: true,
                         onDragStart: (e: any) => handleDragStart(e, idx),
-                        onTouchStart: () => handleTouchStart(idx),
+                        onTouchStart: (e: any) => handleTouchStart(e, idx),
                         onTouchMove: (e: any) => handleTouchMove(e),
                         onTouchEnd: () => handleTouchEnd(),
+                        onTouchCancel: () => handleTouchEnd(),
                       }
                     : undefined
                 }

@@ -25,6 +25,7 @@ import {
   Sparkles,
   Zap,
   Waves,
+  Mic,
 } from 'lucide-react';
 import { FALLBACK_ART } from '../services/api';
 import { useTrackThumb } from '../services/useTrackThumb';
@@ -36,6 +37,7 @@ import {
   setBassBoostMode,
   setVolumeBoostPercent,
   resetBoostSettings,
+  toggleVocalClarity,
   subscribeAudioEnhancer,
   getAudioBoosterState,
   BassBoostMode,
@@ -230,31 +232,46 @@ export const FullScreenPlayer: React.FC = () => {
   return (
     <AnimatePresence>
       {isFullScreenOpen && (
-        <motion.div
-          key="fullscreen-player"
-          initial={{ y: '100%', opacity: 0.8 }}
-          animate={{ y: dragY > 0 ? dragY : 0, opacity: 1 }}
-          exit={{ y: '100%', opacity: 0 }}
-          transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onMouseDown={handleTouchStart}
-          onMouseMove={handleTouchMove}
-          onMouseUp={handleTouchEnd}
-          className="fixed inset-0 z-50 flex flex-col justify-between bg-gradient-to-b from-[#2a1708] via-[#120b05] to-black text-white px-5 sm:px-12 pt-3 pb-6 sm:pb-8 overflow-y-auto select-none touch-none"
-        >
-          {/* Dynamic blurred ambient glow behind art */}
-          <div
-            className="absolute inset-0 opacity-40 blur-3xl pointer-events-none -z-10 transition-all duration-700"
-            style={{
-              backgroundImage: `url(${thumbSrc})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-            }}
-          />
+        <>
+          {/* Soft backdrop scrim when swiping down */}
+          {dragY > 0 && (
+            <div
+              className="fixed inset-0 z-40 bg-black/60 pointer-events-none transition-opacity"
+              style={{ opacity: Math.max(0, 1 - dragY / 300) }}
+            />
+          )}
 
-          {/* Top Header Bar */}
+          <motion.div
+            key="fullscreen-player"
+            initial={{ y: '100%', opacity: 0.8 }}
+            animate={{ y: dragY > 0 ? dragY : 0, opacity: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleTouchStart}
+            onMouseMove={handleTouchMove}
+            onMouseUp={handleTouchEnd}
+            className="fixed inset-0 z-50 flex flex-col justify-between bg-[#08080a] text-white px-5 sm:px-12 pt-2 pb-6 sm:pb-8 overflow-y-auto select-none touch-none rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
+          >
+            {/* Dynamic seamless extended ambient glow - extends -inset-24 scale-125 so blur NEVER fades to black at edges */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
+              <div
+                className="absolute -inset-24 opacity-60 blur-3xl scale-125 transition-all duration-700 pointer-events-none"
+                style={{
+                  backgroundImage: `url(${thumbSrc})`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }}
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/45 to-black/85" />
+            </div>
+
+            {/* Top Grab / Swipe Bar */}
+            <div className="w-10 h-1 rounded-full bg-white/25 mx-auto mb-1 flex-shrink-0" />
+
+            {/* Top Header Bar */}
           <div className="flex items-center justify-between w-full max-w-lg mx-auto mb-1 sm:mb-2 flex-shrink-0">
             <button
               onClick={() => setIsFullScreenOpen(false)}
@@ -360,25 +377,26 @@ export const FullScreenPlayer: React.FC = () => {
                     {/* Section 1: Bass Boost (off, on, on+ boost) */}
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-white/80">Bass Boost</span>
+                        <span className="text-xs font-bold text-white/80">Bass Enhancement</span>
                         <span className="text-[11px] font-extrabold text-[#ff6b1a] uppercase tracking-wide">
                           {boosterSettings.bassMode === 'off'
-                            ? 'Off'
+                            ? 'Studio Bypass'
                             : boosterSettings.bassMode === 'on'
-                            ? 'On'
-                            : 'On+ Boost'}
+                            ? 'Clear Bass'
+                            : 'Deep Sub-Bass'}
                         </span>
                       </div>
                       <div className="grid grid-cols-3 gap-1.5 p-1 bg-black/60 rounded-xl border border-white/10">
                         {(['off', 'on', 'boost'] as BassBoostMode[]).map((mode) => {
                           const isActive = boosterSettings.bassMode === mode;
-                          const label = mode === 'off' ? 'Off' : mode === 'on' ? 'On' : 'On+ Boost';
+                          const label =
+                            mode === 'off' ? 'Off' : mode === 'on' ? 'Clear Bass' : 'Deep Bass';
                           return (
                             <button
                               key={mode}
                               type="button"
                               onClick={() => setBassBoostMode(mode)}
-                              className={`py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                              className={`py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
                                 isActive
                                   ? 'bg-[#ff6b1a] text-black shadow-lg scale-[1.02]'
                                   : 'text-white/60 hover:text-white hover:bg-white/5'
@@ -389,9 +407,67 @@ export const FullScreenPlayer: React.FC = () => {
                           );
                         })}
                       </div>
+                      <p className="text-[10px] text-white/45 leading-tight">
+                        {boosterSettings.bassMode === 'off'
+                          ? 'Pure uncompressed master audio. 100% transparent and neutral.'
+                          : boosterSettings.bassMode === 'on'
+                          ? 'Tight 70Hz punch + 28Hz subsonic cut. Lyrics & vocal clarity are 100% protected.'
+                          : 'Deep physical sub rumble with active vocal intelligibility compensation.'}
+                      </p>
                     </div>
 
-                    {/* Section 2: Volume Booster (100% to 200%) */}
+                    {/* Section 2: Vocal & Lyric Intelligibility Booster */}
+                    <div
+                      className={`flex flex-col gap-1.5 pt-2 border-t border-white/10 transition-all ${
+                        boosterSettings.bassMode === 'off'
+                          ? 'opacity-40 pointer-events-none select-none grayscale'
+                          : 'opacity-100 pointer-events-auto'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <Mic
+                            className={`w-3.5 h-3.5 transition-colors ${
+                              boosterSettings.bassMode === 'off'
+                                ? 'text-zinc-500'
+                                : boosterSettings.vocalClarity
+                                ? 'text-[#ff6b1a]'
+                                : 'text-white/60'
+                            }`}
+                          />
+                          <span
+                            className={`text-xs font-bold transition-colors ${
+                              boosterSettings.bassMode === 'off' ? 'text-zinc-400' : 'text-white/90'
+                            }`}
+                          >
+                            Voice & Lyric Clarity
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={boosterSettings.bassMode === 'off'}
+                          onClick={toggleVocalClarity}
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-extrabold transition-all cursor-pointer ${
+                            boosterSettings.bassMode === 'off'
+                              ? boosterSettings.vocalClarity
+                                ? 'bg-zinc-800 text-zinc-400 border border-zinc-700/60 cursor-not-allowed'
+                                : 'bg-zinc-900 text-zinc-500 border border-zinc-800 cursor-not-allowed'
+                              : boosterSettings.vocalClarity
+                              ? 'bg-[#ff6b1a] text-black shadow-sm'
+                              : 'bg-white/10 text-white/50 hover:bg-white/15 hover:text-white'
+                          }`}
+                        >
+                          {boosterSettings.vocalClarity ? 'ON' : 'OFF'}
+                        </button>
+                      </div>
+                      <p className={`text-[10px] leading-snug transition-colors ${boosterSettings.bassMode === 'off' ? 'text-zinc-500' : 'text-white/40'}`}>
+                        {boosterSettings.bassMode === 'off'
+                          ? 'Grayed out while Bass Boost is off. Turn on Clear Bass or Deep Bass to re-enable.'
+                          : 'Lifts singer vocals and consonants (3.2kHz) for crystal-clear lyrics when bass is boosted.'}
+                      </p>
+                    </div>
+
+                    {/* Section 3: Volume Booster (100% to 200%) */}
                     <div className="flex flex-col gap-2 pt-1 border-t border-white/10">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-white/80">Volume Booster</span>
@@ -436,7 +512,7 @@ export const FullScreenPlayer: React.FC = () => {
                       </div>
 
                       <p className="text-[10px] text-white/40 pt-1 leading-snug">
-                        Amplifies audio output up to 200% via hardware DSP. Saved in cache.
+                        Amplifies audio output up to 200% via hardware DSP with safety peak limiter.
                       </p>
                     </div>
                   </div>
@@ -514,7 +590,7 @@ export const FullScreenPlayer: React.FC = () => {
 
               <button
                 onClick={() => setIsQueueOpen(true)}
-                className="p-2 text-white/70 hover:text-white transition-colors"
+                className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
                 title="Queue"
               >
                 <ListMusic className="w-5 h-5" />
@@ -522,7 +598,7 @@ export const FullScreenPlayer: React.FC = () => {
 
               <button
                 onClick={() => setModalAddToPlaylistTrack(activeTrack)}
-                className="p-2 text-white/70 hover:text-white transition-colors"
+                className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
                 title="Add to Playlist"
               >
                 <Plus className="w-5 h-5" />
@@ -544,7 +620,7 @@ export const FullScreenPlayer: React.FC = () => {
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className={`w-full aspect-square ${
                 viewMode !== 'square' ? 'rounded-full' : 'rounded-3xl'
-              } shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] relative group cursor-grab active:cursor-grabbing mx-auto select-none`}
+              } relative group cursor-grab active:cursor-grabbing mx-auto select-none`}
             >
               {viewMode === 'spectrum' ? (
                 /* 3. Spicetify / NCS Circular Spectrum Visualizer */
@@ -654,39 +730,6 @@ export const FullScreenPlayer: React.FC = () => {
                     style={{ aspectRatio: '1 / 1' }}
                     draggable={false}
                   />
-                </div>
-              )}
-
-              {/* Visual swipe indicator overlay */}
-              {(dragX !== 0 || Math.abs(dragY) > 20) && (
-                <div
-                  className={`absolute inset-0 flex items-center justify-center pointer-events-none transition-opacity ${
-                    Math.abs(dragX) > 25 || Math.abs(dragY) > 25 ? 'bg-black/40' : 'opacity-0'
-                  }`}
-                >
-                  <div className="bg-black/85 backdrop-blur-md px-4 py-2 rounded-full border border-white/20 text-xs font-bold text-white flex items-center gap-2 shadow-2xl">
-                    {dragY > 25 ? (
-                      <>
-                        <ChevronDown className="w-4 h-4 text-white" />
-                        <span>Swipe down to close</span>
-                      </>
-                    ) : dragY < -25 ? (
-                      <>
-                        <ChevronUp className="w-4 h-4 text-white" />
-                        <span>Swipe up for Lyrics</span>
-                      </>
-                    ) : dragX < 0 ? (
-                      <>
-                        <span>Next Track</span>
-                        <SkipForward className="w-4 h-4 text-white" />
-                      </>
-                    ) : (
-                      <>
-                        <SkipBack className="w-4 h-4 text-white" />
-                        <span>Previous Track</span>
-                      </>
-                    )}
-                  </div>
                 </div>
               )}
             </motion.div>
@@ -803,6 +846,7 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
           </div>
         </motion.div>
+        </>
       )}
     </AnimatePresence>
   );

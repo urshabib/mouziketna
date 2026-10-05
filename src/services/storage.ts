@@ -313,20 +313,100 @@ export function tasteArtistKey(artist: string | undefined): string {
     .toLowerCase();
 }
 
-export function tasteEvent(kind: 'play' | 'complete' | 'like' | 'skip' | 'unlike', track: Track) {
+export const EXPLICIT_INTERESTED_KEY = 'mouzika_explicit_interested';
+export const EXPLICIT_NOT_INTERESTED_KEY = 'mouzika_explicit_not_interested';
+
+export function tasteEvent(
+  kind: 'play' | 'complete' | 'like' | 'skip' | 'unlike' | 'interested' | 'not_interested',
+  track: Track
+) {
   if (!track || !track.title) return;
-  const weights = { play: 1, complete: 2, like: 3, skip: -2, unlike: -3 };
+  const weights: Record<string, number> = {
+    play: 1,
+    complete: 2,
+    like: 4,
+    skip: -2,
+    unlike: -4,
+    interested: 15,
+    not_interested: -25,
+  };
   const w = weights[kind];
   if (!w) return;
   const t = loadTasteProfile();
   const aKey = tasteArtistKey(track.artist);
   if (aKey && aKey !== 'various artists') {
-    t.artists[aKey] = Math.max(-12, Math.min(30, (t.artists[aKey] || 0) + w));
+    t.artists[aKey] = Math.max(-30, Math.min(45, (t.artists[aKey] || 0) + w));
   }
   if (track.id) {
-    t.tracks[track.id] = Math.max(-6, Math.min(12, (t.tracks[track.id] || 0) + w));
+    t.tracks[track.id] = Math.max(-20, Math.min(30, (t.tracks[track.id] || 0) + w));
   }
   saveTasteProfile(t);
+}
+
+export function getExplicitInterestedTracks(): Track[] {
+  try {
+    const raw = localStorage.getItem(EXPLICIT_INTERESTED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function getExplicitNotInterestedTracks(): Track[] {
+  try {
+    const raw = localStorage.getItem(EXPLICIT_NOT_INTERESTED_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function isExplicitInterested(trackId: string): boolean {
+  if (!trackId) return false;
+  return getExplicitInterestedTracks().some((t) => t.id === trackId);
+}
+
+export function isExplicitNotInterested(trackId: string): boolean {
+  if (!trackId) return false;
+  return getExplicitNotInterestedTracks().some((t) => t.id === trackId);
+}
+
+export function addExplicitInterested(track: Track) {
+  if (!track || !track.id) return;
+  removeExplicitNotInterested(track.id);
+  const current = getExplicitInterestedTracks().filter((t) => t.id !== track.id);
+  current.unshift(track);
+  try {
+    localStorage.setItem(EXPLICIT_INTERESTED_KEY, JSON.stringify(current.slice(0, 80)));
+  } catch {}
+  tasteEvent('interested', track);
+}
+
+export function removeExplicitInterested(trackId: string) {
+  if (!trackId) return;
+  const current = getExplicitInterestedTracks().filter((t) => t.id !== trackId);
+  try {
+    localStorage.setItem(EXPLICIT_INTERESTED_KEY, JSON.stringify(current));
+  } catch {}
+}
+
+export function addExplicitNotInterested(track: Track) {
+  if (!track || !track.id) return;
+  removeExplicitInterested(track.id);
+  const current = getExplicitNotInterestedTracks().filter((t) => t.id !== track.id);
+  current.unshift(track);
+  try {
+    localStorage.setItem(EXPLICIT_NOT_INTERESTED_KEY, JSON.stringify(current.slice(0, 100)));
+  } catch {}
+  tasteEvent('not_interested', track);
+}
+
+export function removeExplicitNotInterested(trackId: string) {
+  if (!trackId) return;
+  const current = getExplicitNotInterestedTracks().filter((t) => t.id !== trackId);
+  try {
+    localStorage.setItem(EXPLICIT_NOT_INTERESTED_KEY, JSON.stringify(current));
+  } catch {}
 }
 
 export function rememberListen(track: Track) {
@@ -363,23 +443,29 @@ export function tasteTopSeeds(
     hist = JSON.parse(localStorage.getItem('taste_profile_history') || '[]');
   } catch {}
 
+  const explicitInterested = getExplicitInterestedTracks();
+  const explicitDislikedIds = new Set(getExplicitNotInterestedTracks().map((t) => t.id));
+
   const combinedRecent = [...recentlyPlayed, ...hist];
-  const pool = [...likedSongs, ...combinedRecent, ...playlistSongs].filter(
-    (t) => t && t.id && t.title && t.id !== excludeId
+  const pool = [...explicitInterested, ...likedSongs, ...combinedRecent, ...playlistSongs].filter(
+    (t) => t && t.id && t.title && t.id !== excludeId && !explicitDislikedIds.has(t.id)
   );
   const skipped = tasteSkippedArtists();
 
   // Multi-factor weighting:
+  // - Explicit user interest: +15 points
   // - Recently played: up to +5 points for newest listens
   // - Liked songs: +4 points
   // - Custom playlist tracks: +2 points
   // - Taste profile artist affinity: dynamic score
   const scored = pool
     .map((t) => {
+      const isExplicit = explicitInterested.some((e) => e.id === t.id);
       const recentIndex = combinedRecent.findIndex((r) => r.id === t.id);
       const isLiked = likedSongs.some((s) => s.id === t.id);
       const isPlaylist = playlistSongs.some((p) => p.id === t.id);
 
+      const explicitWeight = isExplicit ? 15 : 0;
       const recentWeight = recentIndex >= 0 ? Math.max(0, 5 - recentIndex * 0.25) : 0;
       const likedWeight = isLiked ? 4 : 0;
       const playlistWeight = isPlaylist ? 2 : 0;
@@ -387,10 +473,10 @@ export function tasteTopSeeds(
 
       return {
         t,
-        score: artistAffinity + recentWeight + likedWeight + playlistWeight + Math.random() * 1.5,
+        score: explicitWeight + artistAffinity + recentWeight + likedWeight + playlistWeight + Math.random() * 1.5,
       };
     })
-    .filter((x) => !skipped.has(tasteArtistKey(x.t.artist)));
+    .filter((x) => !skipped.has(tasteArtistKey(x.t.artist)) && !explicitDislikedIds.has(x.t.id));
 
   scored.sort((a, b) => b.score - a.score);
   const out: Track[] = [];

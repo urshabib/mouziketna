@@ -18,6 +18,7 @@ import {
   resolveSingleSongLink,
   extractSpotifyPlaylistUrl,
   fetchWithTimeout,
+  NEW_HUB_BACKEND,
 } from '../services/api';
 import { PlaylistCover } from './PlaylistCover';
 import { getPersistentPlaylistCover } from '../services/storage';
@@ -63,6 +64,7 @@ export const Modals: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
 
   // Auth gate state
+  const [gateMode, setGateMode] = useState<'signin' | 'signup'>('signin');
   const [gateUser, setGateUser] = useState('');
   const [gatePass, setGatePass] = useState('');
   const [gateLoading, setGateLoading] = useState(false);
@@ -143,14 +145,49 @@ export const Modals: React.FC = () => {
   // Handle Gate Login
   const handleGateLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gateUser.trim() || !gatePass.trim()) return;
+    const u = gateUser.trim();
+    const p = gatePass.trim();
+    if (!u || !p) return;
     setGateLoading(true);
     setGateError('');
-    const res = await login(gateUser.trim(), gatePass.trim());
-    setGateLoading(false);
-    if (!res.success) {
-      setGateError(res.error || 'Login failed.');
+
+    try {
+      if (gateMode === 'signup') {
+        const createRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/create-user`, 9000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: u,
+            password: p,
+            isAdmin: false,
+          }),
+        });
+        const createData = await createRes.json().catch(() => null);
+        if (!createRes.ok || (createData && createData.error)) {
+          setGateError(createData?.error || 'Account creation failed. Username may already exist.');
+          setGateLoading(false);
+          return;
+        }
+        showToast(`Account "${u}" created! Signing in...`);
+      }
+
+      const res = await login(u, p);
+      if (!res.success) {
+        setGateError(res.error || 'Login failed. Check username & password.');
+      }
+    } catch (err: any) {
+      setGateError(err.message || 'Connection error. Please try again.');
+    } finally {
+      setGateLoading(false);
     }
+  };
+
+  const handleContinueAsGuest = () => {
+    try {
+      localStorage.setItem('hub_is_guest', 'true');
+    } catch {}
+    setIsAuthGateOpen(false);
+    showToast('Continuing as Guest');
   };
 
   return (
@@ -431,22 +468,60 @@ export const Modals: React.FC = () => {
       {/* 6. AUTH GATE MODAL */}
       {isAuthGateOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none">
-          <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#ff6b1a] to-[#7a2c00] flex items-center justify-center shadow-lg text-white mb-2">
+          <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#ff6b1a] to-[#7a2c00] flex items-center justify-center shadow-lg text-white mb-1">
               <Gift className="w-7 h-7" />
             </div>
 
-            <h3 className="font-black text-2xl text-white">Welcome to MOUZIKA</h3>
-            <p className="text-xs text-white/50 -mt-1">
-              Sign in to sync your library, favorites, and playlists.
-            </p>
+            <div>
+              <h3 className="font-black text-2xl text-white">Welcome to MOUZIKA</h3>
+              <p className="text-xs text-white/50 mt-0.5">
+                {gateMode === 'signin'
+                  ? 'Sign in to access and sync your music library'
+                  : 'Create your account to start streaming & syncing'}
+              </p>
+            </div>
 
-            <form onSubmit={handleGateLogin} className="w-full flex flex-col gap-3 mt-2">
+            {/* Switcher: Sign In vs Create Account */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-black/60 rounded-xl border border-white/10 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setGateMode('signin');
+                  setGateError('');
+                }}
+                className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  gateMode === 'signin'
+                    ? 'bg-[#ff6b1a] text-black shadow-md'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGateMode('signup');
+                  setGateError('');
+                }}
+                className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  gateMode === 'signup'
+                    ? 'bg-[#ff6b1a] text-black shadow-md'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            <form onSubmit={handleGateLogin} className="w-full flex flex-col gap-3 mt-1">
               <input
                 type="text"
                 placeholder="Username"
                 value={gateUser}
                 onChange={(e) => setGateUser(e.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors text-center font-medium"
               />
               <input
@@ -458,7 +533,7 @@ export const Modals: React.FC = () => {
               />
 
               {gateError && (
-                <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
+                <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 text-left">
                   {gateError}
                 </p>
               )}
@@ -466,18 +541,23 @@ export const Modals: React.FC = () => {
               <button
                 type="submit"
                 disabled={gateLoading || !gateUser.trim() || !gatePass.trim()}
-                className="w-full py-3 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1"
+                className="w-full py-3 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1 cursor-pointer"
               >
-                {gateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>Sign In</span>}
+                {gateLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <span>{gateMode === 'signin' ? 'Sign In' : 'Create Account & Enter'}</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleContinueAsGuest}
+                className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-bold text-xs rounded-xl transition-all border border-white/10 flex items-center justify-center gap-1.5 cursor-pointer mt-0.5"
+              >
+                <span>Continue as Guest</span>
               </button>
             </form>
-
-            <button
-              onClick={() => setIsAuthGateOpen(false)}
-              className="text-xs font-semibold text-white/40 hover:text-white/70 transition-colors mt-2"
-            >
-              Continue Offline as Guest
-            </button>
           </div>
         </div>
       )}
