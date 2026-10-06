@@ -951,7 +951,7 @@ export const CollectionView: React.FC = () => {
                 onMoveUp={() => moveTrack(idx, 'up')}
                 onMoveDown={() => moveTrack(idx, 'down')}
                 dragHandleProps={
-                  target.type === 'custom-playlist' && !isSelectMode
+                  target.type === 'custom-playlist' && isReorderMode && !isSelectMode
                     ? {
                         draggable: true,
                         onDragStart: (e: any) => handleDragStart(e, idx),

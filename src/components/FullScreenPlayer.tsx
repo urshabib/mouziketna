@@ -239,9 +239,9 @@ export const FullScreenPlayer: React.FC = () => {
             onMouseDown={handleTouchStart}
             onMouseMove={handleTouchMove}
             onMouseUp={handleTouchEnd}
-            className="fixed inset-0 z-50 flex flex-col justify-between bg-[#08080a] text-white px-4 sm:px-12 pt-[max(0.6rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto select-none touch-none rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
+            className="fixed inset-0 z-50 flex flex-col justify-between bg-[#08080a] text-white px-5 sm:px-10 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto select-none touch-none rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
           >
-            {/* Dynamic seamless extended ambient glow - extends -inset-24 scale-125 so blur NEVER fades to black at edges */}
+            {/* Dynamic seamless extended ambient glow */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
               <div
                 className="absolute -inset-24 opacity-60 blur-3xl scale-125 transition-all duration-700 pointer-events-none"
@@ -258,21 +258,24 @@ export const FullScreenPlayer: React.FC = () => {
             <div className="w-10 h-1 rounded-full bg-white/25 mx-auto mb-1 flex-shrink-0" />
 
             {/* Top Header Bar */}
-          <div className="flex items-center justify-between w-full max-w-lg mx-auto mb-1 sm:mb-2 flex-shrink-0">
+          <div className="flex items-center justify-between w-full max-w-md mx-auto mb-1 sm:mb-2 flex-shrink-0">
             <button
               onClick={() => setIsFullScreenOpen(false)}
-              className="p-1.5 sm:p-2 -ml-1 text-white/70 hover:text-white transition-colors active:scale-95"
+              className="p-1.5 sm:p-2 -ml-1 text-white/70 hover:text-white transition-colors active:scale-95 cursor-pointer"
               title="Minimize"
             >
               <ChevronDown className="w-6 h-6 sm:w-7 sm:h-7" />
             </button>
 
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] sm:text-[11px] font-black tracking-widest text-white/50 uppercase">
+            <div className="flex flex-col items-center min-w-0 px-2 max-w-[200px] sm:max-w-xs text-center">
+              <span className="text-[10px] sm:text-[11px] font-black tracking-widest text-white/50 uppercase truncate">
                 Now Playing
               </span>
+              <span className="text-xs sm:text-sm font-bold text-white/90 truncate">
+                {activeTrack.album || 'MOUZIKETNA'}
+              </span>
               {swipeHint && (
-                <span className="text-[9px] sm:text-[10px] font-bold text-white/80 animate-pulse">
+                <span className="text-[9px] sm:text-[10px] font-bold text-[#ff6b1a] animate-pulse truncate">
                   {swipeHint === 'next'
                     ? 'Swipe for Next Track ❯'
                     : swipeHint === 'prev'
@@ -570,29 +573,23 @@ export const FullScreenPlayer: React.FC = () => {
 
               <button
                 onClick={() => setIsQueueOpen(true)}
-                className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 sm:p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
                 title="Queue"
               >
-                <ListMusic className="w-5 h-5" />
-              </button>
-
-              <button
-                onClick={() => setModalAddToPlaylistTrack(activeTrack)}
-                className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
-                title="Add to Playlist"
-              >
-                <Plus className="w-5 h-5" />
+                <ListMusic className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               </button>
             </div>
           </div>
 
-          {/* Center Artwork with Horizontal Swipe Motion & Adaptive Sizing */}
-          <div className="flex-1 min-h-0 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto px-2 py-0.5 sm:py-1">
+          {/* Center Artwork with Horizontal Swipe Motion & Generous Proportional Sizing */}
+          <div className="flex-1 min-h-0 flex items-center justify-center w-full max-w-md mx-auto my-auto py-2 sm:py-3">
             <motion.div
               style={{
                 aspectRatio: '1 / 1',
-                maxHeight: 'min(70vw, 340px, calc(100dvh - 350px))',
-                maxWidth: 'min(70vw, 340px, calc(100dvh - 350px))',
+                width: 'min(88vw, 360px)',
+                height: 'min(88vw, 360px)',
+                maxHeight: 'calc(100dvh - 340px)',
+                maxWidth: 'calc(100dvh - 340px)',
                 x: dragX,
                 rotate: dragX * 0.04,
                 scale: 1 - Math.min(Math.abs(dragX) / 1000, 0.1),
@@ -600,7 +597,7 @@ export const FullScreenPlayer: React.FC = () => {
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               className={`w-full aspect-square ${
                 viewMode !== 'square' ? 'rounded-full' : 'rounded-3xl'
-              } relative group cursor-grab active:cursor-grabbing mx-auto select-none`}
+              } relative group cursor-grab active:cursor-grabbing mx-auto select-none shadow-[0_20px_60px_rgba(0,0,0,0.85)]`}
             >
               {viewMode === 'spectrum' ? (
                 /* 3. Spicetify / NCS Circular Spectrum Visualizer */
@@ -716,11 +713,11 @@ export const FullScreenPlayer: React.FC = () => {
           </div>
 
           {/* Bottom Track Meta, Timeline & Controls */}
-          <div className="w-full max-w-lg mx-auto flex flex-col gap-2.5 sm:gap-4 mt-1 sm:mt-2.5 flex-shrink-0">
-            {/* Title & Like */}
+          <div className="w-full max-w-md mx-auto flex flex-col gap-3 sm:gap-4 mt-2 sm:mt-4 mb-1 sm:mb-2 flex-shrink-0">
+            {/* Title & Actions Row (Matching reference layout) */}
             <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1 pr-4">
-                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white truncate leading-tight">
+              <div className="min-w-0 flex-1 pr-3">
+                <h2 className="text-xl sm:text-2xl font-black text-white truncate leading-tight">
                   {activeTrack.title}
                 </h2>
                 <p className="text-sm sm:text-base text-white/60 truncate font-semibold mt-0.5">
@@ -728,17 +725,27 @@ export const FullScreenPlayer: React.FC = () => {
                 </p>
               </div>
 
-              <button
-                onClick={() => toggleLikeTrack(activeTrack)}
-                className="p-3 text-white/70 hover:text-white hover:scale-110 active:scale-95 transition-all"
-                title={isLiked ? 'Unlike' : 'Like'}
-              >
-                <Heart
-                  className={`w-7 h-7 ${
-                    isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/60'
-                  }`}
-                />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => setModalAddToPlaylistTrack(activeTrack)}
+                  className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
+                  title="Add to Playlist"
+                >
+                  <Plus className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+
+                <button
+                  onClick={() => toggleLikeTrack(activeTrack)}
+                  className="p-2 text-white/70 hover:text-white hover:scale-110 active:scale-95 transition-all cursor-pointer"
+                  title={isLiked ? 'Unlike' : 'Like'}
+                >
+                  <Heart
+                    className={`w-6 h-6 sm:w-7 sm:h-7 ${
+                      isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/60'
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
 
             {/* Progress Scrubber */}
@@ -749,79 +756,57 @@ export const FullScreenPlayer: React.FC = () => {
               seekTo={seekTo}
             />
 
-            {/* Main Controls */}
-            <div className="flex items-center justify-between px-2 no-swipe">
+            {/* Main Playback Controls (Clean 5 buttons matching reference image) */}
+            <div className="flex items-center justify-between px-1 sm:px-2 no-swipe">
               <button
                 onClick={toggleShuffle}
-                className={`p-2 transition-colors ${
+                className={`p-2 transition-colors cursor-pointer ${
                   isShuffle ? 'text-[#ff6b1a]' : 'text-white/40 hover:text-white'
                 }`}
                 title="Shuffle"
               >
-                <Shuffle className="w-6 h-6" />
+                <Shuffle className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
 
               <button
                 onClick={playPrevious}
-                className="p-2 text-white/80 hover:text-white hover:scale-110 active:scale-95 transition-all"
+                className="p-2 text-white/80 hover:text-white hover:scale-110 active:scale-95 transition-all cursor-pointer"
                 title="Previous (Swipe right)"
               >
-                <SkipBack className="w-7 h-7 fill-current" />
-              </button>
-
-              <button
-                onClick={() => seekBy(-10)}
-                className="p-2 text-white/60 hover:text-white active:scale-90 transition-all relative"
-                title="Back 10s"
-              >
-                <RotateCcw className="w-6 h-6" />
-                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-black pointer-events-none">
-                  10
-                </span>
+                <SkipBack className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
               </button>
 
               <button
                 onClick={togglePlay}
                 disabled={isBuffering}
-                className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white text-black flex items-center justify-center shadow-2xl hover:scale-105 active:scale-90 transition-all"
+                className="w-16 h-16 sm:w-18 sm:h-18 rounded-full bg-white text-black flex items-center justify-center shadow-2xl hover:scale-105 active:scale-90 transition-all cursor-pointer"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isBuffering ? (
-                  <Loader2 className="w-8 h-8 animate-spin" />
+                  <Loader2 className="w-8 h-8 animate-spin text-black" />
                 ) : isPlaying ? (
-                  <Pause className="w-8 h-8 fill-black" />
+                  <Pause className="w-8 h-8 fill-black text-black" />
                 ) : (
-                  <Play className="w-8 h-8 fill-black ml-1" />
+                  <Play className="w-8 h-8 fill-black text-black ml-1" />
                 )}
               </button>
 
               <button
-                onClick={() => seekBy(10)}
-                className="p-2 text-white/60 hover:text-white active:scale-90 transition-all relative"
-                title="Forward 10s"
-              >
-                <RotateCw className="w-6 h-6" />
-                <span className="absolute inset-0 flex items-center justify-center text-[8px] font-black pointer-events-none">
-                  10
-                </span>
-              </button>
-
-              <button
                 onClick={playNext}
-                className="p-2 text-white/80 hover:text-white hover:scale-110 active:scale-95 transition-all"
+                className="p-2 text-white/80 hover:text-white hover:scale-110 active:scale-95 transition-all cursor-pointer"
                 title="Next (Swipe left)"
               >
-                <SkipForward className="w-7 h-7 fill-current" />
+                <SkipForward className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
               </button>
 
               <button
                 onClick={toggleLoop}
-                className={`p-2 transition-colors ${
+                className={`p-2 transition-colors cursor-pointer ${
                   isLooping ? 'text-[#ff6b1a]' : 'text-white/40 hover:text-white'
                 }`}
                 title={isLooping ? 'Repeat One' : 'Repeat Off'}
               >
-                {isLooping ? <Repeat1 className="w-6 h-6" /> : <Repeat className="w-6 h-6" />}
+                {isLooping ? <Repeat1 className="w-5 h-5 sm:w-6 sm:h-6" /> : <Repeat className="w-5 h-5 sm:w-6 sm:h-6" />}
               </button>
             </div>
           </div>
