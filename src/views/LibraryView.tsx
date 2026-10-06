@@ -9,7 +9,6 @@ import {
   Music2,
   User,
   Trash2,
-  Sparkles,
 } from 'lucide-react';
 import { getTotalDownloadedSize, formatBytes, getPersistentPlaylistCover } from '../services/storage';
 import { PlaylistCover } from '../components/PlaylistCover';

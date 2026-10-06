@@ -19,6 +19,11 @@ import {
   Disc,
   RefreshCw,
   Loader2,
+  RotateCcw,
+  Trash2,
+  Ban,
+  ThumbsUp,
+  ThumbsDown,
 } from 'lucide-react';
 import { TrackThumbImage } from '../services/useTrackThumb';
 import { Track } from '../types';
@@ -37,12 +42,25 @@ export const AccountView: React.FC = () => {
     showToast,
     downloadedSet,
     forceProfileServerSync,
+    clearListeningStats,
     isSyncingToServer,
     lastServerSyncTime,
+    getInterestedTracks,
+    getNotInterestedTracks,
+    removeTrackFromTaste,
   } = useMusic();
 
-  const [activeTab, setActiveTab] = useState<'songs' | 'artists' | 'overview'>('songs');
+  const [activeTab, setActiveTab] = useState<'songs' | 'artists' | 'taste' | 'overview'>('songs');
+  const [isConfirmResetStatsOpen, setIsConfirmResetStatsOpen] = useState(false);
+  const [isClearingStats, setIsClearingStats] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-sync profile stats when opening profile view
+  React.useEffect(() => {
+    if (globalUser && globalUser !== 'admin') {
+      forceProfileServerSync().catch(() => {});
+    }
+  }, [globalUser]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -80,6 +98,8 @@ export const AccountView: React.FC = () => {
   const topArtists = stats.topArtists || [];
   const topSong = topSongs[0];
   const topArtist = topArtists[0];
+  const interestedTracks = getInterestedTracks();
+  const dislikedTracks = getNotInterestedTracks();
 
   return (
     <div className="flex flex-col gap-8 max-w-3xl pb-28 select-none">
@@ -196,12 +216,23 @@ export const AccountView: React.FC = () => {
 
       {/* Spicetify / Spotify-Style Listening Statistics Hero Tiles */}
       <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[#ff6b1a]" />
             <h3 className="text-lg font-black text-white">Listening Statistics</h3>
           </div>
-          <span className="text-[11px] font-bold text-white/40">Cloud Server Synchronized</span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-[11px] font-bold text-white/40">Cloud Synchronized</span>
+            <button
+              type="button"
+              onClick={() => setIsConfirmResetStatsOpen(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/5 hover:bg-red-500/15 text-white/60 hover:text-red-400 border border-white/10 text-[11px] font-bold transition-all cursor-pointer"
+              title="Reset listening statistics to 0 and sync with cloud"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset Stats</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -292,6 +323,19 @@ export const AccountView: React.FC = () => {
             }`}
           >
             Top Artists ({topArtists.length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('taste')}
+            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'taste'
+                ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20'
+                : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Music Taste ({interestedTracks.length + dislikedTracks.length})</span>
           </button>
 
           <button
@@ -495,6 +539,140 @@ export const AccountView: React.FC = () => {
             </div>
           </div>
         )}
+
+        {/* Tab 4: Music Taste Tuning (Interested & Not Interested) */}
+        {activeTab === 'taste' && (
+          <div className="flex flex-col gap-6">
+            {/* Informational Hero Card */}
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#ff6b1a]/15 border border-[#ff6b1a]/30 flex items-center justify-center text-[#ff6b1a] flex-shrink-0">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white">Your Music Taste Profile</h4>
+                  <p className="text-xs text-white/50">
+                    Tunes your smart recommendations and next-track discovery.
+                  </p>
+                </div>
+              </div>
+              <div className="text-[11px] text-white/40">
+                Use the <strong>⋮</strong> menu on any track to tune your taste
+              </div>
+            </div>
+
+            {/* Section 1: Interested Tracks (Prioritized) */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ThumbsUp className="w-4 h-4 text-[#ff6b1a]" />
+                  <h4 className="font-extrabold text-sm text-white">Interested Songs ({interestedTracks.length})</h4>
+                </div>
+                <span className="text-[11px] font-bold text-white/40">Prioritized in discovery & mixes</span>
+              </div>
+
+              {interestedTracks.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 text-center flex flex-col items-center gap-2">
+                  <Sparkles className="w-8 h-8 text-white/20" />
+                  <p className="text-xs font-bold text-white/60">No interested songs yet</p>
+                  <p className="text-[11px] text-white/40 max-w-xs">
+                    Tap the ⋮ menu on songs you love and select "Add to Music Taste (Interested)".
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {interestedTracks.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 transition-all group"
+                    >
+                      <div
+                        onClick={() => playTrack(t)}
+                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                      >
+                        <div className="w-11 h-11 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
+                          <TrackThumbImage track={t} className="w-full h-full object-cover" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-white truncate group-hover:text-[#ff6b1a] transition-colors">{t.title}</p>
+                          <p className="text-[11px] text-white/50 truncate font-semibold">{t.artist}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 pl-2 flex-shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => playTrack(t)}
+                          className="p-2 rounded-xl bg-white/5 hover:bg-[#ff6b1a] text-white hover:text-black transition-colors cursor-pointer"
+                          title="Play song"
+                        >
+                          <Play className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeTrackFromTaste(t.id)}
+                          className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Remove from interested taste"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Section 2: Not Interested Tracks (Filtered out) */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Ban className="w-4 h-4 text-red-400" />
+                  <h4 className="font-extrabold text-sm text-white">Not Interested / Muted ({dislikedTracks.length})</h4>
+                </div>
+                <span className="text-[11px] font-bold text-white/40">Excluded from autoplay & recommendations</span>
+              </div>
+
+              {dislikedTracks.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 text-center flex flex-col items-center gap-2">
+                  <Ban className="w-8 h-8 text-white/20" />
+                  <p className="text-xs font-bold text-white/60">No muted songs</p>
+                  <p className="text-[11px] text-white/40 max-w-xs">
+                    Tap the ⋮ menu on songs you don't like and select "Not Interested (Less like this)".
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {dislikedTracks.map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all opacity-80 hover:opacity-100"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 flex-shrink-0">
+                          <Ban className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-bold text-white/80 truncate line-through decoration-red-400/50">{t.title}</p>
+                          <p className="text-[11px] text-white/40 truncate font-semibold">{t.artist}</p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => removeTrackFromTaste(t.id)}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-xs font-bold transition-colors cursor-pointer flex-shrink-0"
+                        title="Unmute and remove from excluded list"
+                      >
+                        Unmute
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Settings Navigation Link */}
@@ -510,6 +688,59 @@ export const AccountView: React.FC = () => {
           <span className="text-xs text-white/40 font-semibold">Open</span>
         </button>
       </div>
+
+      {/* Confirmation Modal for Resetting Stats */}
+      {isConfirmResetStatsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm rounded-3xl bg-[#141416] border border-white/10 p-6 flex flex-col gap-4 shadow-2xl relative">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-500/15 border border-red-500/20 flex items-center justify-center text-red-400 flex-shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-black text-white">Reset Listening Stats?</h4>
+                <p className="text-xs text-white/50">Start fresh from 0 minutes</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-white/70 leading-relaxed">
+              This will reset your <strong>minutes listened</strong>, <strong>track count</strong>, and <strong>top songs/artists</strong> to 0 and sync the clean state with the cloud server.
+            </p>
+            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-[11px] text-white/50">
+              Note: Your playlists, liked songs, and recently played tracks will <strong>NOT</strong> be deleted.
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmResetStatsOpen(false)}
+                disabled={isClearingStats}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsClearingStats(true);
+                  try {
+                    await clearListeningStats();
+                    showToast('Listening statistics reset to 0 and synced with cloud');
+                    setIsConfirmResetStatsOpen(false);
+                  } finally {
+                    setIsClearingStats(false);
+                  }
+                }}
+                disabled={isClearingStats}
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 active:scale-95 text-white font-black text-xs transition-all shadow-md shadow-red-500/25 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isClearingStats ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                <span>{isClearingStats ? 'Clearing...' : 'Clear & Reset'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

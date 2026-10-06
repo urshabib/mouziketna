@@ -122,15 +122,33 @@ export const TrackRow: React.FC<TrackRowProps> = ({
         ) : dragHandleProps ? (
           <div
             {...dragHandleProps}
-            className="w-8 h-9 -ml-1 text-white/40 hover:text-white/80 active:text-[#ff6b1a] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors"
-            title="Hold (0.5s) to reorder"
+            className="w-10 h-10 -ml-1.5 text-white/50 hover:text-white active:text-[#ff6b1a] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-all rounded-xl hover:bg-white/10 active:bg-[#ff6b1a]/20 flex-shrink-0 z-10"
+            title="Hold (0.4s) to reorder"
             aria-label="Hold to reorder"
             onClick={(e) => {
               e.stopPropagation();
               dragHandleProps.onClick?.(e);
             }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              dragHandleProps.onTouchStart?.(e);
+            }}
+            onTouchMove={(e) => {
+              e.stopPropagation();
+              dragHandleProps.onTouchMove?.(e);
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+              dragHandleProps.onTouchEnd?.(e);
+            }}
+            onTouchCancel={(e) => {
+              e.stopPropagation();
+              dragHandleProps.onTouchCancel?.(e);
+            }}
           >
-            <GripVertical className="w-4 h-4" />
+            <div className="p-1 rounded-lg bg-white/[0.04] group-hover:bg-white/10 group-active:bg-[#ff6b1a]/25 transition-colors pointer-events-none">
+              <GripVertical className="w-4 h-4 text-white/70 group-hover:text-white" />
+            </div>
           </div>
         ) : (
           <div className="w-5 min-w-[20px] text-center flex items-center justify-center text-xs font-bold text-white/40">

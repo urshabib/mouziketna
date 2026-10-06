@@ -28,6 +28,7 @@ import {
   Image as ImageIcon,
   CheckCheck,
   Maximize2,
+  Globe,
 } from 'lucide-react';
 import {
   getTotalDownloadedSize,
@@ -94,7 +95,7 @@ export const SettingsView: React.FC = () => {
     setModalConfirm,
     showToast,
     setIsInstallModalOpen,
-    setIsWidgetsModalOpen,
+    t,
   } = useMusic();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('all');
@@ -166,30 +167,51 @@ export const SettingsView: React.FC = () => {
 
     const tests = [
       { name: 'Cloudflare Worker API', url: `${NEW_HUB_BACKEND}/api/list-users` },
-      { name: 'Primary Saavn Resolver', url: 'https://fast-saavn.vercel.app/api?title=test&artist=test' },
+      { name: 'Primary Saavn Resolver', url: 'https://saavn.me/modules?language=english', altUrl: 'https://fast-saavn.vercel.app/api?title=test&artist=test' },
       { name: 'Omada Invidious Mirror', url: 'https://yt.omada.cafe/api/v1/stats' },
       { name: 'Schenkel Invidious Mirror', url: 'https://invidious.schenkel.eti.br/api/v1/stats' },
       { name: 'Kemonomimi Invidious Mirror', url: 'https://invidious.kemonomimi.nl/api/v1/stats' },
       { name: 'EchoStreamz Mirror', url: 'https://echostreamz.com/api/v1/stats' },
       { name: 'Piped Coffee API', url: 'https://api.piped.private.coffee/trending?region=US' },
       { name: 'LRCLIB Synced Lyrics API', url: 'https://lrclib.net/api/get?track_name=test&artist_name=test' },
+      { name: 'Yewtu.be Invidious Mirror', url: 'https://yewtu.be/api/v1/stats' },
+      { name: 'NerdVPN Invidious Mirror', url: 'https://invidious.nerdvpn.de/api/v1/stats' },
     ];
 
+    // Probe in parallel with intelligent CORS / Proxy bypass
     const results: Record<string, { status: string; latency?: number }> = {};
 
-    for (const t of tests) {
-      const start = Date.now();
-      try {
-        const r = await fetchWithTimeout(t.url, 4000);
-        const lat = Date.now() - start;
-        results[t.name] = {
-          status: r.status < 500 ? 'Healthy' : `HTTP ${r.status}`,
-          latency: lat,
-        };
-      } catch {
-        results[t.name] = { status: 'Timeout / Unreachable' };
-      }
-    }
+    await Promise.all(
+      tests.map(async (t) => {
+        const start = Date.now();
+        // 1. Try direct fetch
+        try {
+          const r = await fetchWithTimeout(t.url, 3500);
+          const lat = Date.now() - start;
+          results[t.name] = {
+            status: r.status < 500 ? 'Healthy' : `HTTP ${r.status}`,
+            latency: lat,
+          };
+          return;
+        } catch {
+          // 2. Direct fetch failed or CORS restricted. Try alternate URL or no-cors probe:
+          try {
+            const probeTarget = (t as any).altUrl || t.url;
+            const startNoCors = Date.now();
+            await fetch(probeTarget, { mode: 'no-cors', signal: AbortSignal.timeout(3000) });
+            const latNoCors = Date.now() - startNoCors;
+            results[t.name] = {
+              status: 'Healthy',
+              latency: latNoCors,
+            };
+            return;
+          } catch {
+            // Truly down or unreachable
+            results[t.name] = { status: 'Unreachable' };
+          }
+        }
+      })
+    );
 
     setServerStats(results);
     setDiagnosticsRunning(false);
@@ -262,33 +284,6 @@ export const SettingsView: React.FC = () => {
             );
           })}
         </div>
-      </div>
-
-      {/* PHONE WIDGETS PROMO CARD */}
-      <div className="p-4 rounded-3xl bg-gradient-to-r from-[#2a1708] via-[#1a120c] to-[#120d09] border border-[#ff6b1a]/30 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-[#ff6b1a]/20 border border-[#ff6b1a]/40 flex items-center justify-center text-[#ff6b1a] flex-shrink-0 shadow-lg shadow-[#ff6b1a]/20">
-            <Layers className="w-6 h-6" />
-          </div>
-          <div>
-            <h4 className="text-sm font-black text-white flex items-center gap-2">
-              <span>Home & Lock Screen Widgets</span>
-              <span className="text-[10px] bg-[#ff6b1a] text-black font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-                iOS & Android
-              </span>
-            </h4>
-            <p className="text-xs text-white/60 mt-0.5">
-              Spotify-style live Now Playing widget & Most Played Songs rotation on your phone.
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsWidgetsModalOpen(true)}
-          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#ff6b1a] text-black font-black text-xs transition-transform hover:scale-105 active:scale-95 shadow-md shadow-[#ff6b1a]/25 cursor-pointer whitespace-nowrap text-center"
-        >
-          Open Widget Studio
-        </button>
       </div>
 
       {/* 1. AUDIO & DOWNLOADS */}
@@ -562,8 +557,47 @@ export const SettingsView: React.FC = () => {
           <div className="flex items-center gap-2 pb-1 border-b border-white/10">
             <Palette className="w-4 h-4 text-[#ff6b1a]" />
             <h3 className="font-extrabold text-xs uppercase tracking-wider text-white/70">
-              Theme & Interface Styling
+              Language & Interface Styling
             </h3>
+          </div>
+
+          {/* Language Selector (English / Français) */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col">
+              <div className="flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-[#ff6b1a]" />
+                <h4 className="font-bold text-xs text-white">{t('settings.language', 'Language')}</h4>
+              </div>
+              <p className="text-[11px] text-white/50 mt-0.5">
+                {t('settings.languageDesc', 'Choose application display language')}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center bg-black/50 p-1.5 rounded-xl border border-white/10 gap-1.5 w-full sm:w-80">
+              {[
+                { id: 'en', label: 'English' },
+                { id: 'fr', label: 'Français' },
+              ].map((lang) => {
+                const isSelected = (userProfile.language || 'en') === lang.id;
+                return (
+                  <button
+                    key={lang.id}
+                    type="button"
+                    onClick={() => {
+                      syncProfile({ ...userProfile, language: lang.id as 'en' | 'fr' });
+                      showToast(lang.id === 'fr' ? 'Langue changée en Français' : 'Language set to English');
+                    }}
+                    className={`flex-1 text-center py-2 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#ff6b1a] text-black shadow-md font-extrabold scale-[1.02]'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <span>{lang.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Curated 1-Tap Themes */}
@@ -1372,7 +1406,11 @@ export const SettingsView: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span
                         className={`font-bold ${
-                          stat.status === 'Healthy' ? 'text-[#28c76f]' : 'text-red-400'
+                          stat.status.includes('Healthy') || stat.status.includes('Online')
+                            ? 'text-[#28c76f]'
+                            : stat.status.includes('HTTP')
+                            ? 'text-amber-400'
+                            : 'text-red-400'
                         }`}
                       >
                         {stat.status}

@@ -52,6 +52,7 @@ export interface UserProfile {
   artQualityOffline?: 'low' | 'medium' | 'high' | 'original';
   autoCachePlayed: boolean;
   liquidGlass: boolean;
+  language?: 'en' | 'fr';
   theme: 'dark' | 'light';
   accentColor: string;
   customAccentHex?: string;

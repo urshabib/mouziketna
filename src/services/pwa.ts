@@ -596,6 +596,9 @@ const GITHUB_COMMIT_KEY = 'mouziketna_github_last_commit';
  */
 export async function checkGitHubRepoForUpdates(onUpdateFound?: () => void): Promise<boolean> {
   if (typeof window === 'undefined' || !navigator.onLine) return false;
+  if (import.meta.env.DEV || window.location.port === '3000' || window.location.hostname.includes('run.app')) {
+    return false;
+  }
   try {
     const res = await fetch(GITHUB_REPO_COMMITS_URL, {
       headers: { Accept: 'application/vnd.github.v3+json' },

@@ -58,17 +58,17 @@
       })();
     </script>
 
-    <link rel="manifest" href="./manifest.json" />
-    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png" />
-    <link rel="icon" type="image/png" href="./favicon.png" />
-    <link rel="shortcut icon" href="./favicon.ico" />
-    <link rel="icon" href="./favicon.ico" />
-    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
-    <link rel="apple-touch-icon" href="./icon-192.png" />
-    <meta property="og:image" content="./icon-512.png" />
-    <meta name="twitter:image" content="./icon-512.png" />
+    <link rel="manifest" href="./assets/manifest.json" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png" />
+    <link rel="icon" type="image/png" href="./assets/favicon.ico" />
+    <link rel="shortcut icon" href="./assets/favicon.ico" />
+    <link rel="icon" href="./assets/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <meta property="og:image" content="./assets/icon-512.png" />
+    <meta name="twitter:image" content="./assets/icon-512.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -79,6 +79,41 @@
   </head>
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
+    <script>
+      (function() {
+        var isDev = location.port === '3000' ||
+                    location.hostname === 'localhost' ||
+                    location.hostname === '127.0.0.1' ||
+                    location.hostname.includes('run.app');
+
+        function mountProductionAssets() {
+          if (window.__MOUZIKA_BUNDLE_INJECTED__) return;
+          window.__MOUZIKA_BUNDLE_INJECTED__ = true;
+
+          if (!document.querySelector('link[href*="index.css"]')) {
+            var css = document.createElement('link');
+            css.rel = 'stylesheet';
+            css.crossOrigin = 'anonymous';
+            css.href = './assets/index.css';
+            document.head.appendChild(css);
+          }
+          if (!document.querySelector('script[src*="index.js"]')) {
+            var js = document.createElement('script');
+            js.type = 'module';
+            js.crossOrigin = 'anonymous';
+            js.src = './assets/index.js';
+            document.body.appendChild(js);
+          }
+        }
+
+        window.__mountProductionAssets = mountProductionAssets;
+
+        // In static hosting environments (e.g. GitHub Pages root deployment), load production bundle immediately
+        if (!isDev) {
+          mountProductionAssets();
+        }
+      })();
+    </script>
     <script>
       // Global PWA prompt capture
       window.__deferredPrompt = null;
@@ -92,17 +127,23 @@
         window.dispatchEvent(new CustomEvent('pwa-installed'));
       });
 
-      // Register Service Worker for PWA installability on Android & iOS
+      // Register Service Worker in production; unregister in dev/preview to prevent caching issues
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('./sw.js')
-            .then(function(reg) {
-              console.log('[MOUZIKA] PWA Service Worker active with scope:', reg.scope);
-            })
-            .catch(function(err) {
-              console.warn('[MOUZIKA] Service Worker registration notice:', err);
-            });
-        });
+        if (location.port !== '3000' && !location.hostname.includes('run.app')) {
+          window.addEventListener('load', function() {
+            navigator.serviceWorker.register('./sw.js')
+              .then(function(reg) {
+                console.log('[MOUZIKA] PWA Service Worker active with scope:', reg.scope);
+              })
+              .catch(function(err) {
+                console.warn('[MOUZIKA] Service Worker registration notice:', err);
+              });
+          });
+        } else {
+          navigator.serviceWorker.getRegistrations().then(function(regs) {
+            regs.forEach(function(r) { r.unregister(); });
+          });
+        }
       }
     </script>
   </body>

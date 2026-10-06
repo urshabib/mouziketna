@@ -33,6 +33,10 @@ export const ActionSheet: React.FC = () => {
     removeTrackFromPlaylist,
     openCollection,
     showToast,
+    tuneMusicTaste,
+    removeTrackFromTaste,
+    isTuneInterested,
+    isTuneDisliked,
   } = useMusic();
 
   const [isClosing, setIsClosing] = useState(false);
@@ -62,6 +66,8 @@ export const ActionSheet: React.FC = () => {
   if (!track || (!actionSheetTrack && !isClosing)) return null;
 
   const isLiked = userProfile.likedSongs?.some((s) => s.id === track.id);
+  const isInterested = isTuneInterested(track.id);
+  const isDisliked = isTuneDisliked(track.id);
   const downloaded = isDownloaded(track.id);
   const inCustomPl =
     actionSheetMeta?.collectionId && String(actionSheetMeta.collectionId).startsWith('pl_');
@@ -277,6 +283,33 @@ export const ActionSheet: React.FC = () => {
           >
             <Heart className={`w-5 h-5 ${isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/70'}`} />
             <span>{isLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}</span>
+          </button>
+
+          {/* Music Taste Tuning (Interested / Not Interested) */}
+          <button
+            onClick={() => {
+              if (isInterested) removeTrackFromTaste(track.id);
+              else tuneMusicTaste(track, 'more');
+              close();
+            }}
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
+          >
+            <Sparkles className={`w-5 h-5 ${isInterested ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-[#ff6b1a]'}`} />
+            <span>{isInterested ? 'Remove from Music Taste (Interested)' : 'Add to Music Taste (Interested)'}</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (isDisliked) removeTrackFromTaste(track.id);
+              else tuneMusicTaste(track, 'less');
+              close();
+            }}
+            className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
+          >
+            <Ban className={`w-5 h-5 ${isDisliked ? 'text-red-400' : 'text-white/70'}`} />
+            <span className={isDisliked ? 'text-red-400' : ''}>
+              {isDisliked ? 'Remove from Not Interested' : 'Not Interested (Less like this)'}
+            </span>
           </button>
 
           <button

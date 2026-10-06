@@ -42,6 +42,8 @@ import {
 } from '../services/api';
 import { PlaylistCover } from '../components/PlaylistCover';
 
+const playlistSuggestionsCache = new Map<string, { trackIdsHash: string; suggestions: Track[] }>();
+
 export const CollectionView: React.FC = () => {
   const {
     collectionTarget,
@@ -65,6 +67,7 @@ export const CollectionView: React.FC = () => {
     removeMultipleDownloads,
     syncProfile,
     showToast,
+    t,
   } = useMusic();
 
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -168,7 +171,18 @@ export const CollectionView: React.FC = () => {
     }
   };
 
-  const loadPlaylistSuggestions = async (plTracks: Track[]) => {
+  const loadPlaylistSuggestions = async (plTracks: Track[], force = false) => {
+    const cacheKey = target.id || 'custom';
+    const trackIdsHash = plTracks.map((t) => t.id).join(',');
+
+    if (!force && playlistSuggestionsCache.has(cacheKey)) {
+      const cached = playlistSuggestionsCache.get(cacheKey)!;
+      if (cached.trackIdsHash === trackIdsHash && cached.suggestions.length > 0) {
+        setSuggestions(cached.suggestions);
+        return;
+      }
+    }
+
     setLoadingSuggestions(true);
     try {
       const plIds = new Set(plTracks.map((t) => t.id));
@@ -205,19 +219,22 @@ export const CollectionView: React.FC = () => {
           });
         });
 
+        let finalSuggestions: Track[] = [];
         if (candidateList.length >= 6) {
-          setSuggestions(candidateList.sort(() => Math.random() - 0.5).slice(0, 6));
-          return;
+          finalSuggestions = candidateList.sort(() => Math.random() - 0.5).slice(0, 6);
+        } else {
+          // Top off with taste profile recommendations if needed
+          const tasteRecs = await getTasteProfileRecommendations(userProfile, seenIds, 6 - candidateList.length);
+          candidateList.push(...tasteRecs);
+          finalSuggestions = candidateList.slice(0, 6);
         }
-
-        // Top off with taste profile recommendations if needed
-        const tasteRecs = await getTasteProfileRecommendations(userProfile, seenIds, 6 - candidateList.length);
-        candidateList.push(...tasteRecs);
-        setSuggestions(candidateList.slice(0, 6));
+        setSuggestions(finalSuggestions);
+        playlistSuggestionsCache.set(cacheKey, { trackIdsHash, suggestions: finalSuggestions });
       } else {
         // Empty playlist: use full multi-factor taste profile recommendations
         const suggestions = await getTasteProfileRecommendations(userProfile, plIds, 6);
         setSuggestions(suggestions);
+        playlistSuggestionsCache.set(cacheKey, { trackIdsHash, suggestions });
       }
     } catch {
       setSuggestions([]);
@@ -345,8 +362,8 @@ export const CollectionView: React.FC = () => {
     if (!touch) return;
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
 
-    // Strictly require 0.5s (500ms) long-press to unlock reordering
-    // to prevent accidental reordering when swiping from left of screen
+    // Responsive 380ms hold on the 6-dots button to unlock reordering
+    // Prevents accidental reordering while feeling natural when directly pressing the dots
     touchHoldTimerRef.current = setTimeout(() => {
       touchActiveReorderIndexRef.current = index;
       touchStartIndexRef.current = index;
@@ -358,21 +375,21 @@ export const CollectionView: React.FC = () => {
           navigator.vibrate([35, 30, 35]);
         } catch {}
       }
-    }, 500);
+    }, 380);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     const touch = e.touches[0];
     if (!touch) return;
 
-    // If 0.5s hold hasn't triggered yet:
+    // If hold hasn't triggered yet:
     if (touchActiveReorderIndexRef.current === null) {
       if (touchStartPosRef.current) {
         const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
         const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
-        // Finger moved > 8px before 500ms: user is scrolling or edge-swiping!
-        // Immediately abort reordering and allow normal scrolling!
-        if (dx > 8 || dy > 8) {
+        // Finger moved > 16px before hold duration: user is scrolling!
+        // Abort reordering and allow normal scrolling
+        if (dx > 16 || dy > 16) {
           if (touchHoldTimerRef.current) {
             clearTimeout(touchHoldTimerRef.current);
             touchHoldTimerRef.current = null;
@@ -907,17 +924,17 @@ export const CollectionView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold text-white tracking-tight">
-                Recommended for this playlist
+                {t('collection.recommendedForPlaylist', 'Recommended for this playlist')}
               </h3>
-              <p className="text-xs text-white/50">Click any song to preview/listen before adding</p>
+              <p className="text-xs text-white/50">{t('collection.recommendedSubtitle', 'Click any song to preview/listen before adding')}</p>
             </div>
             <button
-              onClick={() => loadPlaylistSuggestions(tracks)}
+              onClick={() => loadPlaylistSuggestions(tracks, true)}
               disabled={loadingSuggestions}
-              className="flex items-center gap-1 text-xs font-bold text-white/50 hover:text-white transition-colors"
+              className="flex items-center gap-1 text-xs font-bold text-white/50 hover:text-white transition-colors cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingSuggestions ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
+              <span>{t('collection.refreshRecommendations', 'Refresh')}</span>
             </button>
           </div>
 

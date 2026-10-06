@@ -45,6 +45,7 @@ export const Modals: React.FC = () => {
     userProfile,
     syncProfile,
     showToast,
+    t,
   } = useMusic();
 
   // Add/Create Playlist state
@@ -64,7 +65,6 @@ export const Modals: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
 
   // Auth gate state
-  const [gateMode, setGateMode] = useState<'signin' | 'signup'>('signin');
   const [gateUser, setGateUser] = useState('');
   const [gatePass, setGatePass] = useState('');
   const [gateLoading, setGateLoading] = useState(false);
@@ -152,42 +152,15 @@ export const Modals: React.FC = () => {
     setGateError('');
 
     try {
-      if (gateMode === 'signup') {
-        const createRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/create-user`, 9000, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: u,
-            password: p,
-            isAdmin: false,
-          }),
-        });
-        const createData = await createRes.json().catch(() => null);
-        if (!createRes.ok || (createData && createData.error)) {
-          setGateError(createData?.error || 'Account creation failed. Username may already exist.');
-          setGateLoading(false);
-          return;
-        }
-        showToast(`Account "${u}" created! Signing in...`);
-      }
-
       const res = await login(u, p);
       if (!res.success) {
-        setGateError(res.error || 'Login failed. Check username & password.');
+        setGateError(res.error || 'Login failed. Please check your username and password.');
       }
     } catch (err: any) {
       setGateError(err.message || 'Connection error. Please try again.');
     } finally {
       setGateLoading(false);
     }
-  };
-
-  const handleContinueAsGuest = () => {
-    try {
-      localStorage.setItem('hub_is_guest', 'true');
-    } catch {}
-    setIsAuthGateOpen(false);
-    showToast('Continuing as Guest');
   };
 
   return (
@@ -474,50 +447,16 @@ export const Modals: React.FC = () => {
             </div>
 
             <div>
-              <h3 className="font-black text-2xl text-white">Welcome to MOUZIKA</h3>
-              <p className="text-xs text-white/50 mt-0.5">
-                {gateMode === 'signin'
-                  ? 'Sign in to access and sync your music library'
-                  : 'Create your account to start streaming & syncing'}
+              <h3 className="font-black text-2xl text-white">{t('modal.signInTitle', 'Sign In to MOUZIKA')}</h3>
+              <p className="text-xs text-white/50 mt-1">
+                {t('modal.signInDesc', 'Enter your username and password to access your cloud profile & playlists.')}
               </p>
             </div>
 
-            {/* Switcher: Sign In vs Create Account */}
-            <div className="grid grid-cols-2 gap-1 p-1 bg-black/60 rounded-xl border border-white/10 w-full">
-              <button
-                type="button"
-                onClick={() => {
-                  setGateMode('signin');
-                  setGateError('');
-                }}
-                className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  gateMode === 'signin'
-                    ? 'bg-[#ff6b1a] text-black shadow-md'
-                    : 'text-white/60 hover:text-white'
-                }`}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setGateMode('signup');
-                  setGateError('');
-                }}
-                className={`py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  gateMode === 'signup'
-                    ? 'bg-[#ff6b1a] text-black shadow-md'
-                    : 'text-white/60 hover:text-white'
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
-
-            <form onSubmit={handleGateLogin} className="w-full flex flex-col gap-3 mt-1">
+            <form onSubmit={handleGateLogin} className="w-full flex flex-col gap-3 mt-2">
               <input
                 type="text"
-                placeholder="Username"
+                placeholder={t('modal.username', 'Username')}
                 value={gateUser}
                 onChange={(e) => setGateUser(e.target.value)}
                 autoCapitalize="none"
@@ -526,7 +465,7 @@ export const Modals: React.FC = () => {
               />
               <input
                 type="password"
-                placeholder="Password"
+                placeholder={t('modal.password', 'Password')}
                 value={gatePass}
                 onChange={(e) => setGatePass(e.target.value)}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors text-center font-medium"
@@ -546,16 +485,8 @@ export const Modals: React.FC = () => {
                 {gateLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  <span>{gateMode === 'signin' ? 'Sign In' : 'Create Account & Enter'}</span>
+                  <span>{t('modal.signIn', 'Sign In')}</span>
                 )}
-              </button>
-
-              <button
-                type="button"
-                onClick={handleContinueAsGuest}
-                className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-bold text-xs rounded-xl transition-all border border-white/10 flex items-center justify-center gap-1.5 cursor-pointer mt-0.5"
-              >
-                <span>Continue as Guest</span>
               </button>
             </form>
           </div>

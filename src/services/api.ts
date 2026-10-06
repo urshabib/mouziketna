@@ -1,16 +1,14 @@
 import { CustomPlaylist, LyricsData, SyncedLyricsLine, Track } from '../types';
+import { getExplicitInterestedTracks, getExplicitNotInterestedTracks } from './storage';
 
 export const NEW_HUB_BACKEND = 'https://new-music-space-api.urshabib.workers.dev';
 
 export const STREAM_MIRRORS = [
-  `${NEW_HUB_BACKEND}/api/stream-proxy/`,
-  'https://yt.omada.cafe/api/v1/videos/',
   'https://invidious.schenkel.eti.br/api/v1/videos/',
   'https://invidious.kemonomimi.nl/api/v1/videos/',
-  'https://echostreamz.com/api/v1/videos/',
-  'https://inv.nadeko.net/api/v1/videos/',
-  'https://invidious.privacyredirect.com/api/v1/videos/',
-  'https://yewtu.be/api/v1/videos/',
+  'https://yt.omada.cafe/api/v1/videos/',
+  'https://invidious.no-logs.com/api/v1/videos/',
+  'https://inv.tux.pizza/api/v1/videos/',
 ];
 
 export const FALLBACK_ART = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300';
@@ -372,55 +370,62 @@ export async function resolveSaavnStream(
     !/\s/.test(txt) &&
     !/error|not[\s_-]?found|missing|parameter|invalid|no\s*results?/i.test(txt);
 
-  let lastErr = new Error('saavn miss');
-  for (let i = 0; i < attempts.length; i++) {
-    const [t, a] = attempts[i];
-    try {
-      const res = await fetchWithTimeout(
-        `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
-        i === 0 ? 6000 : 3500
-      );
-      if (!res.ok) {
-        lastErr = new Error(`HTTP ${res.status}`);
-        continue;
-      }
-      const txt = (await res.text()).trim();
-      if (looksLikeSaavnId(txt)) {
-        return `https://aac.saavncdn.com/${txt}_${quality}.mp4`;
-      }
-      lastErr = new Error('saavn miss: ' + txt.slice(0, 80));
-    } catch (e) {
-      lastErr = e as Error;
+  // Parallel probe across candidate title/artist cleanings for sub-300ms resolution
+  const topAttempts = attempts.slice(0, 4);
+  const probePromises = topAttempts.map(async ([t, a]) => {
+    const res = await fetchWithTimeout(
+      `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
+      4500
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const txt = (await res.text()).trim();
+    if (looksLikeSaavnId(txt)) {
+      return `https://aac.saavncdn.com/${txt}_${quality}.mp4`;
     }
+    throw new Error('saavn miss: ' + txt.slice(0, 80));
+  });
+
+  try {
+    return await Promise.any(probePromises);
+  } catch {
+    throw new Error('No match found on primary Saavn resolver');
   }
-  throw lastErr;
 }
 
 export async function resolveMirrorStreams(id: string): Promise<string[]> {
+  if (!id || id.length < 5) return [];
   const settled = await Promise.allSettled(
-    STREAM_MIRRORS.map((base) =>
-      fetchWithTimeout(base + id, 6000).then(async (r) => {
-        if (!r.ok) throw new Error('bad');
-        const j = await r.json();
-        if (!j || !j.adaptiveFormats) throw new Error('no formats');
-        const audio = j.adaptiveFormats.filter((f: any) => f.type && f.type.startsWith('audio'));
-        if (!audio.length) throw new Error('no audio');
-        audio.sort((a: any, b: any) => parseInt(b.bitrate) - parseInt(a.bitrate));
-
-        let streamUrl = audio[0].url;
-        const isOwnBackend = base.startsWith(NEW_HUB_BACKEND);
+    STREAM_MIRRORS.map(async (base) => {
+      let r: Response | null = null;
+      try {
+        r = await fetchWithTimeout(base + id, 5000);
+      } catch {
+        // Fallback through CORS proxy if direct connection had CORS or transport blocks
         try {
-          if (!isOwnBackend) {
-            const mirrorUrl = new URL(base);
-            const parsedStream = new URL(streamUrl);
-            if (parsedStream.hostname.includes('googlevideo.com')) {
-              streamUrl = mirrorUrl.origin + parsedStream.pathname + parsedStream.search;
-            }
-          }
+          r = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(base + id)}`, 5500);
         } catch {}
-        return streamUrl;
-      })
-    )
+      }
+      if (!r || !r.ok) throw new Error('bad');
+      const j = await r.json();
+      if (!j || !j.adaptiveFormats) throw new Error('no formats');
+      const audio = j.adaptiveFormats.filter((f: any) => f.type && f.type.startsWith('audio'));
+      if (!audio.length) throw new Error('no audio');
+      audio.sort((a: any, b: any) => parseInt(b.bitrate || 0) - parseInt(a.bitrate || 0));
+
+      let streamUrl = audio[0].url;
+      try {
+        const mirrorUrl = new URL(base);
+        if (streamUrl.startsWith('/')) {
+          streamUrl = mirrorUrl.origin + streamUrl;
+        } else {
+          const parsedStream = new URL(streamUrl);
+          if (parsedStream.hostname.includes('googlevideo.com')) {
+            streamUrl = mirrorUrl.origin + parsedStream.pathname + parsedStream.search;
+          }
+        }
+      } catch {}
+      return streamUrl;
+    })
   );
   return settled.filter((r) => r.status === 'fulfilled').map((r: any) => r.value);
 }
@@ -984,19 +989,30 @@ export async function getTasteProfileRecommendations(
   limit = 12
 ): Promise<Track[]> {
   try {
-    // 1. Collect real seed songs from user profile (NOT bare artist strings!)
+    const explicitInterested = getExplicitInterestedTracks();
+    const explicitDislikedIds = new Set(getExplicitNotInterestedTracks().map((t) => t.id));
+    const combinedExclude = new Set([...excludeIds, ...explicitDislikedIds]);
+
+    // 1. Collect real seed songs from user profile and explicit music taste
     const songWeights = new Map<string, { track: Track; weight: number }>();
 
-    // Weight from Liked Songs (highest priority: weight 4)
-    (userProfile?.likedSongs || []).forEach((t: Track) => {
-      if (!t.id || excludeIds.has(t.id)) return;
+    // Weight from Explicit Interested tracks (highest priority: weight 10)
+    explicitInterested.forEach((t: Track) => {
+      if (!t.id || combinedExclude.has(t.id)) return;
       const prev = songWeights.get(t.id)?.weight || 0;
-      songWeights.set(t.id, { track: t, weight: prev + 4 });
+      songWeights.set(t.id, { track: t, weight: prev + 10 });
+    });
+
+    // Weight from Liked Songs (priority: weight 5)
+    (userProfile?.likedSongs || []).forEach((t: Track) => {
+      if (!t.id || combinedExclude.has(t.id)) return;
+      const prev = songWeights.get(t.id)?.weight || 0;
+      songWeights.set(t.id, { track: t, weight: prev + 5 });
     });
 
     // Weight from Recently Played (recency priority: weight 3)
     (userProfile?.recentlyPlayed || []).forEach((t: Track, idx: number) => {
-      if (!t.id || excludeIds.has(t.id)) return;
+      if (!t.id || combinedExclude.has(t.id)) return;
       const recencyBonus = Math.max(1, 5 - Math.floor(idx / 3));
       const prev = songWeights.get(t.id)?.weight || 0;
       songWeights.set(t.id, { track: t, weight: prev + recencyBonus });
@@ -1005,7 +1021,7 @@ export async function getTasteProfileRecommendations(
     // Weight from Custom Playlists (weight 2)
     (userProfile?.customPlaylists || []).forEach((pl: any) => {
       (pl.tracks || []).forEach((t: Track) => {
-        if (!t.id || excludeIds.has(t.id)) return;
+        if (!t.id || combinedExclude.has(t.id)) return;
         const prev = songWeights.get(t.id)?.weight || 0;
         songWeights.set(t.id, { track: t, weight: prev + 2 });
       });
@@ -1034,16 +1050,16 @@ export async function getTasteProfileRecommendations(
       const relatedResults = await Promise.all(relatedPromises);
 
       const candidateTracks: Track[] = [];
-      const seenIds = new Set<string>(excludeIds);
+      const seenIds = new Set<string>(combinedExclude);
       const artistCounts = new Map<string, number>();
 
       relatedResults.forEach((tracks) => {
         tracks.forEach((t) => {
-          if (!t.id || seenIds.has(t.id)) return;
+          if (!t.id || seenIds.has(t.id) || explicitDislikedIds.has(t.id)) return;
           const artKey = (t.artist || '').toLowerCase().trim();
           const titleKey = (t.title || '').toLowerCase().trim();
 
-          // Reject if title is identical to artist (the user's exact complaint!)
+          // Reject if title is identical to artist
           if (artKey === titleKey) return;
           if (titleKey.includes('type beat') || titleKey.includes('instrumental')) return;
 
@@ -1055,6 +1071,16 @@ export async function getTasteProfileRecommendations(
             candidateTracks.push(t);
           }
         });
+      });
+
+      // Prioritize candidate tracks matching explicit interested artists
+      const interestedArtists = new Set(explicitInterested.map((t) => (t.artist || '').toLowerCase().trim()));
+      candidateTracks.sort((a, b) => {
+        const aBoost = (interestedArtists.has((a.artist || '').toLowerCase().trim()) ? 5 : 0) +
+                       (explicitInterested.some((it) => it.id === a.id) ? 10 : 0);
+        const bBoost = (interestedArtists.has((b.artist || '').toLowerCase().trim()) ? 5 : 0) +
+                       (explicitInterested.some((it) => it.id === b.id) ? 10 : 0);
+        return bBoost - aBoost;
       });
 
       if (candidateTracks.length >= limit) {

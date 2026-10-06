@@ -237,6 +237,7 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       autoCachePlayed: !!profile.autoCachePlayed,
       autoCacheQuality: profile.autoCacheQuality || 'stable',
       liquidGlass: profile.liquidGlass !== undefined ? !!profile.liquidGlass : true,
+      language: profile.language || 'en',
       theme: profile.theme === 'light' ? 'light' : 'dark',
       accentColor: profile.accentColor || 'orange',
       lyricsColor: profile.lyricsColor || 'white',

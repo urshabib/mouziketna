@@ -1,11 +1,11 @@
 {
-  "name": "react-example",
+  "name": "mouziketna",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
-    "build": "rm -rf dist docs assets && vite build && cp dist/404.html 404.html && cp -r dist docs && mkdir -p assets && cp -r dist/assets/* assets/ && touch .nojekyll dist/.nojekyll docs/.nojekyll 2>/dev/null || true",
+    "build": "rm -rf dist docs assets && vite build && cp dist/404.html 404.html && cp -r dist docs && mkdir -p assets && cp -r dist/assets/* assets/ && cp public/apple-touch-icon.png public/favicon* public/icon* public/manifest.json public/sw.js . 2>/dev/null || true && touch .nojekyll dist/.nojekyll docs/.nojekyll 2>/dev/null || true",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
