@@ -81,24 +81,9 @@ export const FullScreenPlayer: React.FC = () => {
   const [isSleepMenuOpen, setIsSleepMenuOpen] = useState(false);
   const [isBoosterMenuOpen, setIsBoosterMenuOpen] = useState(false);
 
-  // Once clicked, remove the new booster notification badge permanently
-  const [hasSeenBooster, setHasSeenBooster] = useState(() => {
-    try {
-      return localStorage.getItem('mouzika_audio_booster_seen') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
   const handleToggleBooster = () => {
     setIsBoosterMenuOpen((prev) => !prev);
     setIsSleepMenuOpen(false);
-    if (!hasSeenBooster) {
-      setHasSeenBooster(true);
-      try {
-        localStorage.setItem('mouzika_audio_booster_seen', 'true');
-      } catch {}
-    }
   };
 
   // Audio Booster Settings state
@@ -254,7 +239,7 @@ export const FullScreenPlayer: React.FC = () => {
             onMouseDown={handleTouchStart}
             onMouseMove={handleTouchMove}
             onMouseUp={handleTouchEnd}
-            className="fixed inset-0 z-50 flex flex-col justify-between bg-[#08080a] text-white px-5 sm:px-12 pt-2 pb-6 sm:pb-8 overflow-y-auto select-none touch-none rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
+            className="fixed inset-0 z-50 flex flex-col justify-between bg-[#08080a] text-white px-4 sm:px-12 pt-[max(0.6rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto select-none touch-none rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
           >
             {/* Dynamic seamless extended ambient glow - extends -inset-24 scale-125 so blur NEVER fades to black at edges */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
@@ -276,18 +261,18 @@ export const FullScreenPlayer: React.FC = () => {
           <div className="flex items-center justify-between w-full max-w-lg mx-auto mb-1 sm:mb-2 flex-shrink-0">
             <button
               onClick={() => setIsFullScreenOpen(false)}
-              className="p-2 -ml-2 text-white/70 hover:text-white transition-colors active:scale-95"
+              className="p-1.5 sm:p-2 -ml-1 text-white/70 hover:text-white transition-colors active:scale-95"
               title="Minimize"
             >
-              <ChevronDown className="w-7 h-7" />
+              <ChevronDown className="w-6 h-6 sm:w-7 sm:h-7" />
             </button>
 
             <div className="flex flex-col items-center">
-              <span className="text-[11px] font-black tracking-widest text-white/50 uppercase">
+              <span className="text-[10px] sm:text-[11px] font-black tracking-widest text-white/50 uppercase">
                 Now Playing
               </span>
               {swipeHint && (
-                <span className="text-[10px] font-bold text-white/80 animate-pulse">
+                <span className="text-[9px] sm:text-[10px] font-bold text-white/80 animate-pulse">
                   {swipeHint === 'next'
                     ? 'Swipe for Next Track ❯'
                     : swipeHint === 'prev'
@@ -300,47 +285,41 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
 
             {/* Action icons */}
-            <div className="flex items-center gap-1.5 relative">
+            <div className="flex items-center gap-0.5 sm:gap-1.5 relative">
               {/* Full Screen Rotate Landscape Mode */}
               <button
                 type="button"
                 onClick={() => {
                   setIsLandscapeStageOpen(true);
                 }}
-                className="p-2 text-white/70 hover:text-white transition-all active:scale-95 cursor-pointer"
+                className="p-1.5 sm:p-2 text-white/70 hover:text-white transition-all active:scale-95 cursor-pointer"
                 title="Full Screen Landscape Mode"
               >
-                <Maximize2 className="w-5 h-5" />
+                <Maximize2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               </button>
 
               {/* Lyrics button */}
               <button
                 onClick={() => setIsLyricsOpen(true)}
-                className="p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
+                className="p-1.5 sm:p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
                 title="Lyrics"
               >
-                <FileText className="w-5 h-5" />
+                <FileText className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               </button>
 
-              {/* BASS BOOSTER & VOLUME BOOSTER BUTTON WITH ATTENTION BADGE */}
+              {/* BASS BOOSTER & VOLUME BOOSTER BUTTON */}
               <div className="relative">
                 <button
                   type="button"
                   onClick={handleToggleBooster}
-                  className={`p-2 transition-all relative rounded-full active:scale-95 cursor-pointer ${
+                  className={`p-1.5 sm:p-2 transition-all relative rounded-full active:scale-95 cursor-pointer ${
                     boosterSettings.bassMode !== 'off' || boosterSettings.volumeBoost > 100
                       ? 'text-[#ff6b1a] bg-[#ff6b1a]/20 shadow-[0_0_12px_rgba(255,107,26,0.4)]'
                       : 'text-white/70 hover:text-white'
                   }`}
                   title="Bass & Volume Booster"
                 >
-                  <SlidersHorizontal className="w-5 h-5" />
-                  {/* Static clean orange notification badge until clicked the first time */}
-                  {!hasSeenBooster && (
-                    <span className="absolute top-1 right-1 flex h-2 w-2 items-center justify-center">
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-[#ff6b1a] shadow-sm" />
-                    </span>
-                  )}
+                  <SlidersHorizontal className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
                 </button>
 
                 {/* Bass Boost & Volume Booster Popover */}
@@ -607,13 +586,13 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
           </div>
 
-          {/* Center Artwork with Horizontal Swipe Motion & Spring Dynamics (Tap to cycle: Square -> CD -> NVS Visualizer) */}
-          <div className="flex-1 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto px-2 py-1 flex-shrink-0">
+          {/* Center Artwork with Horizontal Swipe Motion & Adaptive Sizing */}
+          <div className="flex-1 min-h-0 flex items-center justify-center w-full max-w-sm sm:max-w-md mx-auto px-2 py-0.5 sm:py-1">
             <motion.div
               style={{
                 aspectRatio: '1 / 1',
-                maxHeight: 'min(78vw, 360px, calc(100vh - 280px))',
-                maxWidth: 'min(78vw, 360px, calc(100vh - 280px))',
+                maxHeight: 'min(70vw, 340px, calc(100dvh - 350px))',
+                maxWidth: 'min(70vw, 340px, calc(100dvh - 350px))',
                 x: dragX,
                 rotate: dragX * 0.04,
                 scale: 1 - Math.min(Math.abs(dragX) / 1000, 0.1),
@@ -737,7 +716,7 @@ export const FullScreenPlayer: React.FC = () => {
           </div>
 
           {/* Bottom Track Meta, Timeline & Controls */}
-          <div className="w-full max-w-lg mx-auto flex flex-col gap-3.5 sm:gap-5 mt-2 sm:mt-3 flex-shrink-0">
+          <div className="w-full max-w-lg mx-auto flex flex-col gap-2.5 sm:gap-4 mt-1 sm:mt-2.5 flex-shrink-0">
             {/* Title & Like */}
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1 pr-4">

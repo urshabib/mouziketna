@@ -17,7 +17,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'home.goodMorning': 'Good morning',
     'home.goodAfternoon': 'Good afternoon',
     'home.goodEvening': 'Good evening',
-    'home.welcome': 'Welcome to MOUZIKA',
+    'home.welcome': 'Welcome to MOUZIKETNA',
     'home.trending': 'Global Trending',
     'home.trendingDesc': 'Top viral & chart-topping tracks worldwide',
     'home.quickPicks': 'Quick Picks',
@@ -176,7 +176,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.lastSynced': 'Last synced',
     'settings.storage': 'Offline Storage & Cache',
     'settings.clearCache': 'Clear Cache & Temp Files',
-    'settings.about': 'About MOUZIKA',
+    'settings.about': 'About MOUZIKETNA',
     'settings.version': 'Version 3.2.0 • Ultra Engine',
     'settings.appSettings': 'Audio & App Settings',
     'settings.lyricsGlowColor': 'Karaoke Lyrics Highlight Color',
@@ -283,7 +283,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Modals & Actions
     'modal.signIn': 'Sign In',
-    'modal.signInTitle': 'Sign In to MOUZIKA',
+    'modal.signInTitle': 'Sign In to MOUZIKETNA',
     'modal.signInDesc': 'Enter your username and password to access your cloud profile & playlists.',
     'modal.username': 'Username',
     'modal.password': 'Password',
@@ -346,7 +346,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'home.goodMorning': 'Bonjour',
     'home.goodAfternoon': 'Bon après-midi',
     'home.goodEvening': 'Bonsoir',
-    'home.welcome': 'Bienvenue sur MOUZIKA',
+    'home.welcome': 'Bienvenue sur MOUZIKETNA',
     'home.trending': 'Tendances Mondiales',
     'home.trendingDesc': 'Les titres les plus populaires et viraux du moment',
     'home.quickPicks': 'Sélections Rapides',
@@ -505,7 +505,7 @@ export const translations: Record<Language, Record<string, string>> = {
     'settings.lastSynced': 'Dernière synchro',
     'settings.storage': 'Stockage Hors-Ligne & Cache',
     'settings.clearCache': 'Vider le Cache & Fichiers Temp',
-    'settings.about': 'À propos de MOUZIKA',
+    'settings.about': 'À propos de MOUZIKETNA',
     'settings.version': 'Version 3.2.0 • Moteur Ultra',
     'settings.appSettings': 'Paramètres Audio & App',
     'settings.lyricsGlowColor': 'Couleur des Paroles Karaoké',
@@ -612,7 +612,7 @@ export const translations: Record<Language, Record<string, string>> = {
 
     // Modals & Actions
     'modal.signIn': 'Se Connecter',
-    'modal.signInTitle': 'Connexion à MOUZIKA',
+    'modal.signInTitle': 'Connexion à MOUZIKETNA',
     'modal.signInDesc': 'Entrez votre nom d\'utilisateur et mot de passe pour accéder à votre profil cloud & playlists.',
     'modal.username': 'Nom d\'utilisateur',
     'modal.password': 'Mot de passe',

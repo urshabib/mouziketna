@@ -87,8 +87,8 @@
                     location.hostname.includes('run.app');
 
         function mountProductionAssets() {
-          if (window.__MOUZIKA_BUNDLE_INJECTED__) return;
-          window.__MOUZIKA_BUNDLE_INJECTED__ = true;
+          if (window.__MOUZIKETNA_BUNDLE_INJECTED__) return;
+          window.__MOUZIKETNA_BUNDLE_INJECTED__ = true;
 
           if (!document.querySelector('link[href*="index.css"]')) {
             var css = document.createElement('link');
@@ -133,10 +133,10 @@
           window.addEventListener('load', function() {
             navigator.serviceWorker.register('./sw.js')
               .then(function(reg) {
-                console.log('[MOUZIKA] PWA Service Worker active with scope:', reg.scope);
+                console.log('[MOUZIKETNA] PWA Service Worker active with scope:', reg.scope);
               })
               .catch(function(err) {
-                console.warn('[MOUZIKA] Service Worker registration notice:', err);
+                console.warn('[MOUZIKETNA] Service Worker registration notice:', err);
               });
           });
         } else {

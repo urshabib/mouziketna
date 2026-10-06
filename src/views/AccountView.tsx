@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useMusic } from '../context/MusicContext';
 import {
   User,
@@ -95,6 +95,7 @@ export const AccountView: React.FC = () => {
   };
 
   const hiddenSongs = userProfile.hiddenStatsSongs || [];
+  const hiddenSongIds = useMemo(() => new Set(hiddenSongs.map((s) => s.id)), [hiddenSongs]);
 
   const formatHoursAndMinutes = (totalMins: number) => {
     if (!totalMins || totalMins <= 0) return `0 ${t('common.minutes', 'mins')}`;
@@ -105,8 +106,39 @@ export const AccountView: React.FC = () => {
     return `${hours}h ${mins}m`;
   };
 
-  const topSongs = stats.topSongs || [];
-  const topArtists = stats.topArtists || [];
+  // Strictly filter out hidden songs from top songs
+  const topSongs = useMemo(() => {
+    return (stats.topSongs || []).filter((s) => !hiddenSongIds.has(s.id));
+  }, [stats.topSongs, hiddenSongIds]);
+
+  // Derive top artists strictly from visible (non-hidden) songs so hiding top song never leaves old artist stuck
+  const topArtists = useMemo(() => {
+    const artistMap = new Map<string, { name: string; playCount: number; minutesListened: number; thumb?: string | null }>();
+    topSongs.forEach((song: SongPlayStat) => {
+      const art = (song.artist || 'Unknown').trim();
+      if (!art || art.toLowerCase() === 'various artists') return;
+      const key = art.toLowerCase();
+      const existing = artistMap.get(key);
+      if (existing) {
+        existing.playCount += song.playCount || 1;
+        existing.minutesListened += song.minutesListened || 0;
+        if (!existing.thumb && song.thumb) existing.thumb = song.thumb;
+      } else {
+        artistMap.set(key, {
+          name: art,
+          playCount: song.playCount || 1,
+          minutesListened: song.minutesListened || 0,
+          thumb: song.thumb,
+        });
+      }
+    });
+
+    const list = Array.from(artistMap.values()).sort(
+      (a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
+    );
+    return list;
+  }, [topSongs]);
+
   const topSong = topSongs[0];
   const topArtist = topArtists[0];
   const interestedTracks = getInterestedTracks();
@@ -413,7 +445,7 @@ export const AccountView: React.FC = () => {
                 </p>
               </div>
             ) : (
-              topSongs.map((song, idx) => {
+              topSongs.map((song: SongPlayStat, idx: number) => {
                 const rank = idx + 1;
                 const badgeColor =
                   rank === 1
@@ -536,10 +568,10 @@ export const AccountView: React.FC = () => {
                 <p className="text-sm font-bold text-white/60">No artist statistics recorded yet.</p>
               </div>
             ) : (
-              topArtists.map((artist, idx) => (
+              topArtists.map((artist: { name: string; playCount: number; minutesListened: number; thumb?: string | null }, idx: number) => (
                 <div
                   key={artist.name}
-                  onClick={() => openCollection('artist', artist.name, artist.name, artist.thumb)}
+                  onClick={() => openCollection('artist', artist.name, artist.name, artist.thumb || undefined)}
                   className="flex items-center gap-3.5 p-3.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all cursor-pointer group"
                 >
                   <span className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-xs font-black text-white/70 flex-shrink-0">

@@ -20,7 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[MOUZIKA] Caught unhandled rendering error:', error, errorInfo);
+    console.error('[MOUZIKETNA] Caught unhandled rendering error:', error, errorInfo);
   }
 
   private handleReset = () => {
@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </div>
           <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
           <p className="text-sm text-neutral-400 max-w-md mb-8 leading-relaxed">
-            MOUZIKA encountered an unexpected issue while loading. You can reload the application or reset cached data to continue.
+            MOUZIKETNA encountered an unexpected issue while loading. You can reload the application or reset cached data to continue.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 w-full max-w-xs">
             <button

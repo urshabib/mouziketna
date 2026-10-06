@@ -376,12 +376,13 @@ export const CollectionView: React.FC = () => {
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
 
     // Responsive 500ms (0.5s) hold on the 6-dots button to unlock reordering
-    // Prevents accidental touches while feeling natural when directly pressing the dots
+    // Once 0.5s has elapsed, reordering is permanently active until finger is released
     touchHoldTimerRef.current = setTimeout(() => {
       touchActiveReorderIndexRef.current = index;
       touchStartIndexRef.current = index;
       touchCurrentIndexRef.current = index;
       setDraggedIndex(index);
+      setDragOverIndex(index);
       setReorderingTrackIndex(index);
       if (navigator.vibrate) {
         try {
@@ -389,78 +390,114 @@ export const CollectionView: React.FC = () => {
         } catch {}
       }
     }, 500);
-  };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    const touch = e.touches[0];
-    if (!touch) return;
+    const onGlobalTouchMove = (moveEvt: TouchEvent) => {
+      const curTouch = moveEvt.touches[0];
+      if (!curTouch) return;
 
-    // If hold hasn't triggered yet:
-    if (touchActiveReorderIndexRef.current === null) {
-      if (touchStartPosRef.current) {
-        const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
-        const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
-        // Finger moved > 16px before hold duration: user is scrolling!
-        // Abort reordering and allow normal scrolling
-        if (dx > 16 || dy > 16) {
-          if (touchHoldTimerRef.current) {
-            clearTimeout(touchHoldTimerRef.current);
-            touchHoldTimerRef.current = null;
+      // If hold hasn't triggered yet (under 0.5s):
+      if (touchActiveReorderIndexRef.current === null) {
+        if (touchStartPosRef.current) {
+          const dx = Math.abs(curTouch.clientX - touchStartPosRef.current.x);
+          const dy = Math.abs(curTouch.clientY - touchStartPosRef.current.y);
+          // Finger moved > 25px before 0.5s hold: user is scrolling page
+          if (dx > 25 || dy > 25) {
+            if (touchHoldTimerRef.current) {
+              clearTimeout(touchHoldTimerRef.current);
+              touchHoldTimerRef.current = null;
+            }
+          }
+        }
+        return;
+      }
+
+      // 0.5s+ elapsed: user held the grip and is now dragging
+      if (moveEvt.cancelable) moveEvt.preventDefault();
+      checkAutoScroll(curTouch.clientY);
+
+      // Locate destination row using reliable bounding client rects
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-track-index]'));
+      let detectedIdx = -1;
+      for (const r of rows) {
+        const rect = r.getBoundingClientRect();
+        if (curTouch.clientY >= rect.top && curTouch.clientY <= rect.bottom) {
+          const parsed = parseInt(r.getAttribute('data-track-index') || '', 10);
+          if (!isNaN(parsed)) {
+            detectedIdx = parsed;
+            break;
           }
         }
       }
-      return;
-    }
 
-    // Long press (0.5s) triggered! User intentionally held to reorder this track!
-    if (e.cancelable) e.preventDefault();
-    checkAutoScroll(touch.clientY);
-    let el = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (!el || !el.closest('[data-track-index]')) {
-      el = document.elementFromPoint(window.innerWidth / 2, touch.clientY);
-    }
-    if (!el) return;
-    const row = el.closest('[data-track-index]');
-    if (row) {
-      const newIdx = parseInt(row.getAttribute('data-track-index') || '', 10);
-      if (!isNaN(newIdx) && newIdx !== dragOverIndex) {
-        setDragOverIndex(newIdx);
-        touchCurrentIndexRef.current = newIdx;
+      if (detectedIdx === -1 && rows.length > 0) {
+        const firstRect = rows[0].getBoundingClientRect();
+        const lastRect = rows[rows.length - 1].getBoundingClientRect();
+        if (curTouch.clientY < firstRect.top) detectedIdx = 0;
+        else if (curTouch.clientY > lastRect.bottom) detectedIdx = rows.length - 1;
+      }
+
+      if (detectedIdx >= 0 && detectedIdx !== touchCurrentIndexRef.current) {
+        touchCurrentIndexRef.current = detectedIdx;
+        setDragOverIndex(detectedIdx);
         if (navigator.vibrate) {
           try {
             navigator.vibrate(15);
           } catch {}
         }
       }
+    };
+
+    const onGlobalTouchEnd = () => {
+      window.removeEventListener('touchmove', onGlobalTouchMove);
+      window.removeEventListener('touchend', onGlobalTouchEnd);
+      window.removeEventListener('touchcancel', onGlobalTouchEnd);
+
+      if (touchHoldTimerRef.current) {
+        clearTimeout(touchHoldTimerRef.current);
+        touchHoldTimerRef.current = null;
+      }
+
+      if (touchActiveReorderIndexRef.current !== null && touchCurrentIndexRef.current !== null) {
+        const from = touchActiveReorderIndexRef.current;
+        const to = touchCurrentIndexRef.current;
+        if (from !== to && from >= 0 && to >= 0 && from < tracks.length && to < tracks.length) {
+          const updated = [...tracks];
+          const [moved] = updated.splice(from, 1);
+          updated.splice(to, 0, moved);
+          setTracks(updated);
+          if (target.type === 'custom-playlist' && target.id) {
+            updatePlaylistTracks(target.id, updated);
+          }
+          if (navigator.vibrate) {
+            try {
+              navigator.vibrate(25);
+            } catch {}
+          }
+        }
+      }
+      touchActiveReorderIndexRef.current = null;
+      touchStartIndexRef.current = null;
+      touchCurrentIndexRef.current = null;
+      touchStartPosRef.current = null;
+      setDraggedIndex(null);
+      setDragOverIndex(null);
+      setReorderingTrackIndex(null);
+    };
+
+    window.addEventListener('touchmove', onGlobalTouchMove, { passive: false });
+    window.addEventListener('touchend', onGlobalTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', onGlobalTouchEnd, { passive: true });
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // Handled seamlessly by window touchmove listener
+    if (touchActiveReorderIndexRef.current !== null && e.cancelable) {
+      e.preventDefault();
     }
   };
 
   const handleTouchEnd = () => {
-    if (touchHoldTimerRef.current) {
-      clearTimeout(touchHoldTimerRef.current);
-      touchHoldTimerRef.current = null;
-    }
-
-    if (touchActiveReorderIndexRef.current !== null && touchCurrentIndexRef.current !== null) {
-      const from = touchActiveReorderIndexRef.current;
-      const to = touchCurrentIndexRef.current;
-      if (from !== to && from >= 0 && to >= 0 && from < tracks.length && to < tracks.length) {
-        const updated = [...tracks];
-        const [moved] = updated.splice(from, 1);
-        updated.splice(to, 0, moved);
-        setTracks(updated);
-        if (target.type === 'custom-playlist' && target.id) {
-          updatePlaylistTracks(target.id, updated);
-        }
-      }
-    }
-    touchActiveReorderIndexRef.current = null;
-    touchStartIndexRef.current = null;
-    touchCurrentIndexRef.current = null;
-    touchStartPosRef.current = null;
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-    setReorderingTrackIndex(null);
+    // Handled seamlessly by window touchend listener
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {

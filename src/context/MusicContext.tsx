@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
-import { CustomPlaylist, DownloadRecord, LyricsData, NavigationPane, Track, UserProfile, UserStats } from '../types';
+import { ArtistPlayStat, CustomPlaylist, DownloadRecord, LyricsData, NavigationPane, Track, UserProfile, UserStats } from '../types';
 import { getTranslation, Language } from '../services/i18n';
 import {
   NEW_HUB_BACKEND,
@@ -19,6 +19,8 @@ import {
   fetchJsonRetry,
   normalizeTrack,
   searchTracks,
+  getRelatedTracks,
+  getTasteProfileRecommendations,
 } from '../services/api';
 import {
   cacheProfileLocally,
@@ -956,11 +958,35 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const deductedMins = Math.max(0, (stats.totalMinutesListened || 0) - (songToHide.minutesListened || 0));
       const deductedPlays = Math.max(0, (stats.totalTracksPlayed || 0) - (songToHide.playCount || 0));
 
+      // Recompute topArtists based on visible newTop songs
+      const artistMap = new Map<string, ArtistPlayStat>();
+      newTop.forEach((s) => {
+        const art = (s.artist || 'Unknown').trim();
+        const key = art.toLowerCase();
+        const ex = artistMap.get(key);
+        if (ex) {
+          ex.playCount = (ex.playCount || 0) + (s.playCount || 1);
+          ex.minutesListened = (ex.minutesListened || 0) + (s.minutesListened || 0);
+          if (!ex.thumb && s.thumb) ex.thumb = s.thumb;
+        } else {
+          artistMap.set(key, {
+            name: art,
+            playCount: s.playCount || 1,
+            minutesListened: s.minutesListened || 0,
+            thumb: s.thumb,
+          });
+        }
+      });
+      const newTopArtists = Array.from(artistMap.values()).sort(
+        (a, b) => (b.minutesListened || 0) - (a.minutesListened || 0)
+      );
+
       const updatedStats: UserStats = {
         ...stats,
         totalMinutesListened: deductedMins,
         totalTracksPlayed: deductedPlays,
         topSongs: newTop,
+        topArtists: newTopArtists.slice(0, 20),
         lastUpdated: Date.now(),
       };
 
@@ -1006,11 +1032,35 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const restoredMins = (stats.totalMinutesListened || 0) + (songToRestore.minutesListened || 0);
       const restoredPlays = (stats.totalTracksPlayed || 0) + (songToRestore.playCount || 0);
 
+      // Recompute topArtists based on visible currentTop songs
+      const artistMap = new Map<string, ArtistPlayStat>();
+      currentTop.forEach((s) => {
+        const art = (s.artist || 'Unknown').trim();
+        const key = art.toLowerCase();
+        const ex = artistMap.get(key);
+        if (ex) {
+          ex.playCount = (ex.playCount || 0) + (s.playCount || 1);
+          ex.minutesListened = (ex.minutesListened || 0) + (s.minutesListened || 0);
+          if (!ex.thumb && s.thumb) ex.thumb = s.thumb;
+        } else {
+          artistMap.set(key, {
+            name: art,
+            playCount: s.playCount || 1,
+            minutesListened: s.minutesListened || 0,
+            thumb: s.thumb,
+          });
+        }
+      });
+      const newTopArtists = Array.from(artistMap.values()).sort(
+        (a, b) => (b.minutesListened || 0) - (a.minutesListened || 0)
+      );
+
       const updatedStats: UserStats = {
         ...stats,
         totalMinutesListened: restoredMins,
         totalTracksPlayed: restoredPlays,
         topSongs: currentTop,
+        topArtists: newTopArtists.slice(0, 20),
         lastUpdated: Date.now(),
       };
 
@@ -1202,7 +1252,33 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const seedArtistKey = tasteArtistKey(seedTrack.artist);
       if (seedArtistKey) artistCounts[seedArtistKey] = 1;
 
-      // 1. Fetch acoustic & thematic recommendations via similar-proxy
+      // Collect playlist / liked song IDs so we prioritize fresh & new songs over repeating existing ones
+      const existingPlaylistSongIds = new Set<string>();
+      (userProfile.likedSongs || []).forEach((s) => s.id && existingPlaylistSongIds.add(s.id));
+      (userProfile.customPlaylists || []).forEach((pl) => {
+        (pl.tracks || []).forEach((s) => s.id && existingPlaylistSongIds.add(s.id));
+      });
+
+      let existingPlaylistTracksAdded = 0;
+
+      // 1. Fetch direct authentic related tracks for seedTrack (Invidious / YouTube radio algorithm)
+      try {
+        const related = await getRelatedTracks(seedTrack.id);
+        for (const it of related) {
+          if (!it.id || seenIds.has(it.id)) continue;
+          if (existingPlaylistSongIds.has(it.id)) {
+            if (existingPlaylistTracksAdded >= 1) continue;
+            existingPlaylistTracksAdded++;
+          }
+          const aKey = tasteArtistKey(it.artist);
+          if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
+          seenIds.add(it.id);
+          if (aKey) artistCounts[aKey] = (artistCounts[aKey] || 0) + 1;
+          candidates.push(it);
+        }
+      } catch {}
+
+      // 2. Fetch acoustic & thematic recommendations via similar-proxy
       try {
         const simRes = await fetchWithTimeout(
           `${NEW_HUB_BACKEND}/api/similar-proxy?title=${encodeURIComponent(seedTrack.title)}&artist=${encodeURIComponent(seedTrack.artist || '')}`,
@@ -1214,9 +1290,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           for (const it of list) {
             const id = it.id || it.videoId;
             if (!id || seenIds.has(id)) continue;
+            if (existingPlaylistSongIds.has(id)) {
+              if (existingPlaylistTracksAdded >= 2) continue;
+              existingPlaylistTracksAdded++;
+            }
             const norm = normalizeTrack(it, 'song');
             const aKey = tasteArtistKey(norm.artist);
-            // Cap at 2 tracks from the same artist to prevent single-artist flooding
             if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
             seenIds.add(id);
             if (aKey) artistCounts[aKey] = (artistCounts[aKey] || 0) + 1;
@@ -1225,33 +1304,40 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } catch {}
 
-      // 2. Mix in personalized taste seeds based on user listening history and liked songs
+      // 3. Blend in fresh taste profile recommendations based on user history and overall musical vibe
       try {
-        const topSeeds = tasteTopSeeds(userProfile.likedSongs || [], 3, seedTrack.id);
-        for (const tSeed of topSeeds) {
-          if (candidates.length >= 18) break;
-          const aKey = tasteArtistKey(tSeed.artist);
-          if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
-          if (!seenIds.has(tSeed.id)) {
-            seenIds.add(tSeed.id);
-            if (aKey) artistCounts[aKey] = (artistCounts[aKey] || 0) + 1;
-            candidates.push(tSeed);
+        const tasteRecs = await getTasteProfileRecommendations(userProfile, seenIds, 12);
+        for (const tRec of tasteRecs) {
+          if (candidates.length >= 22) break;
+          if (!tRec.id || seenIds.has(tRec.id)) continue;
+          if (existingPlaylistSongIds.has(tRec.id)) {
+            if (existingPlaylistTracksAdded >= 2) continue;
+            existingPlaylistTracksAdded++;
           }
+          const aKey = tasteArtistKey(tRec.artist);
+          if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
+          seenIds.add(tRec.id);
+          if (aKey) artistCounts[aKey] = (artistCounts[aKey] || 0) + 1;
+          candidates.push(tRec);
         }
       } catch {}
 
-      // 3. Fallback / supplement with radio mix search if fewer than 10 tracks
+      // 4. Fallback / supplement with radio mix search if fewer than 10 tracks
       if (candidates.length < 10) {
         const cleanTitle = cleanTitleForLyrics(seedTrack.title) || seedTrack.title;
         const query = cleanTitle ? `${cleanTitle} radio mix` : `${seedTrack.artist || 'popular'} mix`;
         const res = await fetchJsonRetry<any>(
           `${NEW_HUB_BACKEND}/api/search-proxy?q=${encodeURIComponent(query)}&f=song`,
           2
-        );
+        ).catch(() => ({ items: [] }));
         const items = Array.isArray(res) ? res : res.items || [];
         for (const it of items) {
           const id = it.videoId || it.id;
           if (!id || seenIds.has(id)) continue;
+          if (existingPlaylistSongIds.has(id)) {
+            if (existingPlaylistTracksAdded >= 2) continue;
+            existingPlaylistTracksAdded++;
+          }
           const norm = normalizeTrack(it, 'song');
           const aKey = tasteArtistKey(norm.artist);
           if (aKey && (artistCounts[aKey] || 0) >= 2) continue;
@@ -1263,7 +1349,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       if (candidates.length > 0) {
-        const finalQueue = candidates.slice(0, 25);
+        // Keep top 2 most immediate related tracks in front, then randomly interleave the remaining recommendations
+        const head = candidates.slice(0, 2);
+        const tail = candidates.slice(2);
+        // Fisher-Yates gentle shuffle of tail to provide an organic, dynamic radio queue
+        for (let i = tail.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [tail[i], tail[j]] = [tail[j], tail[i]];
+        }
+        const finalQueue = [...head, ...tail].slice(0, 25);
+
         setPlaybackQueue((current) => {
           if (current.length <= 1) {
             return [seedTrack, ...finalQueue];
@@ -1289,47 +1384,55 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         topArtists: [],
       };
 
-      // 1. Update top songs
-      const topSongs = [...(stats.topSongs || [])];
-      const songIdx = topSongs.findIndex((s) => s.id === track.id);
-      if (songIdx >= 0) {
-        topSongs[songIdx] = {
-          ...topSongs[songIdx],
-          minutesListened: (topSongs[songIdx].minutesListened || 0) + mins,
-          lastPlayed: Date.now(),
-        };
-      } else {
-        topSongs.push({
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          thumb: track.thumb,
-          playCount: 1,
-          minutesListened: mins,
-          lastPlayed: Date.now(),
-        });
-      }
-      topSongs.sort((a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2));
+      const hiddenSongIds = new Set((prev.hiddenStatsSongs || []).map((s) => s.id));
 
-      // 2. Update top artists
-      const topArtists = [...(stats.topArtists || [])];
-      const artistName = track.artist || 'Unknown';
-      const artistIdx = topArtists.findIndex((a) => a.name.toLowerCase() === artistName.toLowerCase());
-      if (artistIdx >= 0) {
-        topArtists[artistIdx] = {
-          ...topArtists[artistIdx],
-          minutesListened: (topArtists[artistIdx].minutesListened || 0) + mins,
-          playCount: (topArtists[artistIdx].playCount || 0) + 1,
-        };
-      } else {
-        topArtists.push({
-          name: artistName,
-          playCount: 1,
-          minutesListened: mins,
-          thumb: track.thumb,
-        });
+      // 1. Update top songs (only for visible, non-hidden songs)
+      const topSongs = [...(stats.topSongs || [])].filter((s) => !hiddenSongIds.has(s.id));
+      if (!hiddenSongIds.has(track.id)) {
+        const songIdx = topSongs.findIndex((s) => s.id === track.id);
+        if (songIdx >= 0) {
+          topSongs[songIdx] = {
+            ...topSongs[songIdx],
+            minutesListened: (topSongs[songIdx].minutesListened || 0) + mins,
+            lastPlayed: Date.now(),
+          };
+        } else {
+          topSongs.push({
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            thumb: track.thumb,
+            playCount: 1,
+            minutesListened: mins,
+            lastPlayed: Date.now(),
+          });
+        }
+        topSongs.sort((a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2));
       }
-      topArtists.sort((a, b) => (b.minutesListened || 0) - (a.minutesListened || 0));
+
+      // 2. Derive top artists strictly from visible (non-hidden) songs so hidden songs never skew top artist
+      const artistMap = new Map<string, ArtistPlayStat>();
+      topSongs.forEach((s) => {
+        const art = (s.artist || 'Unknown').trim();
+        if (!art || art.toLowerCase() === 'various artists') return;
+        const key = art.toLowerCase();
+        const ex = artistMap.get(key);
+        if (ex) {
+          ex.playCount = (ex.playCount || 0) + (s.playCount || 1);
+          ex.minutesListened = (ex.minutesListened || 0) + (s.minutesListened || 0);
+          if (!ex.thumb && s.thumb) ex.thumb = s.thumb;
+        } else {
+          artistMap.set(key, {
+            name: art,
+            playCount: s.playCount || 1,
+            minutesListened: s.minutesListened || 0,
+            thumb: s.thumb,
+          });
+        }
+      });
+      const topArtists = Array.from(artistMap.values()).sort(
+        (a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
+      );
 
       const updatedStats = {
         totalMinutesListened: (stats.totalMinutesListened || 0) + mins,
@@ -1368,26 +1471,30 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         topArtists: [],
       };
 
-      const topSongs = [...(stats.topSongs || [])];
-      const songIdx = topSongs.findIndex((s) => s.id === track.id);
-      if (songIdx >= 0) {
-        topSongs[songIdx] = {
-          ...topSongs[songIdx],
-          playCount: (topSongs[songIdx].playCount || 0) + 1,
-          lastPlayed: Date.now(),
-        };
-      } else {
-        topSongs.push({
-          id: track.id,
-          title: track.title,
-          artist: track.artist,
-          thumb: track.thumb,
-          playCount: 1,
-          minutesListened: 1,
-          lastPlayed: Date.now(),
-        });
+      const hiddenSongIds = new Set((prev.hiddenStatsSongs || []).map((s) => s.id));
+      const topSongs = [...(stats.topSongs || [])].filter((s) => !hiddenSongIds.has(s.id));
+
+      if (!hiddenSongIds.has(track.id)) {
+        const songIdx = topSongs.findIndex((s) => s.id === track.id);
+        if (songIdx >= 0) {
+          topSongs[songIdx] = {
+            ...topSongs[songIdx],
+            playCount: (topSongs[songIdx].playCount || 0) + 1,
+            lastPlayed: Date.now(),
+          };
+        } else {
+          topSongs.push({
+            id: track.id,
+            title: track.title,
+            artist: track.artist,
+            thumb: track.thumb,
+            playCount: 1,
+            minutesListened: 1,
+            lastPlayed: Date.now(),
+          });
+        }
+        topSongs.sort((a, b) => ((b.playCount || 0) * 3 + (b.minutesListened || 0)) - ((a.playCount || 0) * 3 + (a.minutesListened || 0)));
       }
-      topSongs.sort((a, b) => ((b.playCount || 0) * 3 + (b.minutesListened || 0)) - ((a.playCount || 0) * 3 + (a.minutesListened || 0)));
 
       const updatedStats = {
         ...stats,
@@ -1645,7 +1752,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       navigator.mediaSession.metadata = new MediaMetadata({
         title: t.title,
         artist: t.artist,
-        album: t.album || 'MOUZIKA',
+        album: t.album || 'MOUZIKETNA',
         artwork: [
           { src: artUrl, sizes: '96x96', type: 'image/jpeg' },
           { src: artUrl, sizes: '128x128', type: 'image/jpeg' },

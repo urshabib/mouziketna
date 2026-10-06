@@ -187,7 +187,7 @@ let cachedPng512: string | null = null;
 export function getStoredAppName(): string {
   try {
     const val = localStorage.getItem(STORAGE_KEY)?.trim();
-    if (!val || val === 'MOUZIKA') return DEFAULT_APP_NAME;
+    if (!val || val === 'MOUZIKA' || val === 'MOUZIKETNA') return DEFAULT_APP_NAME;
     return val;
   } catch {
     return DEFAULT_APP_NAME;
@@ -642,6 +642,6 @@ if (typeof window !== 'undefined') {
       applyCustomAppLogo(savedLogo).catch(() => {});
     }
   } catch (e) {
-    console.warn('[MOUZIKA] PWA init notice:', e);
+    console.warn('[MOUZIKETNA] PWA init notice:', e);
   }
 }

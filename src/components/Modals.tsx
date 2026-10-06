@@ -447,7 +447,7 @@ export const Modals: React.FC = () => {
             </div>
 
             <div>
-              <h3 className="font-black text-2xl text-white">{t('modal.signInTitle', 'Sign In to MOUZIKA')}</h3>
+              <h3 className="font-black text-2xl text-white">{t('modal.signInTitle', 'Sign In to MOUZIKETNA')}</h3>
               <p className="text-xs text-white/50 mt-1">
                 {t('modal.signInDesc', 'Enter your username and password to access your cloud profile & playlists.')}
               </p>

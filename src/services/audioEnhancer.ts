@@ -119,9 +119,17 @@ function applyFilters() {
       highAirFilter.gain.setTargetAtTime(0, t, 0.02);
       headroomGainNode.gain.setTargetAtTime(1.0, t, 0.02);
 
-      // Limiter threshold at 0dB with 1:1 ratio = completely transparent, no dynamic squash
-      limiterNode.threshold.setTargetAtTime(0, t, 0.02);
-      limiterNode.ratio.setTargetAtTime(1, t, 0.02);
+      if (currentVolumeBoost > 100) {
+        // Transparent soft-knee safety limiter when boosted up to 200%
+        limiterNode.threshold.setTargetAtTime(-1.0, t, 0.02);
+        limiterNode.knee.setTargetAtTime(14, t, 0.02);
+        limiterNode.ratio.setTargetAtTime(14, t, 0.02);
+      } else {
+        // Completely transparent 1:1 bypass
+        limiterNode.threshold.setTargetAtTime(0, t, 0.02);
+        limiterNode.knee.setTargetAtTime(4, t, 0.02);
+        limiterNode.ratio.setTargetAtTime(1, t, 0.02);
+      }
     } else if (currentBassMode === 'on') {
       // 2. AUDIOPHILE CLEAR BASS:
       // Subsonic cleanup + tight 70Hz low-end warmth + dedicated 3.2kHz vocal boost so lyrics are 100% crisp!
@@ -134,30 +142,32 @@ function applyFilters() {
       vocalClarityFilter.gain.setTargetAtTime(isVocalClarityActive ? 2.6 : 0, t, 0.02);
       highAirFilter.gain.setTargetAtTime(1.2, t, 0.02); // 11kHz air sheen
 
-      // Headroom attenuation (-1.2dB) prevents low-end from causing output clipping
-      headroomGainNode.gain.setTargetAtTime(0.88, t, 0.02);
+      // Headroom attenuation prevents low-end from causing output clipping
+      const baseHeadroom = currentVolumeBoost > 100 ? 0.82 : 0.88;
+      headroomGainNode.gain.setTargetAtTime(baseHeadroom, t, 0.02);
 
-      // Transparent safety ceiling limiter (only catches extreme transients near 0dB)
-      limiterNode.threshold.setTargetAtTime(-0.5, t, 0.02);
-      limiterNode.ratio.setTargetAtTime(6, t, 0.02);
+      // Transparent safety ceiling limiter
+      limiterNode.threshold.setTargetAtTime(-1.2, t, 0.02);
+      limiterNode.knee.setTargetAtTime(12, t, 0.02);
+      limiterNode.ratio.setTargetAtTime(12, t, 0.02);
     } else if (currentBassMode === 'boost') {
       // 3. ULTRA DEEP CLUB BASS + PROTECTED VOCAL INTELLIGIBILITY:
-      // Replaces the old distorted "ambulance boost" with clean, deep, physical low-end
-      // without muffling vocals or destroying speech clarity!
       subRumbleCut.frequency.setTargetAtTime(22, t, 0.02); // Infrasonic barrier
       subBassPeaking.gain.setTargetAtTime(4.6, t, 0.02); // 58Hz Deep rich sub bass
       bassLowShelf.gain.setTargetAtTime(3.0, t, 0.02); // 90Hz Solid kick punch
       midMudScoop.gain.setTargetAtTime(-1.4, t, 0.02); // Clear out 300Hz mud band
 
-      // Vocal Presence & Consonants: Increased to 3.6dB so lyrics punch right through the deep bass!
+      // Vocal Presence & Consonants
       vocalClarityFilter.gain.setTargetAtTime(isVocalClarityActive ? 3.6 : 0, t, 0.02);
       highAirFilter.gain.setTargetAtTime(1.8, t, 0.02); // 12kHz High sheen
 
-      // Headroom compensation (-2.2dB) ensures heavy bass never forces limiter into pump distortion
-      headroomGainNode.gain.setTargetAtTime(0.78, t, 0.02);
+      // Headroom compensation ensures heavy bass never forces limiter into pump distortion
+      const baseHeadroom = currentVolumeBoost > 100 ? 0.72 : 0.78;
+      headroomGainNode.gain.setTargetAtTime(baseHeadroom, t, 0.02);
 
-      limiterNode.threshold.setTargetAtTime(-0.8, t, 0.02);
-      limiterNode.ratio.setTargetAtTime(8, t, 0.02);
+      limiterNode.threshold.setTargetAtTime(-1.8, t, 0.02);
+      limiterNode.knee.setTargetAtTime(14, t, 0.02);
+      limiterNode.ratio.setTargetAtTime(16, t, 0.02);
     }
   }
 
@@ -234,17 +244,17 @@ export function ensureAudioGraph(audio: HTMLAudioElement) {
       headroomGainNode = audioCtx.createGain();
       headroomGainNode.gain.value = 1.0;
 
-      // 8. Stage H: Clean Hardware Gain Amplifier for volume booster
+      // 8. Stage H: Clean Hardware Gain Amplifier for volume booster (100% to 200%)
       boostGainNode = audioCtx.createGain();
       boostGainNode.gain.value = 1.0;
 
-      // 9. Stage I: Audiophile Peak Limiter (Transparent ceiling without harsh pumping or distortion)
+      // 9. Stage I: True Peak Soft-Knee Limiter (Placed after boostGainNode to eliminate 200% clipping & DAC distortion)
       limiterNode = audioCtx.createDynamicsCompressor();
       limiterNode.threshold.value = 0;
-      limiterNode.knee.value = 4;
-      limiterNode.ratio.value = 1;
-      limiterNode.attack.value = 0.003;
-      limiterNode.release.value = 0.05;
+      limiterNode.knee.value = 12;
+      limiterNode.ratio.value = 16;
+      limiterNode.attack.value = 0.002;
+      limiterNode.release.value = 0.08;
 
       // 10. Stage J: Fast High-Resolution Analyser for Dynamic Visualizers
       analyserNode = audioCtx.createAnalyser();
@@ -252,7 +262,7 @@ export function ensureAudioGraph(audio: HTMLAudioElement) {
       analyserNode.smoothingTimeConstant = 0.72;
 
       // Connect DSP chain:
-      // source -> subRumbleCut -> subBassPeaking -> bassLowShelf -> midMudScoop -> vocalClarityFilter -> highAirFilter -> headroomGain -> limiter -> boostGain -> analyser -> destination
+      // source -> subRumbleCut -> subBassPeaking -> bassLowShelf -> midMudScoop -> vocalClarityFilter -> highAirFilter -> headroomGain -> boostGain -> limiter -> analyser -> destination
       sourceNode.connect(subRumbleCut);
       subRumbleCut.connect(subBassPeaking);
       subBassPeaking.connect(bassLowShelf);
@@ -260,9 +270,9 @@ export function ensureAudioGraph(audio: HTMLAudioElement) {
       midMudScoop.connect(vocalClarityFilter);
       vocalClarityFilter.connect(highAirFilter);
       highAirFilter.connect(headroomGainNode);
-      headroomGainNode.connect(limiterNode);
-      limiterNode.connect(boostGainNode);
-      boostGainNode.connect(analyserNode);
+      headroomGainNode.connect(boostGainNode);
+      boostGainNode.connect(limiterNode);
+      limiterNode.connect(analyserNode);
       analyserNode.connect(audioCtx.destination);
 
       isConnected = true;

@@ -92,7 +92,7 @@ export const ActionSheet: React.FC = () => {
       try {
         await navigator.share({
           title: track.title,
-          text: `Listen to ${track.title} by ${track.artist} on MOUZIKA`,
+          text: `Listen to ${track.title} by ${track.artist} on MOUZIKETNA`,
           url,
         });
       } catch {}

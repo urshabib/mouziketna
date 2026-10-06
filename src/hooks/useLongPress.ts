@@ -42,7 +42,7 @@ export function useLongPress({
     if (!startCoords.current) return;
     const dx = Math.abs(clientX - startCoords.current.x);
     const dy = Math.abs(clientY - startCoords.current.y);
-    if (dx > 8 || dy > 8) {
+    if (dx > 25 || dy > 25) {
       isMovedRef.current = true;
       if (timerRef.current) {
         clearTimeout(timerRef.current);

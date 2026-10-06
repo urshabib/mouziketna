@@ -1,4 +1,4 @@
-// Service Worker for MOUZIKA PWA
+// Service Worker for MOUZIKETNA PWA
 const CACHE_NAME = 'mouzika-pwa-v9';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
@@ -19,7 +19,7 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('[MOUZIKA SW] Precache partial notice:', err);
+        console.warn('[MOUZIKETNA SW] Precache partial notice:', err);
       });
     }).then(() => self.skipWaiting())
   );
@@ -38,7 +38,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys.filter((key) => key !== CACHE_NAME && key !== BRANDING_CACHE).map((key) => {
-          console.log('[MOUZIKA SW] Purging old cache:', key);
+          console.log('[MOUZIKETNA SW] Purging old cache:', key);
           return caches.delete(key);
         })
       )
