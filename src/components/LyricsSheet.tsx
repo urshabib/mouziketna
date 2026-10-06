@@ -130,7 +130,7 @@ export const LyricsSheet: React.FC = () => {
         transform: headerDragY > 0 ? `translateY(${headerDragY}px)` : undefined,
         transition: headerDragY === 0 ? 'transform 0.25s ease-out' : 'none',
       }}
-      className="fixed inset-0 z-50 flex flex-col bg-[#08080a] text-white px-5 sm:px-8 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] select-none overflow-hidden rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
+      className="fixed inset-0 z-50 flex flex-col bg-[#08080a] text-white px-5 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] select-none overflow-hidden rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
     >
       {/* Dynamic blurred ambient glow behind lyrics matching FullScreenPlayer */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">

@@ -280,7 +280,7 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 py-3.5 bg-black/60 backdrop-blur-xl border-b border-white/5">
+    <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/60 backdrop-blur-xl border-b border-white/5">
       <div className="flex items-center gap-3.5">
         <button
           onClick={() => setActivePane('home')}

@@ -405,7 +405,7 @@ export const LandscapeStagePlayer: React.FC = () => {
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-black/85 pointer-events-none -z-10" />
 
             {/* MINIMAL TOP BAR */}
-            <header className="flex-shrink-0 h-10 px-4 sm:px-6 flex items-center justify-between border-b border-white/5 backdrop-blur-md bg-black/30 z-20">
+            <header className="flex-shrink-0 min-h-[2.75rem] pt-[env(safe-area-inset-top)] px-4 sm:px-6 flex items-center justify-between border-b border-white/5 backdrop-blur-md bg-black/30 z-20">
             {/* Left: Exit Full Screen */}
             <div className="flex items-center gap-2">
               <button
