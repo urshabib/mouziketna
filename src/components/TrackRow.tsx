@@ -122,8 +122,8 @@ export const TrackRow: React.FC<TrackRowProps> = ({
         ) : dragHandleProps ? (
           <div
             {...dragHandleProps}
-            className="w-10 h-10 -ml-1.5 text-white/50 hover:text-white active:text-[#ff6b1a] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-all rounded-xl hover:bg-white/10 active:bg-[#ff6b1a]/20 flex-shrink-0 z-10"
-            title="Hold (0.4s) to reorder"
+            className="w-8 h-9 -ml-2 mr-0.5 text-white/50 hover:text-white active:text-[#ff6b1a] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-all rounded-lg hover:bg-white/10 active:bg-[#ff6b1a]/20 flex-shrink-0 z-10"
+            title="Hold (0.5s) to reorder"
             aria-label="Hold to reorder"
             onClick={(e) => {
               e.stopPropagation();

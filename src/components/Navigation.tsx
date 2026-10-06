@@ -27,6 +27,7 @@ export const Sidebar: React.FC = () => {
     globalUser,
     setModalCreatePlaylistOpen,
     setIsInstallModalOpen,
+    t,
   } = useMusic();
 
   const [isStandalone, setIsStandalone] = useState(false);
@@ -48,7 +49,7 @@ export const Sidebar: React.FC = () => {
       <div className="bg-[#121212] glass-panel rounded-2xl p-5 border border-white/5">
         <button
           onClick={() => setActivePane('home')}
-          className="logo hover:opacity-90 transition-opacity text-left mb-6 flex items-center gap-2.5"
+          className="logo hover:opacity-90 transition-opacity text-left mb-6 flex items-center gap-2.5 cursor-pointer"
         >
           <i className="ri-pulse-fill"></i>
           <span className="logo-textblock">
@@ -60,33 +61,33 @@ export const Sidebar: React.FC = () => {
         <nav className="flex flex-col gap-1">
           <button
             onClick={() => setActivePane('home')}
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all ${
+            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
               activePane === 'home'
                 ? 'bg-white/10 text-white shadow-sm'
                 : 'text-white/60 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Home className="w-5 h-5" /> Home
+            <Home className="w-5 h-5" /> {t('nav.home', 'Home')}
           </button>
           <button
             onClick={() => setActivePane('search')}
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all ${
+            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
               activePane === 'search'
                 ? 'bg-white/10 text-white shadow-sm'
                 : 'text-white/60 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Search className="w-5 h-5" /> Search
+            <Search className="w-5 h-5" /> {t('nav.search', 'Search')}
           </button>
           <button
             onClick={() => setActivePane('settings')}
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all ${
+            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
               activePane === 'settings'
                 ? 'bg-white/10 text-white shadow-sm'
                 : 'text-white/60 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Settings className="w-5 h-5" /> Settings
+            <Settings className="w-5 h-5" /> {t('nav.settings', 'Settings')}
           </button>
 
           <button
@@ -94,19 +95,19 @@ export const Sidebar: React.FC = () => {
             onClick={() => setIsInstallModalOpen(true)}
             className="flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm text-[#ff6b1a] hover:bg-[#ff6b1a]/10 transition-all border border-[#ff6b1a]/20 cursor-pointer"
           >
-            <Download className="w-5 h-5 text-[#ff6b1a]" /> Install App
+            <Download className="w-5 h-5 text-[#ff6b1a]" /> {t('modal.installApp', 'Install App')}
           </button>
 
           {(globalUser === 'admin' || userProfile.isAdmin) && (
             <button
               onClick={() => setActivePane('admin')}
-              className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all ${
+              className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
                 activePane === 'admin'
                   ? 'bg-red-500/20 text-red-400'
                   : 'text-red-400/80 hover:text-red-400 hover:bg-red-500/10'
               }`}
             >
-              <ShieldAlert className="w-5 h-5" /> Admin
+              <ShieldAlert className="w-5 h-5" /> {t('nav.admin', 'Admin')}
             </button>
           )}
         </nav>
@@ -117,14 +118,14 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center justify-between pb-3 border-b border-white/5 px-1">
           <button
             onClick={() => setActivePane('library')}
-            className="flex items-center gap-2 text-white/70 hover:text-white font-bold text-sm transition-colors"
+            className="flex items-center gap-2 text-white/70 hover:text-white font-bold text-sm transition-colors cursor-pointer"
           >
-            <Library className="w-4 h-4" /> Your Library
+            <Library className="w-4 h-4" /> {t('library.title', 'Your Library')}
           </button>
           <button
             onClick={() => setModalCreatePlaylistOpen(true)}
-            className="p-1.5 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-all"
-            title="Create Playlist"
+            className="p-1.5 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-all cursor-pointer"
+            title={t('library.createPlaylist', 'Create Playlist')}
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -141,9 +142,11 @@ export const Sidebar: React.FC = () => {
             </div>
             <div className="min-w-0 flex-1">
               <h5 className="text-sm font-semibold truncate text-white group-hover:text-[#ff6b1a] transition-colors">
-                Liked Songs
+                {t('library.likedSongs', 'Liked Songs')}
               </h5>
-              <p className="text-xs text-white/50 truncate">Playlist • {likedCount} tracks</p>
+              <p className="text-xs text-white/50 truncate">
+                {t('common.playlist', 'Playlist')} • {likedCount} {t('common.tracks', 'tracks')}
+              </p>
             </div>
           </div>
 
@@ -157,9 +160,9 @@ export const Sidebar: React.FC = () => {
             </div>
             <div className="min-w-0 flex-1">
               <h5 className="text-sm font-semibold truncate text-white group-hover:text-[#ff6b1a] transition-colors">
-                Downloaded
+                {t('library.downloads', 'Downloaded')}
               </h5>
-              <p className="text-xs text-white/50 truncate">Offline music</p>
+              <p className="text-xs text-white/50 truncate">{t('common.offline', 'Offline music')}</p>
             </div>
           </div>
 
@@ -218,13 +221,13 @@ export const Sidebar: React.FC = () => {
 };
 
 export const MobileNav: React.FC = () => {
-  const { activePane, setActivePane } = useMusic();
+  const { activePane, setActivePane, t } = useMusic();
 
   const navItems: { id: NavigationPane; label: string; icon: React.ReactNode }[] = [
-    { id: 'home', label: 'Home', icon: <Home className="w-5 h-5" /> },
-    { id: 'search', label: 'Search', icon: <Search className="w-5 h-5" /> },
-    { id: 'library', label: 'Library', icon: <Library className="w-5 h-5" /> },
-    { id: 'settings', label: 'Settings', icon: <Settings className="w-5 h-5" /> },
+    { id: 'home', label: t('nav.home', 'Home'), icon: <Home className="w-5 h-5" /> },
+    { id: 'search', label: t('nav.search', 'Search'), icon: <Search className="w-5 h-5" /> },
+    { id: 'library', label: t('nav.library', 'Library'), icon: <Library className="w-5 h-5" /> },
+    { id: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="w-5 h-5" /> },
   ];
 
   return (
@@ -257,6 +260,7 @@ export const TopBar: React.FC = () => {
     openCollection,
     setIsAuthGateOpen,
     setIsInstallModalOpen,
+    t,
   } = useMusic();
 
   const [isStandalone, setIsStandalone] = useState(false);
@@ -270,9 +274,9 @@ export const TopBar: React.FC = () => {
 
   const getGreeting = () => {
     const h = new Date().getHours();
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return t('home.goodMorning', 'Good morning');
+    if (h < 18) return t('home.goodAfternoon', 'Good afternoon');
+    return t('home.goodEvening', 'Good evening');
   };
 
   return (
@@ -280,7 +284,7 @@ export const TopBar: React.FC = () => {
       <div className="flex items-center gap-3.5">
         <button
           onClick={() => setActivePane('home')}
-          className="logo hover:opacity-90 transition-opacity text-left flex items-center gap-2.5"
+          className="logo hover:opacity-90 transition-opacity text-left flex items-center gap-2.5 cursor-pointer"
         >
           <i className="ri-pulse-fill"></i>
           <span className="logo-textblock">
@@ -303,11 +307,11 @@ export const TopBar: React.FC = () => {
             id="topbar-install-btn"
             onClick={() => setIsInstallModalOpen(true)}
             className="flex items-center justify-center gap-1.5 bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black p-2 sm:px-3.5 sm:py-1.5 rounded-full font-black text-xs transition-all shadow-md shadow-[#ff6b1a]/25 flex-shrink-0 cursor-pointer"
-            title="Install App"
-            aria-label="Install App"
+            title={t('modal.installApp', 'Install App')}
+            aria-label={t('modal.installApp', 'Install App')}
           >
             <Download className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="hidden sm:inline">Install App</span>
+            <span className="hidden sm:inline">{t('modal.installApp', 'Install App')}</span>
           </button>
         )}
 
@@ -340,7 +344,7 @@ export const TopBar: React.FC = () => {
             </div>
           )}
           <span className="text-xs font-bold text-white truncate overflow-hidden whitespace-nowrap text-ellipsis">
-            {userProfile.username || 'Profile'}
+            {userProfile.username || t('nav.account', 'Profile')}
           </span>
         </button>
       </div>

@@ -202,19 +202,30 @@ export const CollectionView: React.FC = () => {
         relatedResults.forEach((tracks) => {
           tracks.forEach((t: Track) => {
             if (!t.id || seenIds.has(t.id)) return;
+            // Strictly require song type (never playlist/album/collection)
+            if (t.type && t.type !== 'song') return;
             const artKey = (t.artist || '').toLowerCase().trim();
             const titleKey = (t.title || '').toLowerCase().trim();
 
             // Strict sanity filter: Never suggest a song titled identically to its artist!
             if (artKey === titleKey) return;
-            if (titleKey.includes('type beat') || titleKey.includes('instrumental') || titleKey.includes('reaction')) return;
+            if (
+              titleKey.includes('type beat') ||
+              titleKey.includes('instrumental') ||
+              titleKey.includes('reaction') ||
+              titleKey.includes('playlist') ||
+              titleKey.includes('full album') ||
+              titleKey.includes('compilation')
+            ) {
+              return;
+            }
 
             const curCount = artistCap.get(artKey) || 0;
             // Diversity: maximum 1 track per artist
             if (curCount < 1) {
               seenIds.add(t.id);
               artistCap.set(artKey, curCount + 1);
-              candidateList.push(t);
+              candidateList.push({ ...t, type: 'song' });
             }
           });
         });
@@ -225,7 +236,8 @@ export const CollectionView: React.FC = () => {
         } else {
           // Top off with taste profile recommendations if needed
           const tasteRecs = await getTasteProfileRecommendations(userProfile, seenIds, 6 - candidateList.length);
-          candidateList.push(...tasteRecs);
+          const validSongsOnly = tasteRecs.filter((r) => !r.type || r.type === 'song').map((r) => ({ ...r, type: 'song' as const }));
+          candidateList.push(...validSongsOnly);
           finalSuggestions = candidateList.slice(0, 6);
         }
         setSuggestions(finalSuggestions);
@@ -233,8 +245,9 @@ export const CollectionView: React.FC = () => {
       } else {
         // Empty playlist: use full multi-factor taste profile recommendations
         const suggestions = await getTasteProfileRecommendations(userProfile, plIds, 6);
-        setSuggestions(suggestions);
-        playlistSuggestionsCache.set(cacheKey, { trackIdsHash, suggestions });
+        const validSongsOnly = suggestions.filter((r) => !r.type || r.type === 'song').map((r) => ({ ...r, type: 'song' as const }));
+        setSuggestions(validSongsOnly);
+        playlistSuggestionsCache.set(cacheKey, { trackIdsHash, suggestions: validSongsOnly });
       }
     } catch {
       setSuggestions([]);
@@ -362,8 +375,8 @@ export const CollectionView: React.FC = () => {
     if (!touch) return;
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
 
-    // Responsive 380ms hold on the 6-dots button to unlock reordering
-    // Prevents accidental reordering while feeling natural when directly pressing the dots
+    // Responsive 500ms (0.5s) hold on the 6-dots button to unlock reordering
+    // Prevents accidental touches while feeling natural when directly pressing the dots
     touchHoldTimerRef.current = setTimeout(() => {
       touchActiveReorderIndexRef.current = index;
       touchStartIndexRef.current = index;
@@ -375,7 +388,7 @@ export const CollectionView: React.FC = () => {
           navigator.vibrate([35, 30, 35]);
         } catch {}
       }
-    }, 380);
+    }, 500);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -514,7 +527,7 @@ export const CollectionView: React.FC = () => {
             className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1 text-white text-xs font-bold transition-opacity cursor-pointer z-10"
           >
             <Camera className="w-6 h-6" />
-            <span>Change Cover</span>
+            <span>{t('collection.changeCover', 'Change Cover')}</span>
           </button>
         </div>
       );
@@ -538,14 +551,14 @@ export const CollectionView: React.FC = () => {
   };
 
   const getTitle = () => {
-    if (target.type === 'liked') return 'Liked Songs';
-    if (target.type === 'downloads') return 'Downloaded Music';
-    return target.title || 'Collection';
+    if (target.type === 'liked') return t('library.likedSongs', 'Liked Songs');
+    if (target.type === 'downloads') return t('library.downloads', 'Downloaded Music');
+    return target.title || t('common.playlist', 'Collection');
   };
 
   const getSubtitle = () => {
-    if (target.type === 'downloads') return `${tracks.length} tracks • ${downloadSize}`;
-    return `${tracks.length} track${tracks.length === 1 ? '' : 's'}`;
+    if (target.type === 'downloads') return `${tracks.length} ${t('common.tracks', 'tracks')} • ${downloadSize}`;
+    return `${tracks.length} ${t('common.tracks', 'tracks')}`;
   };
 
   return (
@@ -603,7 +616,7 @@ export const CollectionView: React.FC = () => {
                 }}
                 className="px-4 py-2.5 rounded-xl bg-[#ff6b1a] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all"
               >
-                Save
+                {t('common.save', 'Save')}
               </button>
               <button
                 type="button"
@@ -641,18 +654,18 @@ export const CollectionView: React.FC = () => {
               <>
                 <button
                   onClick={() => playWholeCollection(tracks)}
-                  className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#ff6b1a] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg"
+                  className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#ff6b1a] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-black" />
-                  <span>Play</span>
+                  <span>{t('collection.playAll', 'Play')}</span>
                 </button>
 
                 <button
                   onClick={() => playShuffledCollection(tracks)}
-                  className="flex items-center gap-2 px-5 py-3 rounded-full bg-white/10 hover:bg-white/15 text-white font-bold text-sm transition-all hover:scale-105 active:scale-95"
+                  className="flex items-center gap-2 px-5 py-3 rounded-full bg-white/10 hover:bg-white/15 text-white font-bold text-sm transition-all hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   <Shuffle className="w-4 h-4" />
-                  <span>Shuffle</span>
+                  <span>{t('collection.shuffle', 'Shuffle')}</span>
                 </button>
               </>
             )}
@@ -662,7 +675,7 @@ export const CollectionView: React.FC = () => {
               <button
                 id="toggle-reorder-mode-btn"
                 onClick={() => setIsReorderMode(!isReorderMode)}
-                className={`flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm transition-all ${
+                className={`flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm transition-all cursor-pointer ${
                   isReorderMode
                     ? 'bg-[#ff6b1a] text-black shadow-lg shadow-[#ff6b1a]/20 scale-105'
                     : 'bg-white/10 hover:bg-white/15 text-white/80 hover:text-white'
@@ -670,7 +683,7 @@ export const CollectionView: React.FC = () => {
                 title="Reorder songs in playlist"
               >
                 <ArrowUpDown className="w-4 h-4" />
-                <span>{isReorderMode ? 'Done Reorder' : 'Reorder'}</span>
+                <span>{isReorderMode ? t('collection.done', 'Done') : t('collection.reorder', 'Reorder')}</span>
               </button>
             )}
 
@@ -682,14 +695,14 @@ export const CollectionView: React.FC = () => {
                   setSelectedIds([]);
                   setShowAddToPlaylistMenu(false);
                 }}
-                className={`flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm transition-all ${
+                className={`flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm transition-all cursor-pointer ${
                   isSelectMode
                     ? 'bg-[#ff6b1a] text-black shadow-md'
                     : 'bg-white/10 hover:bg-white/15 text-white/80 hover:text-white'
                 }`}
               >
                 <ListCheck className="w-4 h-4" />
-                <span>{isSelectMode ? 'Done' : 'Select'}</span>
+                <span>{isSelectMode ? t('collection.done', 'Done') : t('collection.select', 'Select')}</span>
               </button>
             )}
 
@@ -697,8 +710,8 @@ export const CollectionView: React.FC = () => {
             {target.type !== 'downloads' && tracks.length > 0 && !isSelectMode && (
               <button
                 onClick={() => downloadPlaylist(tracks)}
-                className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors"
-                title="Download all for offline"
+                className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer"
+                title={t('collection.downloadAll', 'Download All')}
               >
                 <Download className="w-4 h-4" />
               </button>
@@ -709,7 +722,7 @@ export const CollectionView: React.FC = () => {
               <>
                 <button
                   onClick={() => setModalAddSongByLinkPlId(target.id!)}
-                  className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors"
+                  className="p-3 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors cursor-pointer"
                   title="Add song by link"
                 >
                   <Link className="w-4 h-4" />
@@ -718,13 +731,13 @@ export const CollectionView: React.FC = () => {
                 <button
                   onClick={() => {
                     setModalConfirm({
-                      title: `Delete "${target.title}"?`,
+                      title: `${t('collection.deletePlaylist', 'Delete')} "${target.title}"?`,
                       text: 'The playlist will be permanently removed.',
                       onConfirm: () => deletePlaylist(target.id!),
                     });
                   }}
-                  className="p-3 rounded-full bg-white/5 hover:bg-red-500/10 text-white/70 hover:text-red-400 transition-colors"
-                  title="Delete playlist"
+                  className="p-3 rounded-full bg-white/5 hover:bg-red-500/10 text-white/70 hover:text-red-400 transition-colors cursor-pointer"
+                  title={t('collection.deletePlaylist', 'Delete Playlist')}
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -745,10 +758,10 @@ export const CollectionView: React.FC = () => {
                     },
                   });
                 }}
-                className="flex items-center gap-2 px-4 py-3 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-sm transition-colors border border-red-500/20"
+                className="flex items-center gap-2 px-4 py-3 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-sm transition-colors border border-red-500/20 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Delete All</span>
+                <span>{t('account.clearAndReset', 'Delete All')}</span>
               </button>
             )}
           </div>
@@ -766,17 +779,17 @@ export const CollectionView: React.FC = () => {
               {selectedIds.length === tracks.length ? (
                 <>
                   <CheckSquare className="w-4 h-4 text-[#ff6b1a]" />
-                  <span>Deselect All</span>
+                  <span>{t('collection.deselectAll', 'Deselect All')}</span>
                 </>
               ) : (
                 <>
                   <Square className="w-4 h-4 text-white/60" />
-                  <span>Select All</span>
+                  <span>{t('collection.selectAll', 'Select All')}</span>
                 </>
               )}
             </button>
             <span className="text-sm font-semibold text-white/70">
-              {selectedIds.length} of {tracks.length} selected
+              {selectedIds.length} {t('common.of', 'of')} {tracks.length} {t('common.selected', 'selected')}
             </span>
           </div>
 
@@ -790,13 +803,13 @@ export const CollectionView: React.FC = () => {
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold transition-colors"
                 >
                   <FolderPlus className="w-4 h-4 text-[#ff6b1a]" />
-                  <span>Add to Playlist</span>
+                  <span>{t('collection.addToPlaylist', 'Add to Playlist')}</span>
                 </button>
 
                 {showAddToPlaylistMenu && (
                   <div className="absolute right-0 top-full mt-2 w-52 bg-[#252528] rounded-xl border border-white/15 shadow-2xl p-1 z-50 animate-in fade-in zoom-in-95 duration-100">
                     <p className="px-3 py-2 text-[11px] font-bold text-white/40 uppercase tracking-wider">
-                      Add {selectedIds.length} songs to:
+                      {t('collection.addTo', 'Add to')}:
                     </p>
                     <div className="max-h-48 overflow-y-auto">
                       {userProfile.customPlaylists.map((pl) => (
@@ -820,10 +833,10 @@ export const CollectionView: React.FC = () => {
                 onClick={handleDownloadSelected}
                 disabled={selectedIds.length === 0}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold transition-colors"
-                title="Download selected"
+                title={t('collection.download', 'Download')}
               >
                 <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Download</span>
+                <span className="hidden sm:inline">{t('collection.download', 'Download')}</span>
               </button>
             )}
 
@@ -833,10 +846,10 @@ export const CollectionView: React.FC = () => {
                 onClick={handleDeleteSelected}
                 disabled={selectedIds.length === 0}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 disabled:opacity-40 disabled:pointer-events-none text-red-400 text-xs font-bold transition-colors border border-red-500/20"
-                title="Remove selected"
+                title={t('collection.remove', 'Remove')}
               >
                 <Trash2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Remove</span>
+                <span className="hidden sm:inline">{t('collection.remove', 'Remove')}</span>
               </button>
             )}
           </div>
@@ -848,13 +861,13 @@ export const CollectionView: React.FC = () => {
         <div className="sticky top-16 z-30 flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#ff6b1a]/20 backdrop-blur-xl border border-[#ff6b1a]/40 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-2 text-xs font-bold text-white">
             <ArrowUpDown className="w-4 h-4 text-[#ff6b1a] flex-shrink-0" />
-            <span>Tap ▲ or ▼ to move songs up/down, or drag the handle.</span>
+            <span>{t('collection.reorderHelp', 'Hold handle 0.5s or tap ▲/▼ to reorder songs.')}</span>
           </div>
           <button
             onClick={() => setIsReorderMode(false)}
             className="px-3.5 py-1.5 rounded-xl bg-[#ff6b1a] hover:bg-[#ff7d33] text-black text-xs font-black transition-colors shadow-md flex-shrink-0 cursor-pointer"
           >
-            Done
+            {t('collection.done', 'Done')}
           </button>
         </div>
       )}
@@ -869,8 +882,8 @@ export const CollectionView: React.FC = () => {
           </div>
         ) : tracks.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center text-white/40 gap-2">
-            <p className="text-base font-bold">This playlist has no songs yet.</p>
-            <p className="text-xs">Add songs using search, ⋮ menus, or by link.</p>
+            <p className="text-base font-bold">{t('collection.emptyPlaylist', 'This playlist has no songs yet.')}</p>
+            <p className="text-xs">{t('collection.emptyPlaylistSubtitle', 'Add songs using search, ⋮ menus, or by link.')}</p>
           </div>
         ) : (
           tracks.map((t, idx) => (

@@ -14,6 +14,7 @@ export const LyricsSheet: React.FC = () => {
     setIsLyricsOpen,
     currentLyrics,
     retryLyrics,
+    t,
   } = useMusic();
 
   const thumbSrc = useTrackThumb(activeTrack);
@@ -232,18 +233,18 @@ export const LyricsSheet: React.FC = () => {
         {currentLyrics.mode === 'loading' && (
           <div className="flex flex-col items-center justify-center my-auto gap-3 text-white/50">
             <Loader2 className="w-8 h-8 animate-spin text-[#ff6b1a]" />
-            <p className="font-semibold text-sm">Synchronizing lyrics…</p>
+            <p className="font-semibold text-sm">{t('lyrics.synchronizing', 'Synchronizing lyrics…')}</p>
           </div>
         )}
 
         {currentLyrics.mode === 'error' && (
           <div className="flex flex-col items-center justify-center my-auto gap-4 text-center">
-            <p className="text-white/60 font-medium text-sm">Couldn't load lyrics right now.</p>
+            <p className="text-white/60 font-medium text-sm">{t('lyrics.couldNotLoad', "Couldn't load lyrics right now.")}</p>
             <button
               onClick={retryLyrics}
               className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
             >
-              Try Again
+              {t('common.tryAgain', 'Try Again')}
             </button>
           </div>
         )}
@@ -251,12 +252,12 @@ export const LyricsSheet: React.FC = () => {
         {currentLyrics.mode === 'none' && (
           <div className="flex flex-col items-center justify-center my-auto gap-4 text-center">
             <Music2 className="w-12 h-12 text-white/20" />
-            <p className="text-white/50 font-medium text-sm">No lyrics found for this song.</p>
+            <p className="text-white/50 font-medium text-sm">{t('lyrics.noLyricsFound', 'No lyrics found for this song.')}</p>
             <button
               onClick={retryLyrics}
               className="px-5 py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
             >
-              Search Again
+              {t('lyrics.searchAgain', 'Search Again')}
             </button>
           </div>
         )}

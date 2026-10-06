@@ -150,7 +150,7 @@ const REAL_TRENDING_SEARCHES = [
 ];
 
 export const SearchView: React.FC = () => {
-  const { setModalAudioRecognitionOpen, openCollection, playTrack, toggleLikeTrack, userProfile } = useMusic();
+  const { setModalAudioRecognitionOpen, openCollection, playTrack, toggleLikeTrack, userProfile, t } = useMusic();
 
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'song' | 'playlist' | 'artist'>('all');
@@ -306,7 +306,7 @@ export const SearchView: React.FC = () => {
           <input
             ref={inputRef}
             type="text"
-            placeholder="Songs, artists, or paste a link..."
+            placeholder={t('search.placeholder', 'Songs, artists, or paste a link...')}
             value={query}
             onChange={(e) => {
               hasSearchedRef.current = false;
@@ -344,7 +344,7 @@ export const SearchView: React.FC = () => {
               type="button"
               onClick={() => setModalAudioRecognitionOpen(true)}
               className="p-2 text-white/50 hover:text-[#ff6b1a] transition-colors cursor-pointer"
-              title="Identify song (Shazam)"
+              title={t('search.recognizeAudio', 'Identify Music')}
             >
               <Mic className="w-4 h-4" />
             </button>
@@ -383,7 +383,13 @@ export const SearchView: React.FC = () => {
                   : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10 border border-white/5'
               }`}
             >
-              {f === 'all' ? 'All' : f === 'song' ? 'Songs' : f === 'playlist' ? 'Playlists' : 'Artists'}
+              {f === 'all'
+                ? t('search.all', 'All')
+                : f === 'song'
+                ? t('search.songs', 'Songs')
+                : f === 'playlist'
+                ? t('search.playlists', 'Playlists')
+                : t('search.artists', 'Artists')}
             </button>
           ))}
         </div>
@@ -405,10 +411,10 @@ export const SearchView: React.FC = () => {
       {/* Search Results */}
       {!loading && results.length > 0 && (
         <div className="flex flex-col gap-4 mt-2">
-          <h3 className="text-xl font-bold text-white tracking-tight">Top Results</h3>
+          <h3 className="text-xl font-bold text-white tracking-tight">{t('search.topResult', 'Top Results')}</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-            {results.map((t) => (
-              <TrackCard key={t.id} track={t} />
+            {results.map((tTrack) => (
+              <TrackCard key={tTrack.id} track={tTrack} />
             ))}
           </div>
         </div>
@@ -418,14 +424,16 @@ export const SearchView: React.FC = () => {
       {!query && recentSearches.length > 0 && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/50">Recent Searches</h4>
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/50">
+              {t('search.recentSearches', 'Recent Searches')}
+            </h4>
             {recentSearches.length > 5 && (
               <button
                 type="button"
                 onClick={() => setRecentSearches([])}
                 className="text-[11px] font-bold text-white/40 hover:text-red-400 transition-colors cursor-pointer"
               >
-                Clear
+                {t('search.clearRecent', 'Clear')}
               </button>
             )}
           </div>
@@ -460,7 +468,7 @@ export const SearchView: React.FC = () => {
         <div className="flex flex-col gap-2 mt-0.5">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-3.5 h-3.5 text-[#ff6b1a]" />
-            <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/70">Trending Searches</h4>
+            <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/70">{t('search.trendingSearches', 'Popular Searches')}</h4>
           </div>
           <div className="flex flex-wrap gap-1.5 sm:gap-2 max-h-28 overflow-hidden">
             {REAL_TRENDING_SEARCHES.map((vib) => {
@@ -491,7 +499,7 @@ export const SearchView: React.FC = () => {
       {!query && (
         <div className="flex flex-col gap-4 mt-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black text-white tracking-tight">Browse Categories</h3>
+            <h3 className="text-xl font-black text-white tracking-tight">{t('search.playlists', 'Browse Categories')}</h3>
             <span className="text-xs font-semibold text-white/40">{BROWSE_GENRES.length} genres</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">

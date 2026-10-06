@@ -154,6 +154,10 @@ interface MusicContextType {
   getInterestedTracks: () => Track[];
   getNotInterestedTracks: () => Track[];
 
+  // Listening Stats & Hidden Songs
+  hideSongFromStats: (songId: string) => void;
+  unhideSongFromStats: (songId: string) => void;
+
   // Cloud Sync
   forceProfileServerSync: (forcedProfile?: UserProfile) => Promise<boolean>;
   clearListeningStats: () => Promise<boolean>;
@@ -929,6 +933,103 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     return true;
   }, [globalUser, userProfile, flushProfileToServer]);
+
+  // Hide song from listening stats (deducts time & plays, moves to hiddenStatsSongs)
+  const hideSongFromStats = useCallback((songId: string) => {
+    if (!songId) return;
+    setUserProfile((prev) => {
+      const stats = prev.stats || {
+        totalMinutesListened: 0,
+        totalTracksPlayed: 0,
+        topSongs: [],
+        topArtists: [],
+      };
+      const currentTop = stats.topSongs || [];
+      const songToHide = currentTop.find((s) => s.id === songId);
+      if (!songToHide) return prev;
+
+      const newTop = currentTop.filter((s) => s.id !== songId);
+      const existingHidden = prev.hiddenStatsSongs || [];
+      const newHidden = [songToHide, ...existingHidden.filter((s) => s.id !== songId)];
+
+      // Deduct song's minutes and play count from total statistics
+      const deductedMins = Math.max(0, (stats.totalMinutesListened || 0) - (songToHide.minutesListened || 0));
+      const deductedPlays = Math.max(0, (stats.totalTracksPlayed || 0) - (songToHide.playCount || 0));
+
+      const updatedStats: UserStats = {
+        ...stats,
+        totalMinutesListened: deductedMins,
+        totalTracksPlayed: deductedPlays,
+        topSongs: newTop,
+        lastUpdated: Date.now(),
+      };
+
+      const updated: UserProfile = {
+        ...prev,
+        stats: updatedStats,
+        hiddenStatsSongs: newHidden,
+      };
+
+      saveDeviceSettings(updated);
+      const targetUser = globalUser || prev.username;
+      if (targetUser && targetUser !== 'admin') {
+        cacheProfileLocally(targetUser, updated);
+        pendingSyncProfRef.current = updated;
+        isSyncDirtyRef.current = true;
+      }
+      return updated;
+    });
+  }, [globalUser]);
+
+  // Restore hidden song back to listening stats (restores time & plays, moves back to topSongs)
+  const unhideSongFromStats = useCallback((songId: string) => {
+    if (!songId) return;
+    setUserProfile((prev) => {
+      const existingHidden = prev.hiddenStatsSongs || [];
+      const songToRestore = existingHidden.find((s) => s.id === songId);
+      if (!songToRestore) return prev;
+
+      const newHidden = existingHidden.filter((s) => s.id !== songId);
+      const stats = prev.stats || {
+        totalMinutesListened: 0,
+        totalTracksPlayed: 0,
+        topSongs: [],
+        topArtists: [],
+      };
+
+      const currentTop = [...(stats.topSongs || [])];
+      if (!currentTop.some((s) => s.id === songId)) {
+        currentTop.push(songToRestore);
+      }
+      currentTop.sort((a, b) => ((b.playCount || 0) * 3 + (b.minutesListened || 0)) - ((a.playCount || 0) * 3 + (a.minutesListened || 0)));
+
+      const restoredMins = (stats.totalMinutesListened || 0) + (songToRestore.minutesListened || 0);
+      const restoredPlays = (stats.totalTracksPlayed || 0) + (songToRestore.playCount || 0);
+
+      const updatedStats: UserStats = {
+        ...stats,
+        totalMinutesListened: restoredMins,
+        totalTracksPlayed: restoredPlays,
+        topSongs: currentTop,
+        lastUpdated: Date.now(),
+      };
+
+      const updated: UserProfile = {
+        ...prev,
+        stats: updatedStats,
+        hiddenStatsSongs: newHidden,
+      };
+
+      saveDeviceSettings(updated);
+      const targetUser = globalUser || prev.username;
+      if (targetUser && targetUser !== 'admin') {
+        cacheProfileLocally(targetUser, updated);
+        pendingSyncProfRef.current = updated;
+        isSyncDirtyRef.current = true;
+      }
+      return updated;
+    });
+  }, [globalUser]);
 
   const logout = () => {
     try {
@@ -2355,6 +2456,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setModalConfirm,
         isInstallModalOpen,
         setIsInstallModalOpen,
+        hideSongFromStats,
+        unhideSongFromStats,
         tuneMusicTaste,
         removeTrackFromTaste,
         isTuneInterested,

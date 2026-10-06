@@ -150,6 +150,7 @@ export const HomeView: React.FC = () => {
     showToast,
     setActionSheetTrack,
     setActionSheetMeta,
+    t,
   } = useMusic();
 
   const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
@@ -278,9 +279,11 @@ export const HomeView: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                Recently Played
+                {t('home.recentFavorites', 'Recently Played')}
               </h3>
-              <p className="text-xs text-white/40 font-medium">Pick up right where you left off</p>
+              <p className="text-xs text-white/40 font-medium">
+                {t('home.recentFavoritesDesc', 'Pick up right where you left off')}
+              </p>
             </div>
 
             <div className="flex items-center gap-1">
@@ -366,7 +369,7 @@ export const HomeView: React.FC = () => {
           <div className="flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-[#ff6b1a]" />
             <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Trending Now
+              {t('home.trending', 'Global Trending')}
             </h3>
           </div>
           <div className="flex items-center gap-1">
@@ -395,7 +398,7 @@ export const HomeView: React.FC = () => {
               className="flex items-center gap-1.5 text-xs font-bold text-white/50 hover:text-white transition-colors cursor-pointer ml-1 px-2 py-1 rounded-lg hover:bg-white/5"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingTrending ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
+              <span>{t('home.refresh', 'Refresh')}</span>
             </button>
           </div>
         </div>
@@ -463,7 +466,7 @@ export const HomeView: React.FC = () => {
           <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-[#ff6b1a]" />
             <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Just For You
+              {t('home.madeForYou', 'Just For You')}
             </h3>
           </div>
           <button
@@ -473,14 +476,14 @@ export const HomeView: React.FC = () => {
             className="flex items-center gap-1.5 text-xs font-bold text-white/50 hover:text-white transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loadingRecs ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <span>{t('home.refresh', 'Refresh')}</span>
           </button>
         </div>
 
         {recommendedSongs.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
-            {recommendedSongs.slice(0, 6).map((t) => (
-              <TrackCard key={t.id} track={t} />
+            {recommendedSongs.slice(0, 6).map((tTrack) => (
+              <TrackCard key={tTrack.id} track={tTrack} />
             ))}
           </div>
         ) : (
@@ -500,7 +503,7 @@ export const HomeView: React.FC = () => {
       {recommendedPlaylists.length > 0 && (
         <section className="flex flex-col gap-4">
           <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-            Made For You Playlists
+            {t('home.exploreTaste', 'Made For You Playlists')}
           </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
             {recommendedPlaylists.map((pl) => (

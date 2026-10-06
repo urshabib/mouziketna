@@ -37,6 +37,7 @@ export const ActionSheet: React.FC = () => {
     removeTrackFromTaste,
     isTuneInterested,
     isTuneDisliked,
+    t,
   } = useMusic();
 
   const [isClosing, setIsClosing] = useState(false);
@@ -260,7 +261,7 @@ export const ActionSheet: React.FC = () => {
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <Play className="w-5 h-5 text-white/70" />
-            <span>Play Next</span>
+            <span>{t('player.playNext', 'Play Next')}</span>
           </button>
 
           <button
@@ -271,7 +272,7 @@ export const ActionSheet: React.FC = () => {
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <ListPlus className="w-5 h-5 text-white/70" />
-            <span>Add to Queue</span>
+            <span>{t('player.queue', 'Add to Queue')}</span>
           </button>
 
           <button
@@ -282,7 +283,7 @@ export const ActionSheet: React.FC = () => {
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <Heart className={`w-5 h-5 ${isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/70'}`} />
-            <span>{isLiked ? 'Remove from Liked Songs' : 'Add to Liked Songs'}</span>
+            <span>{isLiked ? t('player.unlike', 'Remove from Liked Songs') : t('player.like', 'Add to Liked Songs')}</span>
           </button>
 
           {/* Music Taste Tuning (Interested / Not Interested) */}
@@ -295,7 +296,7 @@ export const ActionSheet: React.FC = () => {
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <Sparkles className={`w-5 h-5 ${isInterested ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-[#ff6b1a]'}`} />
-            <span>{isInterested ? 'Remove from Music Taste (Interested)' : 'Add to Music Taste (Interested)'}</span>
+            <span>{isInterested ? t('modal.removeTaste', 'Remove from Music Taste') : t('modal.markInterested', 'Add to Music Taste (Interested)')}</span>
           </button>
 
           <button
@@ -308,7 +309,7 @@ export const ActionSheet: React.FC = () => {
           >
             <Ban className={`w-5 h-5 ${isDisliked ? 'text-red-400' : 'text-white/70'}`} />
             <span className={isDisliked ? 'text-red-400' : ''}>
-              {isDisliked ? 'Remove from Not Interested' : 'Not Interested (Less like this)'}
+              {isDisliked ? t('account.unmute', 'Unmute') : t('modal.markNotInterested', 'Not Interested (Less like this)')}
             </span>
           </button>
 
@@ -323,12 +324,12 @@ export const ActionSheet: React.FC = () => {
             {downloaded ? (
               <>
                 <Trash2 className="w-5 h-5 text-red-400" />
-                <span className="text-red-400">Remove Download</span>
+                <span className="text-red-400">{t('player.removeDownload', 'Remove Download')}</span>
               </>
             ) : (
               <>
                 <Download className="w-5 h-5 text-white/70" />
-                <span>Download for Offline</span>
+                <span>{t('player.download', 'Download for Offline')}</span>
               </>
             )}
           </button>
@@ -341,7 +342,7 @@ export const ActionSheet: React.FC = () => {
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <FolderPlus className="w-5 h-5 text-white/70" />
-            <span>Add to Playlist</span>
+            <span>{t('modal.addToPlaylist', 'Add to Playlist')}</span>
           </button>
 
           <button
@@ -352,7 +353,7 @@ export const ActionSheet: React.FC = () => {
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <User className="w-5 h-5 text-white/70" />
-            <span>View Artist</span>
+            <span>{t('modal.goToArtist', 'View Artist')}</span>
           </button>
 
           <button
@@ -360,7 +361,7 @@ export const ActionSheet: React.FC = () => {
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
             <Share2 className="w-5 h-5 text-white/70" />
-            <span>Share Song</span>
+            <span>{t('modal.shareSong', 'Share Song')}</span>
           </button>
 
           {/* Remove from custom playlist if opened from within one */}
@@ -373,7 +374,7 @@ export const ActionSheet: React.FC = () => {
               className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-red-500/10 text-red-400 font-semibold text-sm transition-colors border-t border-white/5 mt-1 cursor-pointer"
             >
               <Trash2 className="w-5 h-5" />
-              <span>Remove from this Playlist</span>
+              <span>{t('collection.removeSong', 'Remove from this Playlist')}</span>
             </button>
           )}
 
@@ -387,7 +388,7 @@ export const ActionSheet: React.FC = () => {
               className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-red-500/10 text-red-400 font-semibold text-sm transition-colors border-t border-white/5 mt-1 cursor-pointer"
             >
               <Trash2 className="w-5 h-5" />
-              <span>Remove from Liked Songs</span>
+              <span>{t('player.unlike', 'Remove from Liked Songs')}</span>
             </button>
           )}
         </div>

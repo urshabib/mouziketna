@@ -40,6 +40,7 @@ export interface UserProfile {
   favouriteArtists: Track[];
   favouriteAlbums: Track[];
   recentlyPlayed: Track[];
+  hiddenStatsSongs?: SongPlayStat[];
   stats?: UserStats;
   dataSaver: boolean;
   dataSaverLevel: 'off' | 'saver' | 'ultra';

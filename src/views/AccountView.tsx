@@ -23,10 +23,12 @@ import {
   Trash2,
   Ban,
   ThumbsUp,
-  ThumbsDown,
+  EyeOff,
+  Eye,
+  Info,
 } from 'lucide-react';
 import { TrackThumbImage } from '../services/useTrackThumb';
-import { Track } from '../types';
+import { Track, SongPlayStat } from '../types';
 
 export const AccountView: React.FC = () => {
   const {
@@ -43,17 +45,24 @@ export const AccountView: React.FC = () => {
     downloadedSet,
     forceProfileServerSync,
     clearListeningStats,
+    hideSongFromStats,
+    unhideSongFromStats,
     isSyncingToServer,
     lastServerSyncTime,
     getInterestedTracks,
     getNotInterestedTracks,
     removeTrackFromTaste,
+    t,
   } = useMusic();
 
-  const [activeTab, setActiveTab] = useState<'songs' | 'artists' | 'taste' | 'overview'>('songs');
+  const [activeTab, setActiveTab] = useState<'songs' | 'artists' | 'taste' | 'overview' | 'hidden'>('songs');
   const [isConfirmResetStatsOpen, setIsConfirmResetStatsOpen] = useState(false);
   const [isClearingStats, setIsClearingStats] = useState(false);
+  const [songToHideConfirm, setSongToHideConfirm] = useState<SongPlayStat | null>(null);
+  const [songToUnhideConfirm, setSongToUnhideConfirm] = useState<SongPlayStat | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressTriggeredRef = useRef(false);
 
   // Auto-sync profile stats when opening profile view
   React.useEffect(() => {
@@ -75,7 +84,7 @@ export const AccountView: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const username = globalUser || userProfile.username || 'Guest';
+  const username = globalUser || userProfile.username || t('account.guest', 'Guest');
   const isAdmin = userProfile.isAdmin || globalUser === 'habib' || false;
 
   const stats = userProfile.stats || {
@@ -85,12 +94,14 @@ export const AccountView: React.FC = () => {
     topArtists: [],
   };
 
+  const hiddenSongs = userProfile.hiddenStatsSongs || [];
+
   const formatHoursAndMinutes = (totalMins: number) => {
-    if (!totalMins || totalMins <= 0) return '0 mins';
+    if (!totalMins || totalMins <= 0) return `0 ${t('common.minutes', 'mins')}`;
     const hours = Math.floor(totalMins / 60);
     const mins = totalMins % 60;
-    if (hours === 0) return `${mins} mins`;
-    if (mins === 0) return `${hours} hrs`;
+    if (hours === 0) return `${mins} ${t('common.minutes', 'mins')}`;
+    if (mins === 0) return `${hours} ${t('common.hours', 'hrs')}`;
     return `${hours}h ${mins}m`;
   };
 
@@ -100,6 +111,27 @@ export const AccountView: React.FC = () => {
   const topArtist = topArtists[0];
   const interestedTracks = getInterestedTracks();
   const dislikedTracks = getNotInterestedTracks();
+
+  const startSongLongPress = (song: SongPlayStat) => {
+    isLongPressTriggeredRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      isLongPressTriggeredRef.current = true;
+      if (navigator.vibrate) {
+        try {
+          navigator.vibrate(40);
+        } catch {}
+      }
+      setSongToHideConfirm(song);
+    }, 500);
+  };
+
+  const cancelSongLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
 
   return (
     <div className="flex flex-col gap-8 max-w-3xl pb-28 select-none">
@@ -150,15 +182,15 @@ export const AccountView: React.FC = () => {
 
           <p className="text-xs text-white/50 font-medium">
             {globalUser
-              ? `Profile & Statistics synced to Cloudflare Server${
+              ? `${t('account.syncedCloudflare', 'Profile & Statistics synced to Cloudflare Server')}${
                   lastServerSyncTime
-                    ? ` • Last synced ${new Date(lastServerSyncTime).toLocaleTimeString([], {
+                    ? ` • ${t('settings.lastSynced', 'Last synced')} ${new Date(lastServerSyncTime).toLocaleTimeString([], {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}`
                     : ''
                 }`
-              : 'Please sign in with your account to access Cloudflare sync'}
+              : t('account.signInPrompt', 'Please sign in with your account to access Cloudflare sync')}
           </p>
 
           <div className="flex items-center gap-2 mt-3 flex-wrap justify-center sm:justify-start">
@@ -179,7 +211,7 @@ export const AccountView: React.FC = () => {
                 ) : (
                   <RefreshCw className="w-3.5 h-3.5 text-[#ff6b1a]" />
                 )}
-                <span>{isSyncingToServer ? 'Syncing...' : 'Sync to Cloudflare'}</span>
+                <span>{isSyncingToServer ? t('settings.syncing', 'Syncing...') : t('account.syncCloudflare', 'Sync to Cloudflare')}</span>
               </button>
             )}
 
@@ -189,7 +221,7 @@ export const AccountView: React.FC = () => {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-bold text-xs transition-colors border border-white/10 cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Log Out</span>
+                <span>{t('account.signOut', 'Log Out')}</span>
               </button>
             ) : (
               <button
@@ -197,7 +229,7 @@ export const AccountView: React.FC = () => {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#ff6b1a] text-black font-black text-xs transition-transform hover:scale-105 active:scale-95 shadow-md shadow-[#ff6b1a]/25 cursor-pointer"
               >
                 <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
+                <span>{t('account.signIn', 'Sign In')}</span>
               </button>
             )}
 
@@ -207,7 +239,7 @@ export const AccountView: React.FC = () => {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-bold text-xs transition-colors border border-white/10 cursor-pointer"
               >
                 <ShieldAlert className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                <span>Admin Console</span>
+                <span>{t('account.adminConsole', 'Admin Console')}</span>
               </button>
             )}
           </div>
@@ -219,10 +251,10 @@ export const AccountView: React.FC = () => {
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-[#ff6b1a]" />
-            <h3 className="text-lg font-black text-white">Listening Statistics</h3>
+            <h3 className="text-lg font-black text-white">{t('account.title', 'Listening Statistics')}</h3>
           </div>
           <div className="flex items-center gap-2.5">
-            <span className="text-[11px] font-bold text-white/40">Cloud Synchronized</span>
+            <span className="text-[11px] font-bold text-white/40">{t('account.syncedCloudflare', 'Cloud Synchronized')}</span>
             <button
               type="button"
               onClick={() => setIsConfirmResetStatsOpen(true)}
@@ -230,7 +262,7 @@ export const AccountView: React.FC = () => {
               title="Reset listening statistics to 0 and sync with cloud"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>Reset Stats</span>
+              <span>{t('account.resetStats', 'Reset Stats')}</span>
             </button>
           </div>
         </div>
@@ -241,13 +273,13 @@ export const AccountView: React.FC = () => {
             <div className="flex items-center justify-between">
               <Clock className="w-5 h-5 text-[#ff6b1a]" />
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/40">
-                Time
+                {t('account.time', 'Time')}
               </span>
             </div>
             <span className="text-2xl sm:text-3xl font-black text-white mt-1.5 tracking-tight">
               {formatHoursAndMinutes(stats.totalMinutesListened || 0)}
             </span>
-            <span className="text-xs text-white/50 font-semibold">Total Listened</span>
+            <span className="text-xs text-white/50 font-semibold">{t('account.totalListened', 'Total Listened')}</span>
           </div>
 
           {/* Total Tracks Played */}
@@ -255,13 +287,13 @@ export const AccountView: React.FC = () => {
             <div className="flex items-center justify-between">
               <Flame className="w-5 h-5 text-[#ff6b1a]" />
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/40">
-                Plays
+                {t('account.plays', 'Plays')}
               </span>
             </div>
             <span className="text-2xl sm:text-3xl font-black text-white mt-1.5 tracking-tight">
               {stats.totalTracksPlayed || 0}
             </span>
-            <span className="text-xs text-white/50 font-semibold">Songs Played</span>
+            <span className="text-xs text-white/50 font-semibold">{t('account.songsPlayed', 'Songs Played')}</span>
           </div>
 
           {/* Top Song */}
@@ -269,14 +301,14 @@ export const AccountView: React.FC = () => {
             <div className="flex items-center justify-between">
               <Award className="w-5 h-5 text-[#ff6b1a]" />
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/40">
-                #1 Track
+                {t('account.top1Track', '#1 Track')}
               </span>
             </div>
             <span className="text-sm font-black text-white mt-2 truncate">
               {topSong?.title || 'No plays yet'}
             </span>
             <span className="text-xs text-white/50 font-semibold truncate">
-              {topSong ? `${topSong.playCount || 1} plays` : 'Start listening'}
+              {topSong ? `${topSong.playCount || 1} ${t('account.playsCount', 'plays')}` : 'Start listening'}
             </span>
           </div>
 
@@ -285,7 +317,7 @@ export const AccountView: React.FC = () => {
             <div className="flex items-center justify-between">
               <Sparkles className="w-5 h-5 text-[#ff6b1a]" />
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-white/40">
-                #1 Artist
+                {t('account.top1Artist', '#1 Artist')}
               </span>
             </div>
             <span className="text-sm font-black text-white mt-2 truncate">
@@ -298,62 +330,80 @@ export const AccountView: React.FC = () => {
         </div>
       </section>
 
-      {/* Tabs Filter (Top Songs | Top Artists | Library Overview) */}
+      {/* Tabs Filter (Top Songs | Top Artists | Music Taste | Collections | Hidden Songs) */}
       <section className="flex flex-col gap-4">
-        <div className="flex items-center gap-2 border-b border-white/10 pb-2.5">
+        <div className="flex items-center gap-2 border-b border-white/10 pb-2.5 overflow-x-auto scrollbar-none">
           <button
             type="button"
             onClick={() => setActiveTab('songs')}
-            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'songs'
                 ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20'
                 : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
             }`}
           >
-            Top Listened Songs ({topSongs.length})
+            {t('account.topSongs', 'Top Listened Songs')} ({topSongs.length})
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('artists')}
-            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'artists'
                 ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20'
                 : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
             }`}
           >
-            Top Artists ({topArtists.length})
+            {t('account.topArtists', 'Top Artists')} ({topArtists.length})
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('taste')}
-            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
               activeTab === 'taste'
                 ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20'
                 : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Music Taste ({interestedTracks.length + dislikedTracks.length})</span>
+            <span>{t('account.musicTaste', 'Music Taste')} ({interestedTracks.length + dislikedTracks.length})</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('overview')}
-            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer ${
+            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
               activeTab === 'overview'
                 ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20'
                 : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
             }`}
           >
-            Collections
+            {t('account.collections', 'Collections')}
+          </button>
+
+          {/* Hidden Songs Tab (On the right of Collections) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('hidden')}
+            className={`px-4 py-2 rounded-xl font-black text-xs transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 ${
+              activeTab === 'hidden'
+                ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20'
+                : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <EyeOff className="w-3.5 h-3.5" />
+            <span>{t('account.hiddenSongs', 'Hidden Songs')} ({hiddenSongs.length})</span>
           </button>
         </div>
 
         {/* Tab 1: Top Listened Songs Ranked List */}
         {activeTab === 'songs' && (
           <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between px-1 text-[11px] text-white/40 pb-1">
+              <span>{t('account.longPressToHide', 'Tip: Long press any song to hide it from your listening statistics')}</span>
+            </div>
+
             {topSongs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-4 rounded-3xl bg-white/[0.02] border border-white/5 text-center gap-3">
                 <Disc className="w-10 h-10 text-white/20" />
@@ -365,7 +415,6 @@ export const AccountView: React.FC = () => {
             ) : (
               topSongs.map((song, idx) => {
                 const rank = idx + 1;
-                const isTop3 = rank <= 3;
                 const badgeColor =
                   rank === 1
                     ? 'bg-amber-400 text-black border-amber-300'
@@ -386,8 +435,20 @@ export const AccountView: React.FC = () => {
                 return (
                   <div
                     key={song.id}
-                    onClick={() => playTrack(trackObj)}
-                    className="flex items-center gap-3 p-2.5 sm:p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all cursor-pointer group"
+                    onPointerDown={() => startSongLongPress(song)}
+                    onPointerUp={cancelSongLongPress}
+                    onPointerLeave={cancelSongLongPress}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setSongToHideConfirm(song);
+                    }}
+                    onClick={() => {
+                      if (!isLongPressTriggeredRef.current) {
+                        playTrack(trackObj);
+                      }
+                    }}
+                    className="flex items-center gap-3 p-2.5 sm:p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all cursor-pointer group select-none"
+                    title={t('account.longPressToHide', 'Long press to hide from statistics')}
                   >
                     {/* Rank Badge */}
                     <span
@@ -421,30 +482,44 @@ export const AccountView: React.FC = () => {
                     {/* Metrics Badge */}
                     <div className="flex flex-col items-end flex-shrink-0 pl-2">
                       <span className="text-xs font-black text-[#ff6b1a]">
-                        {song.playCount || 1} {song.playCount === 1 ? 'play' : 'plays'}
+                        {song.playCount || 1} {song.playCount === 1 ? t('account.playCountSingle', 'play') : t('account.playsCount', 'plays')}
                       </span>
                       <span className="text-[11px] font-semibold text-white/40">
                         {formatHoursAndMinutes(song.minutesListened || 1)}
                       </span>
                     </div>
 
-                    {/* Like Action */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleLikeTrack(trackObj);
-                      }}
-                      className="p-2 text-white/40 hover:text-[#ff6b1a] transition-colors rounded-full"
-                    >
-                      <Heart
-                        className={`w-4 h-4 ${
-                          userProfile.likedSongs?.some((s) => s.id === song.id)
-                            ? 'fill-[#ff6b1a] text-[#ff6b1a]'
-                            : ''
-                        }`}
-                      />
-                    </button>
+                    {/* Actions */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSongToHideConfirm(song);
+                        }}
+                        className="p-2 text-white/30 hover:text-white hover:bg-white/10 transition-colors rounded-full"
+                        title={t('account.hideSongTitle', 'Hide from stats')}
+                      >
+                        <EyeOff className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLikeTrack(trackObj);
+                        }}
+                        className="p-2 text-white/40 hover:text-[#ff6b1a] transition-colors rounded-full"
+                      >
+                        <Heart
+                          className={`w-4 h-4 ${
+                            userProfile.likedSongs?.some((s) => s.id === song.id)
+                              ? 'fill-[#ff6b1a] text-[#ff6b1a]'
+                              : ''
+                          }`}
+                        />
+                      </button>
+                    </div>
                   </div>
                 );
               })
@@ -484,7 +559,7 @@ export const AccountView: React.FC = () => {
                       {artist.name}
                     </h4>
                     <p className="text-xs text-white/40 font-semibold mt-0.5">
-                      {formatHoursAndMinutes(artist.minutesListened || 1)} listened
+                      {formatHoursAndMinutes(artist.minutesListened || 1)} {t('account.totalListened', 'listened')}
                     </p>
                   </div>
                 </div>
@@ -504,7 +579,7 @@ export const AccountView: React.FC = () => {
               <span className="text-2xl font-black text-white mt-2">
                 {userProfile.likedSongs?.length || 0}
               </span>
-              <span className="text-xs text-white/40 font-semibold">Liked Songs</span>
+              <span className="text-xs text-white/40 font-semibold">{t('library.likedSongs', 'Liked Songs')}</span>
             </div>
 
             <div
@@ -515,7 +590,7 @@ export const AccountView: React.FC = () => {
               <span className="text-2xl font-black text-white mt-2">
                 {userProfile.customPlaylists?.length || 0}
               </span>
-              <span className="text-xs text-white/40 font-semibold">Playlists</span>
+              <span className="text-xs text-white/40 font-semibold">{t('library.playlists', 'Playlists')}</span>
             </div>
 
             <div
@@ -526,7 +601,7 @@ export const AccountView: React.FC = () => {
               <span className="text-2xl font-black text-white mt-2">
                 {userProfile.favouriteArtists?.length || 0}
               </span>
-              <span className="text-xs text-white/40 font-semibold">Favorite Artists</span>
+              <span className="text-xs text-white/40 font-semibold">{t('library.favoriteArtists', 'Favorite Artists')}</span>
             </div>
 
             <div
@@ -535,7 +610,7 @@ export const AccountView: React.FC = () => {
             >
               <Download className="w-5 h-5 text-[#ff6b1a]" />
               <span className="text-2xl font-black text-white mt-2">{downloadedSet.size}</span>
-              <span className="text-xs text-white/40 font-semibold">Downloads</span>
+              <span className="text-xs text-white/40 font-semibold">{t('library.downloads', 'Downloads')}</span>
             </div>
           </div>
         )}
@@ -550,9 +625,9 @@ export const AccountView: React.FC = () => {
                   <Sparkles className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-white">Your Music Taste Profile</h4>
+                  <h4 className="text-sm font-black text-white">{t('account.tasteProfile', 'Your Music Taste Profile')}</h4>
                   <p className="text-xs text-white/50">
-                    Tunes your smart recommendations and next-track discovery.
+                    {t('account.tasteDesc', 'Tunes your smart recommendations and next-track discovery.')}
                   </p>
                 </div>
               </div>
@@ -566,7 +641,7 @@ export const AccountView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ThumbsUp className="w-4 h-4 text-[#ff6b1a]" />
-                  <h4 className="font-extrabold text-sm text-white">Interested Songs ({interestedTracks.length})</h4>
+                  <h4 className="font-extrabold text-sm text-white">{t('account.interestedSongs', 'Interested Songs')} ({interestedTracks.length})</h4>
                 </div>
                 <span className="text-[11px] font-bold text-white/40">Prioritized in discovery & mixes</span>
               </div>
@@ -574,35 +649,35 @@ export const AccountView: React.FC = () => {
               {interestedTracks.length === 0 ? (
                 <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 text-center flex flex-col items-center gap-2">
                   <Sparkles className="w-8 h-8 text-white/20" />
-                  <p className="text-xs font-bold text-white/60">No interested songs yet</p>
+                  <p className="text-xs font-bold text-white/60">{t('account.noInterested', 'No interested songs yet')}</p>
                   <p className="text-[11px] text-white/40 max-w-xs">
-                    Tap the ⋮ menu on songs you love and select "Add to Music Taste (Interested)".
+                    Tap the ⋮ menu on songs you love and select "{t('modal.markInterested', 'Add to Music Taste (Interested)')}".
                   </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {interestedTracks.map((t) => (
+                  {interestedTracks.map((tTrack) => (
                     <div
-                      key={t.id}
+                      key={tTrack.id}
                       className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/5 transition-all group"
                     >
                       <div
-                        onClick={() => playTrack(t)}
+                        onClick={() => playTrack(tTrack)}
                         className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
                       >
                         <div className="w-11 h-11 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
-                          <TrackThumbImage track={t} className="w-full h-full object-cover" />
+                          <TrackThumbImage track={tTrack} className="w-full h-full object-cover" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-white truncate group-hover:text-[#ff6b1a] transition-colors">{t.title}</p>
-                          <p className="text-[11px] text-white/50 truncate font-semibold">{t.artist}</p>
+                          <p className="text-xs font-bold text-white truncate group-hover:text-[#ff6b1a] transition-colors">{tTrack.title}</p>
+                          <p className="text-[11px] text-white/50 truncate font-semibold">{tTrack.artist}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 pl-2 flex-shrink-0">
                         <button
                           type="button"
-                          onClick={() => playTrack(t)}
+                          onClick={() => playTrack(tTrack)}
                           className="p-2 rounded-xl bg-white/5 hover:bg-[#ff6b1a] text-white hover:text-black transition-colors cursor-pointer"
                           title="Play song"
                         >
@@ -610,7 +685,7 @@ export const AccountView: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => removeTrackFromTaste(t.id)}
+                          onClick={() => removeTrackFromTaste(tTrack.id)}
                           className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors cursor-pointer"
                           title="Remove from interested taste"
                         >
@@ -628,7 +703,7 @@ export const AccountView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Ban className="w-4 h-4 text-red-400" />
-                  <h4 className="font-extrabold text-sm text-white">Not Interested / Muted ({dislikedTracks.length})</h4>
+                  <h4 className="font-extrabold text-sm text-white">{t('account.notInterestedSongs', 'Not Interested / Muted')} ({dislikedTracks.length})</h4>
                 </div>
                 <span className="text-[11px] font-bold text-white/40">Excluded from autoplay & recommendations</span>
               </div>
@@ -636,16 +711,16 @@ export const AccountView: React.FC = () => {
               {dislikedTracks.length === 0 ? (
                 <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 text-center flex flex-col items-center gap-2">
                   <Ban className="w-8 h-8 text-white/20" />
-                  <p className="text-xs font-bold text-white/60">No muted songs</p>
+                  <p className="text-xs font-bold text-white/60">{t('account.noMuted', 'No muted songs')}</p>
                   <p className="text-[11px] text-white/40 max-w-xs">
-                    Tap the ⋮ menu on songs you don't like and select "Not Interested (Less like this)".
+                    Tap the ⋮ menu on songs you don't like and select "{t('modal.markNotInterested', 'Not Interested (Less like this)')}".
                   </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {dislikedTracks.map((t) => (
+                  {dislikedTracks.map((tTrack) => (
                     <div
-                      key={t.id}
+                      key={tTrack.id}
                       className="flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all opacity-80 hover:opacity-100"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -653,24 +728,112 @@ export const AccountView: React.FC = () => {
                           <Ban className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-xs font-bold text-white/80 truncate line-through decoration-red-400/50">{t.title}</p>
-                          <p className="text-[11px] text-white/40 truncate font-semibold">{t.artist}</p>
+                          <p className="text-xs font-bold text-white/80 truncate line-through decoration-red-400/50">{tTrack.title}</p>
+                          <p className="text-[11px] text-white/40 truncate font-semibold">{tTrack.artist}</p>
                         </div>
                       </div>
 
                       <button
                         type="button"
-                        onClick={() => removeTrackFromTaste(t.id)}
+                        onClick={() => removeTrackFromTaste(tTrack.id)}
                         className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-xs font-bold transition-colors cursor-pointer flex-shrink-0"
                         title="Unmute and remove from excluded list"
                       >
-                        Unmute
+                        {t('account.unmute', 'Unmute')}
                       </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Tab 5: Hidden Songs from Listening Stats */}
+        {activeTab === 'hidden' && (
+          <div className="flex flex-col gap-3">
+            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[#ff6b1a] flex-shrink-0">
+                  <EyeOff className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-white">{t('account.hiddenSongs', 'Hidden Songs')}</h4>
+                  <p className="text-xs text-white/50">{t('account.hiddenSongsDesc', 'Songs hidden from your top listening statistics')}</p>
+                </div>
+              </div>
+            </div>
+
+            {hiddenSongs.length === 0 ? (
+              <div className="p-10 rounded-2xl bg-white/[0.02] border border-white/5 text-center flex flex-col items-center gap-2.5">
+                <EyeOff className="w-8 h-8 text-white/20" />
+                <p className="text-xs font-bold text-white/60">{t('account.noHiddenSongs', 'No hidden songs yet')}</p>
+                <p className="text-[11px] text-white/40 max-w-sm">
+                  {t('account.longPressToHide', 'Long press any song in Top Listened Songs to hide it from your profile statistics.')}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {hiddenSongs.map((song) => {
+                  const trackObj: Track = {
+                    id: song.id,
+                    title: song.title,
+                    artist: song.artist,
+                    thumb: song.thumb || null,
+                    type: 'song',
+                  };
+
+                  return (
+                    <div
+                      key={song.id}
+                      className="flex items-center justify-between p-2.5 sm:p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 transition-all group"
+                    >
+                      <div
+                        onClick={() => playTrack(trackObj)}
+                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                      >
+                        <div className="relative w-11 h-11 rounded-xl overflow-hidden bg-white/5 flex-shrink-0">
+                          <TrackThumbImage track={trackObj} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                            <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+                          </div>
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-extrabold text-sm text-white truncate group-hover:text-[#ff6b1a] transition-colors">
+                            {song.title}
+                          </h4>
+                          <p className="text-xs text-white/50 font-medium truncate mt-0.5">
+                            {song.artist}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 pl-2 flex-shrink-0">
+                        <div className="flex flex-col items-end text-right hidden sm:flex">
+                          <span className="text-xs font-black text-white/70">
+                            {song.playCount || 1} {song.playCount === 1 ? t('account.playCountSingle', 'play') : t('account.playsCount', 'plays')}
+                          </span>
+                          <span className="text-[11px] font-semibold text-white/40">
+                            {formatHoursAndMinutes(song.minutesListened || 1)}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSongToUnhideConfirm(song)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#ff6b1a]/20 hover:bg-[#ff6b1a] text-[#ff6b1a] hover:text-black font-extrabold text-xs transition-colors border border-[#ff6b1a]/30 cursor-pointer"
+                          title={t('account.unhideDesc', 'Restore to listening stats')}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{t('account.unhide', 'Unhide')}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -683,11 +846,102 @@ export const AccountView: React.FC = () => {
         >
           <div className="flex items-center gap-3">
             <Settings className="w-5 h-5 text-white/70" />
-            <span className="text-sm font-bold text-white">Audio & App Settings</span>
+            <span className="text-sm font-bold text-white">{t('settings.appSettings', 'Audio & App Settings')}</span>
           </div>
-          <span className="text-xs text-white/40 font-semibold">Open</span>
+          <span className="text-xs text-white/40 font-semibold">{t('common.open', 'Open')}</span>
         </button>
       </div>
+
+      {/* In-App Confirmation Modal for Hiding a Song from Stats */}
+      {songToHideConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm rounded-3xl bg-[#141416] border border-white/10 p-6 flex flex-col gap-4 shadow-2xl relative">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#ff6b1a]/15 border border-[#ff6b1a]/20 flex items-center justify-center text-[#ff6b1a] flex-shrink-0">
+                <EyeOff className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-black text-white">{t('account.hideSongTitle', 'Hide from Listening Stats?')}</h4>
+                <p className="text-xs text-white/50 truncate max-w-[200px]">{songToHideConfirm.title}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-white/70 leading-relaxed">
+              {t('account.hideSongDesc', 'Hide this song from your top listened tracks? Its minutes and play count will be deducted from your total stats.')}
+            </p>
+
+            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-[11px] text-white/50 flex items-center gap-2">
+              <Info className="w-4 h-4 text-[#ff6b1a] flex-shrink-0" />
+              <span>You can restore this song anytime from the <strong>Hidden Songs</strong> tab.</span>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSongToHideConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                {t('modal.cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  hideSongFromStats(songToHideConfirm.id);
+                  showToast(t('account.songHidden', 'Song hidden from listening stats'));
+                  setSongToHideConfirm(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black font-black text-xs transition-all shadow-md shadow-[#ff6b1a]/25 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+                <span>{t('modal.confirm', 'Confirm')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Confirmation Modal for Unhiding a Song to Stats */}
+      {songToUnhideConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm rounded-3xl bg-[#141416] border border-white/10 p-6 flex flex-col gap-4 shadow-2xl relative">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-green-500/15 border border-green-500/20 flex items-center justify-center text-green-400 flex-shrink-0">
+                <Eye className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-base font-black text-white">{t('account.unhideConfirmTitle', 'Restore Song to Stats?')}</h4>
+                <p className="text-xs text-white/50 truncate max-w-[200px]">{songToUnhideConfirm.title}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-white/70 leading-relaxed">
+              {t('account.unhideConfirmDesc', 'Restore this song back to your top listened tracks? Its minutes and play count will be added back to your total stats.')}
+            </p>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setSongToUnhideConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                {t('modal.cancel', 'Cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  unhideSongFromStats(songToUnhideConfirm.id);
+                  showToast(t('account.songRestored', 'Song restored to listening stats'));
+                  setSongToUnhideConfirm(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 active:scale-95 text-black font-black text-xs transition-all shadow-md shadow-green-500/25 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>{t('account.unhide', 'Unhide')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Modal for Resetting Stats */}
       {isConfirmResetStatsOpen && (
@@ -698,16 +952,16 @@ export const AccountView: React.FC = () => {
                 <Trash2 className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="text-base font-black text-white">Reset Listening Stats?</h4>
-                <p className="text-xs text-white/50">Start fresh from 0 minutes</p>
+                <h4 className="text-base font-black text-white">{t('account.resetStatsTitle', 'Reset Listening Stats?')}</h4>
+                <p className="text-xs text-white/50">{t('account.resetStatsDesc', 'Start fresh from 0 minutes')}</p>
               </div>
             </div>
 
             <p className="text-xs text-white/70 leading-relaxed">
-              This will reset your <strong>minutes listened</strong>, <strong>track count</strong>, and <strong>top songs/artists</strong> to 0 and sync the clean state with the cloud server.
+              {t('account.resetStatsDesc', 'This will reset your minutes listened, track count, and top songs/artists to 0 and sync the clean state with the cloud server.')}
             </p>
             <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5 text-[11px] text-white/50">
-              Note: Your playlists, liked songs, and recently played tracks will <strong>NOT</strong> be deleted.
+              {t('account.resetStatsNote', 'Note: Your playlists, liked songs, and recently played tracks will NOT be deleted.')}
             </div>
 
             <div className="flex items-center gap-2 pt-2">
@@ -717,7 +971,7 @@ export const AccountView: React.FC = () => {
                 disabled={isClearingStats}
                 className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
               >
-                Cancel
+                {t('modal.cancel', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -735,7 +989,7 @@ export const AccountView: React.FC = () => {
                 className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 active:scale-95 text-white font-black text-xs transition-all shadow-md shadow-red-500/25 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 {isClearingStats ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
-                <span>{isClearingStats ? 'Clearing...' : 'Clear & Reset'}</span>
+                <span>{isClearingStats ? t('account.clearing', 'Clearing...') : t('account.clearAndReset', 'Clear & Reset')}</span>
               </button>
             </div>
           </div>

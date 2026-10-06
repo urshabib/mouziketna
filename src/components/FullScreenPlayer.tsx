@@ -74,6 +74,7 @@ export const FullScreenPlayer: React.FC = () => {
     setSleepTimerMinutes,
     setSleepTimerEndOfSong,
     cancelSleepTimer,
+    t,
   } = useMusic();
 
   const thumbSrc = useTrackThumb(activeTrack);
@@ -545,43 +546,43 @@ export const FullScreenPlayer: React.FC = () => {
                     onClick={(e) => e.stopPropagation()}
                     className="popover-menu fixed sm:absolute left-4 right-4 sm:left-auto sm:right-0 top-16 sm:top-11 max-w-[260px] mx-auto sm:mx-0 bg-[#1f1f23]/98 backdrop-blur-2xl rounded-2xl p-2 border border-white/15 shadow-2xl z-50 flex flex-col gap-1 text-sm font-semibold"
                   >
-                    <span className="text-[10px] uppercase font-bold text-white/40 px-3 py-1">Sleep Timer</span>
+                    <span className="text-[10px] uppercase font-bold text-white/40 px-3 py-1">{t('player.sleepTimer', 'Sleep Timer')}</span>
                     <button
                       onClick={() => { setSleepTimerMinutes(5); setIsSleepMenuOpen(false); }}
                       className="px-3 py-2 text-left hover:bg-white/10 rounded-xl"
                     >
-                      5 minutes
+                      5 {t('account.minutes', 'minutes')}
                     </button>
                     <button
                       onClick={() => { setSleepTimerMinutes(15); setIsSleepMenuOpen(false); }}
                       className="px-3 py-2 text-left hover:bg-white/10 rounded-xl"
                     >
-                      15 minutes
+                      15 {t('account.minutes', 'minutes')}
                     </button>
                     <button
                       onClick={() => { setSleepTimerMinutes(30); setIsSleepMenuOpen(false); }}
                       className="px-3 py-2 text-left hover:bg-white/10 rounded-xl"
                     >
-                      30 minutes
+                      30 {t('account.minutes', 'minutes')}
                     </button>
                     <button
                       onClick={() => { setSleepTimerMinutes(60); setIsSleepMenuOpen(false); }}
                       className="px-3 py-2 text-left hover:bg-white/10 rounded-xl"
                     >
-                      1 hour
+                      1 {t('account.hours', 'hour')}
                     </button>
                     <button
                       onClick={() => { setSleepTimerEndOfSong(); setIsSleepMenuOpen(false); }}
                       className="px-3 py-2 text-left hover:bg-white/10 rounded-xl"
                     >
-                      End of current song
+                      {t('player.endOfSong', 'End of current song')}
                     </button>
                     {sleepTimerRemaining !== null && (
                       <button
                         onClick={() => { cancelSleepTimer(); setIsSleepMenuOpen(false); }}
                         className="px-3 py-2 text-left text-red-400 hover:bg-red-500/10 rounded-xl border-t border-white/5 mt-1"
                       >
-                        Turn off
+                        {t('player.turnOff', 'Turn off')}
                       </button>
                     )}
                   </div>

@@ -13,6 +13,7 @@ export const QueueDrawer: React.FC = () => {
     playQueueIndex,
     removeFromQueue,
     clearQueue,
+    t,
   } = useMusic();
 
   const [isClosing, setIsClosing] = useState(false);
@@ -169,9 +170,9 @@ export const QueueDrawer: React.FC = () => {
           className="flex items-center justify-between pb-3 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
         >
           <div>
-            <h3 className="font-extrabold text-base sm:text-lg text-white">Playback Queue</h3>
+            <h3 className="font-extrabold text-base sm:text-lg text-white">{t('nav.queue', 'Playback Queue')}</h3>
             <p className="text-xs text-white/50 font-medium">
-              {playbackQueue.length ? `${playbackQueue.length} tracks queued` : 'Queue is empty'}
+              {playbackQueue.length ? `${playbackQueue.length} ${t('common.tracks', 'tracks')}` : t('nav.queueEmpty', 'Queue is empty')}
             </p>
           </div>
 
@@ -181,7 +182,7 @@ export const QueueDrawer: React.FC = () => {
                 type="button"
                 onClick={clearQueue}
                 className="p-2 text-white/40 hover:text-red-400 rounded-full transition-colors cursor-pointer"
-                title="Clear Queue"
+                title={t('nav.clearQueue', 'Clear Queue')}
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -190,7 +191,7 @@ export const QueueDrawer: React.FC = () => {
               type="button"
               onClick={close}
               className="p-2 text-white/40 hover:text-white rounded-full transition-colors cursor-pointer"
-              title="Close Queue"
+              title={t('modal.close', 'Close')}
               aria-label="Close"
             >
               <X className="w-5 h-5" />
@@ -203,9 +204,9 @@ export const QueueDrawer: React.FC = () => {
           {playbackQueue.length === 0 ? (
             <div className="my-auto flex flex-col items-center justify-center text-center p-6 gap-3 text-white/40">
               <ListMusic className="w-12 h-12 text-white/20" />
-              <h4 className="font-bold text-base text-white/70">Your queue is empty</h4>
+              <h4 className="font-bold text-base text-white/70">{t('nav.queueEmpty', 'Your queue is empty')}</h4>
               <p className="text-xs max-w-xs leading-relaxed">
-                Use the ⋮ menu on any track to add it to your queue or tap "Play Next".
+                {t('nav.queueEmptyDesc', 'Use the ⋮ menu on any track to add it to your queue or tap "Play Next".')}
               </p>
             </div>
           ) : (
@@ -238,7 +239,7 @@ export const QueueDrawer: React.FC = () => {
                   <div className="min-w-0 flex-1">
                     {isCurrent && (
                       <span className="text-[10px] font-black uppercase tracking-wider text-[#ff6b1a] block leading-tight mb-0.5">
-                        Now Playing
+                        {t('nav.nowPlaying', 'Now Playing')}
                       </span>
                     )}
                     <h5
@@ -258,7 +259,7 @@ export const QueueDrawer: React.FC = () => {
                       removeFromQueue(i);
                     }}
                     className="p-1.5 opacity-60 sm:opacity-0 group-hover:opacity-100 text-white/40 hover:text-white rounded-full transition-all cursor-pointer"
-                    title="Remove from Queue"
+                    title={t('nav.removeFromQueue', 'Remove from Queue')}
                   >
                     <X className="w-4 h-4" />
                   </button>

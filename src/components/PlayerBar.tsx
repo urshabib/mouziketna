@@ -61,6 +61,7 @@ export const PlayerBar: React.FC = () => {
     isQueueOpen,
     setModalAddToPlaylistTrack,
     currentLyrics,
+    t,
   } = useMusic();
 
   const thumbSrc = useTrackThumb(activeTrack);

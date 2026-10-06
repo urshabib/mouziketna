@@ -180,7 +180,7 @@ export const Modals: React.FC = () => {
           >
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <h3 className="font-bold text-lg text-white">
-                {modalAddToPlaylistTrack ? 'Add to Playlist' : 'Create Playlist'}
+                {modalAddToPlaylistTrack ? t('modal.addToPlaylist', 'Add to Playlist') : t('library.createPlaylist', 'Create Playlist')}
               </h3>
               <button
                 onClick={() => {
@@ -217,7 +217,7 @@ export const Modals: React.FC = () => {
                         <span className="font-semibold text-sm text-white truncate">{pl.name}</span>
                       </div>
                       <span className="text-xs text-white/40 group-hover:text-white/60">
-                        {pl.tracks.length} tracks
+                        {pl.tracks.length} {t('common.tracks', 'tracks')}
                       </span>
                     </button>
                   );
@@ -228,12 +228,12 @@ export const Modals: React.FC = () => {
             {/* Create new playlist form */}
             <form onSubmit={handleCreateAndAdd} className="flex flex-col gap-3 pt-2">
               <label className="text-xs font-bold uppercase tracking-wider text-white/50">
-                New Playlist
+                {t('library.newPlaylist', 'New Playlist')}
               </label>
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Playlist name"
+                  placeholder={t('library.playlistName', 'Playlist name')}
                   value={newPlaylistName}
                   onChange={(e) => setNewPlaylistName(e.target.value)}
                   className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors"
@@ -241,9 +241,9 @@ export const Modals: React.FC = () => {
                 <button
                   type="submit"
                   disabled={!newPlaylistName.trim()}
-                  className="px-5 py-2.5 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all"
+                  className="px-5 py-2.5 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all cursor-pointer"
                 >
-                  Create
+                  {t('common.save', 'Create')}
                 </button>
               </div>
             </form>
@@ -392,18 +392,18 @@ export const Modals: React.FC = () => {
             <div className="flex gap-2 w-full mt-3">
               <button
                 onClick={() => setModalConfirm(null)}
-                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm transition-colors"
+                className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-sm transition-colors cursor-pointer"
               >
-                Cancel
+                {t('modal.cancel', 'Cancel')}
               </button>
               <button
                 onClick={() => {
                   modalConfirm.onConfirm();
                   setModalConfirm(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm transition-colors"
+                className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm transition-colors cursor-pointer"
               >
-                Confirm
+                {t('modal.confirm', 'Confirm')}
               </button>
             </div>
           </div>

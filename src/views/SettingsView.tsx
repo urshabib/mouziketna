@@ -95,6 +95,8 @@ export const SettingsView: React.FC = () => {
     setModalConfirm,
     showToast,
     setIsInstallModalOpen,
+    language,
+    setLanguage,
     t,
   } = useMusic();
 
@@ -248,23 +250,25 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl pb-24 select-none">
-      {/* Header & Category Pills */}
+      {/* Header & Category Navigation */}
       <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">Settings</h2>
+          <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            {t('settings.title', 'Settings')}
+          </h2>
           <p className="text-xs text-white/50 font-medium mt-0.5">
-            Manage audio quality, interface styling, home screen app shortcuts, and offline storage.
+            {t('settings.subtitle', 'Manage audio quality, interface styling, home screen shortcuts, and offline storage.')}
           </p>
         </div>
 
         {/* Quick Category Navigation Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {[
-            { id: 'all', label: 'All Settings', icon: Sliders },
-            { id: 'audio', label: 'Audio & Offline', icon: Volume2 },
-            { id: 'appearance', label: 'Theme & Colors', icon: Palette },
-            ...(!isStandalone ? [{ id: 'app', label: 'App & Logo', icon: Smartphone }] : []),
-            { id: 'system', label: 'Storage & System', icon: HardDrive },
+            { id: 'all', label: t('settings.all', 'All Settings'), icon: Sliders },
+            { id: 'audio', label: t('settings.audio', 'Audio & Downloads'), icon: Volume2 },
+            { id: 'appearance', label: t('settings.appearance', 'Themes & Style'), icon: Palette },
+            ...(!isStandalone ? [{ id: 'app', label: t('settings.app', 'App & Shortcuts'), icon: Smartphone }] : []),
+            { id: 'system', label: t('settings.system', 'Storage & System'), icon: HardDrive },
           ].map((cat) => {
             const isCurrent = activeTab === cat.id;
             const Icon = cat.icon;
@@ -274,7 +278,7 @@ export const SettingsView: React.FC = () => {
                 onClick={() => setActiveTab(cat.id as SettingsTab)}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex-shrink-0 cursor-pointer ${
                   isCurrent
-                    ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20'
+                    ? 'bg-[#ff6b1a] text-black shadow-md shadow-[#ff6b1a]/20 font-extrabold'
                     : 'bg-white/5 text-white/70 hover:text-white hover:bg-white/10 border border-white/5'
                 }`}
               >
@@ -292,7 +296,7 @@ export const SettingsView: React.FC = () => {
           <div className="flex items-center gap-2 pb-1 border-b border-white/10">
             <Volume2 className="w-4 h-4 text-[#ff6b1a]" />
             <h3 className="font-extrabold text-xs uppercase tracking-wider text-white/70">
-              Audio & Offline Downloads
+              {t('settings.audio', 'Audio & Offline Downloads')}
             </h3>
           </div>
 
@@ -301,13 +305,13 @@ export const SettingsView: React.FC = () => {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <div>
                 <h4 className="font-bold text-sm text-white flex items-center gap-2">
-                  <span>Download Audio Quality</span>
+                  <span>{t('settings.downloadQuality', 'Download Audio Quality')}</span>
                   <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                    Offline Tracks
+                    {t('settings.offlineTracks', 'Offline Tracks')}
                   </span>
                 </h4>
                 <p className="text-xs text-white/50 mt-0.5">
-                  Choose audio fidelity when downloading tracks to your offline library.
+                  {t('settings.downloadQualityDesc', 'Choose audio fidelity when downloading tracks to your offline library.')}
                 </p>
               </div>
             </div>
@@ -317,31 +321,31 @@ export const SettingsView: React.FC = () => {
               {[
                 {
                   id: 'stable',
-                  title: 'Balanced',
+                  title: t('settings.balanced', 'Balanced'),
                   kbps: '160 kbps',
-                  desc: 'Fast download • Crystal clear',
-                  badge: 'Recommended',
+                  desc: t('settings.balancedDesc', 'Fast download • Crystal clear (160 kbps)'),
+                  badge: '160k',
                 },
                 {
                   id: 'high',
-                  title: 'Studio High',
+                  title: t('settings.studio', 'Studio High'),
                   kbps: '320 kbps',
-                  desc: 'Master fidelity lossless',
-                  badge: 'Best on WiFi',
+                  desc: t('settings.studioDesc', 'Master fidelity lossless (320 kbps)'),
+                  badge: '320k',
                 },
                 {
                   id: 'saver',
-                  title: 'Data Saver',
+                  title: t('settings.dataSaverQuality', 'Data Saver'),
                   kbps: '96 kbps',
-                  desc: 'Saves storage & bandwidth',
-                  badge: 'Lightweight',
+                  desc: t('settings.dataSaverQualityDesc', 'Saves storage & bandwidth (96 kbps)'),
+                  badge: '96k',
                 },
                 {
                   id: 'ultra',
-                  title: 'Ultra Saver',
+                  title: t('settings.ultraSaver', 'Ultra Saver'),
                   kbps: '48 kbps',
-                  desc: 'Ultra minimal file size',
-                  badge: 'Compact',
+                  desc: t('settings.ultraSaverDesc', 'Ultra minimal file size (48 kbps)'),
+                  badge: '48k',
                 },
               ].map((tier) => {
                 const current = userProfile.downloadQuality || 'stable';
@@ -383,18 +387,23 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Automatic Background Cache */}
+          {/* Automatic Download As You Play */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex flex-col">
                 <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm text-white">Cache Songs as You Listen</h4>
+                  <h4 className="font-bold text-sm text-white">
+                    {t('settings.autoDownloadPlayed', 'Download Songs as You Play')}
+                  </h4>
                   <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-500/20">
-                    Seamless Replay
+                    {t('settings.autoDownloadPlayedBadge', 'Seamless Replay')}
                   </span>
                 </div>
                 <p className="text-xs text-white/50 mt-0.5">
-                  Automatically keeps songs in temporary offline cache while playing so replays don't use internet.
+                  {t(
+                    'settings.autoDownloadPlayedDesc',
+                    'Automatically keeps songs in offline storage while playing so replays don\'t use your internet.'
+                  )}
                 </p>
               </div>
 
@@ -407,7 +416,7 @@ export const SettingsView: React.FC = () => {
                 className={`w-12 h-7 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${
                   userProfile.autoCachePlayed ? 'bg-[#ff6b1a]' : 'bg-white/20'
                 }`}
-                aria-label="Toggle Auto Cache"
+                aria-label={t('settings.autoDownloadPlayed', 'Download Songs as You Play')}
               >
                 <span
                   className={`w-5 h-5 rounded-full bg-white absolute top-1 transition-transform ${
@@ -417,19 +426,23 @@ export const SettingsView: React.FC = () => {
               </button>
             </div>
 
-            {/* Sub-setting: Auto-Cache Quality */}
+            {/* Sub-setting: Auto-Download Quality */}
             {userProfile.autoCachePlayed && (
               <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <span className="text-xs font-bold text-white/90">Auto-Cache Audio Quality:</span>
-                  <p className="text-[11px] text-white/40">Balanced 160k is recommended for fast streaming.</p>
+                  <span className="text-xs font-bold text-white/90">
+                    {t('settings.autoCacheQuality', 'Auto-Download Quality:')}
+                  </span>
+                  <p className="text-[11px] text-white/40">
+                    {t('settings.autoCacheQualityDesc', 'Balanced 160k is recommended for fast streaming.')}
+                  </p>
                 </div>
 
                 <div className="flex items-center justify-center bg-black/50 p-1.5 rounded-xl border border-white/10 gap-1.5 w-full sm:w-80">
                   {[
-                    { id: 'stable', label: 'Balanced', sub: '160k' },
-                    { id: 'high', label: 'High', sub: '320k' },
-                    { id: 'saver', label: 'Saver', sub: '96k' },
+                    { id: 'stable', label: t('settings.balanced', 'Balanced'), sub: '160k' },
+                    { id: 'high', label: t('settings.studio', 'High'), sub: '320k' },
+                    { id: 'saver', label: t('settings.dataSaverQuality', 'Saver'), sub: '96k' },
                   ].map((opt) => {
                     const current = userProfile.autoCacheQuality || 'stable';
                     const isSelected = current === opt.id;
@@ -465,10 +478,12 @@ export const SettingsView: React.FC = () => {
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
                   <Mic2 className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                  <h4 className="font-bold text-xs text-white">Offline Karaoke Lyrics</h4>
+                  <h4 className="font-bold text-xs text-white">
+                    {t('settings.offlineLyrics', 'Offline Karaoke Lyrics')}
+                  </h4>
                 </div>
                 <p className="text-[11px] text-white/50 mt-0.5">
-                  Saves synced lyrics with downloaded songs for full offline karaoke.
+                  {t('settings.offlineLyricsDesc', 'Saves synced lyrics with downloaded songs for full offline karaoke.')}
                 </p>
               </div>
 
@@ -496,10 +511,12 @@ export const SettingsView: React.FC = () => {
                 <div className="flex flex-col">
                   <div className="flex items-center gap-1.5">
                     <ImageIcon className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                    <h4 className="font-bold text-xs text-white">Offline Song Pictures</h4>
+                    <h4 className="font-bold text-xs text-white">
+                      {t('settings.offlinePictures', 'Offline Song Pictures')}
+                    </h4>
                   </div>
                   <p className="text-[11px] text-white/50 mt-0.5">
-                    Saves artwork so covers remain visible offline.
+                    {t('settings.offlinePicturesDesc', 'Saves artwork so covers remain visible offline.')}
                   </p>
                 </div>
 
@@ -523,7 +540,9 @@ export const SettingsView: React.FC = () => {
 
               {userProfile.downloadArtOffline !== false && (
                 <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px]">
-                  <span className="text-white/50 font-medium">Cover Quality:</span>
+                  <span className="text-white/50 font-medium">
+                    {t('settings.coverQuality', 'Cover Quality:')}
+                  </span>
                   <div className="flex gap-1">
                     {[
                       { id: 'low', label: 'Fast (150px)' },
@@ -536,7 +555,7 @@ export const SettingsView: React.FC = () => {
                         onClick={() => syncProfile({ ...userProfile, artQualityOffline: sz.id as any })}
                         className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
                           (userProfile.artQualityOffline || 'low') === sz.id
-                            ? 'bg-[#ff6b1a] text-black'
+                            ? 'bg-[#ff6b1a] text-black font-extrabold'
                             : 'bg-white/5 text-white/60 hover:text-white'
                         }`}
                       >
@@ -557,7 +576,7 @@ export const SettingsView: React.FC = () => {
           <div className="flex items-center gap-2 pb-1 border-b border-white/10">
             <Palette className="w-4 h-4 text-[#ff6b1a]" />
             <h3 className="font-extrabold text-xs uppercase tracking-wider text-white/70">
-              Language & Interface Styling
+              {t('settings.appearance', 'Language & Interface Styling')}
             </h3>
           </div>
 
@@ -578,12 +597,13 @@ export const SettingsView: React.FC = () => {
                 { id: 'en', label: 'English' },
                 { id: 'fr', label: 'Français' },
               ].map((lang) => {
-                const isSelected = (userProfile.language || 'en') === lang.id;
+                const isSelected = (language || userProfile.language || 'en') === lang.id;
                 return (
                   <button
                     key={lang.id}
                     type="button"
                     onClick={() => {
+                      setLanguage(lang.id as 'en' | 'fr');
                       syncProfile({ ...userProfile, language: lang.id as 'en' | 'fr' });
                       showToast(lang.id === 'fr' ? 'Langue changée en Français' : 'Language set to English');
                     }}
@@ -604,9 +624,11 @@ export const SettingsView: React.FC = () => {
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="font-bold text-sm text-white">One-Tap Curated Themes</h4>
+                <h4 className="font-bold text-sm text-white">
+                  {t('settings.curatedThemes', 'One-Tap Curated Themes')}
+                </h4>
                 <p className="text-xs text-white/50 mt-0.5">
-                  Instantly transform the colors, glass effects, and atmosphere.
+                  {t('settings.curatedThemesDesc', 'Instantly transform the colors, glass effects, and atmosphere.')}
                 </p>
               </div>
             </div>
@@ -639,15 +661,17 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Global Interface Display Scaling (Centered buttons) */}
+          {/* Global Interface Display Scaling */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex flex-col">
               <div className="flex items-center gap-1.5">
                 <Maximize2 className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                <h4 className="font-bold text-xs text-white">Global Display Scale</h4>
+                <h4 className="font-bold text-xs text-white">
+                  {t('settings.displayScale', 'Global Display Scale')}
+                </h4>
               </div>
               <p className="text-[11px] text-white/50 mt-0.5">
-                Adjust typography sizing, layout density, and component scales.
+                {t('settings.displayScaleDesc', 'Adjust typography sizing, layout density, and component scales.')}
               </p>
             </div>
 
@@ -685,10 +709,10 @@ export const SettingsView: React.FC = () => {
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                  <h4 className="font-bold text-xs text-white">Liquid Glass Blur</h4>
+                  <h4 className="font-bold text-xs text-white">{t('settings.liquidGlass', 'Liquid Glass Blur')}</h4>
                 </div>
                 <p className="text-[11px] text-white/50 mt-0.5">
-                  Translucent frosted glass styling on panels and overlays.
+                  {t('settings.liquidGlassDesc', 'Translucent frosted glass styling on panels and overlays.')}
                 </p>
               </div>
 
@@ -717,10 +741,10 @@ export const SettingsView: React.FC = () => {
                   ) : (
                     <Moon className="w-3.5 h-3.5 text-[#ff6b1a]" />
                   )}
-                  <h4 className="font-bold text-xs text-white">Light / Dark Theme</h4>
+                  <h4 className="font-bold text-xs text-white">{t('settings.theme', 'Light / Dark Theme')}</h4>
                 </div>
                 <p className="text-[11px] text-white/50 mt-0.5">
-                  {userProfile.theme === 'light' ? 'Daylight Light Mode' : 'OLED Dark Mode'}
+                  {userProfile.theme === 'light' ? t('settings.themeLight', 'Daylight Light Mode') : t('settings.themeDark', 'OLED Dark Mode')}
                 </p>
               </div>
 
@@ -749,8 +773,8 @@ export const SettingsView: React.FC = () => {
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-xs text-white">App Highlight Accent Color</h4>
-                  <p className="text-[11px] text-white/50 mt-0.5">Colors player bars, active icons and buttons.</p>
+                  <h4 className="font-bold text-xs text-white">{t('settings.accentColor', 'App Highlight Accent Color')}</h4>
+                  <p className="text-[11px] text-white/50 mt-0.5">{t('settings.accentColorDesc', 'Colors player bars, active icons and buttons.')}</p>
                 </div>
                 {userProfile.customAccentHex && (
                   <span className="text-[10px] font-mono text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
@@ -823,8 +847,8 @@ export const SettingsView: React.FC = () => {
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-xs text-white">Karaoke Lyrics Glowing Color</h4>
-                  <p className="text-[11px] text-white/50 mt-0.5">Colors active singing lyric lines.</p>
+                  <h4 className="font-bold text-xs text-white">{t('settings.lyricsGlowColor', 'Karaoke Lyrics Highlight Color')}</h4>
+                  <p className="text-[11px] text-white/50 mt-0.5">{t('settings.lyricsGlowColorDesc', 'Colors active singing lyric lines.')}</p>
                 </div>
                 {userProfile.customLyricsHex && (
                   <span className="text-[10px] font-mono text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
@@ -897,9 +921,9 @@ export const SettingsView: React.FC = () => {
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-xs text-white">Karaoke Lyrics Glow Effect</h4>
+                  <h4 className="font-bold text-xs text-white">{t('settings.lyricsGlowEffect', 'Karaoke Lyrics Glow Effect')}</h4>
                   <p className="text-[11px] text-white/50 mt-0.5">
-                    Control the intensity of the glowing aura around singing lyrics.
+                    {t('settings.lyricsGlowEffectDesc', 'Control the intensity of the glowing aura around singing lyrics.')}
                   </p>
                 </div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
@@ -908,11 +932,11 @@ export const SettingsView: React.FC = () => {
               </div>
               <div className="grid grid-cols-3 gap-2 pt-1">
                 {[
-                  { id: 'off', label: 'Off', desc: 'No glow aura', previewStyle: {} },
+                  { id: 'off', label: t('settings.glowOff', 'Off'), desc: t('settings.glowOffDesc', 'No glow aura'), previewStyle: {} },
                   {
                     id: 'default',
-                    label: 'Default',
-                    desc: 'Smooth aura',
+                    label: t('settings.glowSmooth', 'Default'),
+                    desc: t('settings.glowSmoothDesc', 'Smooth aura'),
                     previewStyle: {
                       textShadow: 'rgba(255, 107, 26, 0.65) 0 0 12px',
                       filter: 'drop-shadow(0 0 8px rgba(255, 107, 26, 0.55))',
@@ -920,8 +944,8 @@ export const SettingsView: React.FC = () => {
                   },
                   {
                     id: 'strong',
-                    label: 'Strong',
-                    desc: 'Vibrant neon halo',
+                    label: t('settings.glowStrong', 'Strong'),
+                    desc: t('settings.glowStrongDesc', 'Vibrant neon halo'),
                     previewStyle: {
                       textShadow:
                         'rgba(255, 107, 26, 0.95) 0 0 8px, rgba(255, 107, 26, 0.75) 0 0 20px',
@@ -959,13 +983,13 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Key Moments / Highlights Display (Off / Rectangle Markers / Full Parts) */}
+            {/* Key Moments / Highlights Display */}
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-xs text-white">Song Key Moments & Highlights</h4>
+                  <h4 className="font-bold text-xs text-white">{t('settings.keyMoments', 'Song Key Moments & Highlights')}</h4>
                   <p className="text-[11px] text-white/50 mt-0.5">
-                    Display bookmarks for famous choruses and main drops on the player scrubber.
+                    {t('settings.keyMomentsDesc', 'Display bookmarks for famous choruses and main drops on the player scrubber.')}
                   </p>
                 </div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
@@ -974,9 +998,9 @@ export const SettingsView: React.FC = () => {
               </div>
               <div className="grid grid-cols-3 gap-2 pt-1">
                 {[
-                  { id: 'off', label: 'Off', desc: 'Turn everything off' },
-                  { id: 'dots', label: 'Rectangles Only', desc: 'Sleek timeline rectangles' },
-                  { id: 'full', label: 'Full Parts', desc: 'Rectangles + top badges' },
+                  { id: 'off', label: t('settings.timelineOff', 'Off'), desc: t('settings.timelineOffDesc', 'Turn everything off') },
+                  { id: 'dots', label: t('settings.timelineDots', 'Rectangles Only'), desc: t('settings.timelineDotsDesc', 'Sleek timeline rectangles') },
+                  { id: 'full', label: t('settings.timelineFull', 'Full Parts'), desc: t('settings.timelineFullDesc', 'Rectangles + top badges') },
                 ].map((opt) => {
                   const isSelected = (userProfile.keyPartsDisplay || 'dots') === opt.id;
                   return (
@@ -1004,13 +1028,13 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Player Progress Bar Style (Default / Thick Bar / Sine Wave / Neon Laser) */}
+            {/* Player Progress Bar Style */}
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-bold text-xs text-white">Player Progress Bar Style</h4>
+                  <h4 className="font-bold text-xs text-white">{t('settings.progressBarStyle', 'Player Progress Bar Style')}</h4>
                   <p className="text-[11px] text-white/50 mt-0.5">
-                    Changes both the normal player and the full-screen stage player.
+                    {t('settings.progressBarStyleDesc', 'Changes both the normal player and the full-screen stage player.')}
                   </p>
                 </div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
@@ -1019,10 +1043,10 @@ export const SettingsView: React.FC = () => {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                 {[
-                  { id: 'default', label: 'Classic Slim', desc: 'Default thin line & dot' },
-                  { id: 'block', label: 'Thick Bar', desc: 'Advancing full rectangle' },
-                  { id: 'wave', label: 'Sine Wave', desc: 'Animated zigzag squiggle' },
-                  { id: 'neon', label: 'Neon Laser', desc: 'Radiant beam & laser head' },
+                  { id: 'default', label: t('settings.barSlim', 'Classic Slim'), desc: t('settings.barSlimDesc', 'Default thin line & dot') },
+                  { id: 'block', label: t('settings.barBlock', 'Thick Bar'), desc: t('settings.barBlockDesc', 'Advancing full rectangle') },
+                  { id: 'wave', label: t('settings.barWave', 'Sine Wave'), desc: t('settings.barWaveDesc', 'Animated zigzag squiggle') },
+                  { id: 'neon', label: t('settings.barNeon', 'Neon Laser'), desc: t('settings.barNeonDesc', 'Radiant beam & laser head') },
                 ].map((opt) => {
                   const isSelected = (userProfile.progressBarStyle || 'default') === opt.id;
                   return (
@@ -1051,13 +1075,13 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Karaoke Lyrics Typography & Distinct Font Personalities */}
+          {/* Karaoke Lyrics Typography */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="font-bold text-xs text-white">Karaoke Lyrics Font Style</h4>
+                <h4 className="font-bold text-xs text-white">{t('settings.lyricsFontStyle', 'Karaoke Lyrics Font Style')}</h4>
                 <p className="text-[11px] text-white/50 mt-0.5">
-                  Choose your preferred typography for synchronized karaoke lyrics.
+                  {t('settings.lyricsFontStyleDesc', 'Choose your preferred typography for synchronized karaoke lyrics.')}
                 </p>
               </div>
             </div>
@@ -1106,16 +1130,18 @@ export const SettingsView: React.FC = () => {
           <div className="flex items-center gap-2 pb-1 border-b border-white/10">
             <Smartphone className="w-4 h-4 text-[#ff6b1a]" />
             <h3 className="font-extrabold text-xs uppercase tracking-wider text-white/70">
-              App Logo & Home Screen Identity
+              {t('settings.appIdentity', 'App Logo & Home Screen Identity')}
             </h3>
           </div>
 
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="font-bold text-sm text-white">Customize Home Screen Name & Icon</h4>
+                <h4 className="font-bold text-sm text-white">
+                  {t('settings.customizeNameIcon', 'Customize Home Screen Name & Icon')}
+                </h4>
                 <p className="text-xs text-white/50 mt-0.5">
-                  Personalize the shortcut title and emblem for your phone or desktop.
+                  {t('settings.customizeNameIconDesc', 'Personalize the shortcut title and emblem for your phone or desktop.')}
                 </p>
               </div>
               <button
@@ -1133,9 +1159,9 @@ export const SettingsView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-white flex items-center gap-1.5">
                   <Edit3 className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                  <span>Shortcut Name on Home Screen</span>
+                  <span>{t('settings.shortcutName', 'Shortcut Name on Home Screen')}</span>
                 </label>
-                <span className="text-[10px] text-white/40">Syncs without reinstalling</span>
+                <span className="text-[10px] text-white/40">{t('settings.shortcutNameDesc', 'Syncs without reinstalling')}</span>
               </div>
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-0.5">
                 <input
@@ -1153,7 +1179,7 @@ export const SettingsView: React.FC = () => {
                     className="px-4 py-2 rounded-xl bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-[#ff6b1a]/20 transition-all cursor-pointer flex-shrink-0"
                   >
                     {nameSavedSuccess ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    <span>{nameSavedSuccess ? 'Saved!' : 'Save Name'}</span>
+                    <span>{nameSavedSuccess ? t('settings.saved', 'Saved!') : t('settings.saveName', 'Save Name')}</span>
                   </button>
                   {appNameInput !== DEFAULT_APP_NAME && (
                     <button
@@ -1172,7 +1198,7 @@ export const SettingsView: React.FC = () => {
             {/* Logo Presets */}
             <div className="flex flex-col gap-2">
               <label className="text-xs font-bold text-white/80">
-                Choose App Icon Emblem:
+                {t('settings.chooseEmblem', 'Choose App Icon Emblem:')}
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {LOGO_PRESETS.map((preset) => {
@@ -1231,7 +1257,7 @@ export const SettingsView: React.FC = () => {
                 className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <UploadCloud className="w-4 h-4 text-[#ff6b1a]" />
-                <span>Upload & Crop Custom Picture...</span>
+                <span>{t('settings.uploadCustomPic', 'Upload & Crop Custom Picture...')}</span>
               </button>
               {userProfile.appLogo && userProfile.appLogo.startsWith('data:') && (
                 <span className="text-xs text-[#28c76f] font-semibold flex items-center gap-1">
@@ -1267,17 +1293,17 @@ export const SettingsView: React.FC = () => {
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-sm text-white">Install MOUZIKETNA as an App</h4>
+                  <h4 className="font-bold text-sm text-white">{t('settings.installAppTitle', 'Install MOUZIKETNA as an App')}</h4>
                   {isStandalone && (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      Installed
+                      {t('settings.installed', 'Installed')}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-white/50 mt-0.5">
                   {isStandalone
-                    ? 'Running in standalone native window. Custom names and logos sync directly to your app.'
-                    : 'Install directly to your Android, iPhone, or Desktop to run with no address bar or tabs.'}
+                    ? t('settings.installedDesc', 'Running in standalone native window. Custom names and logos sync directly to your app.')
+                    : t('settings.installAppDesc', 'Install directly to your Android, iPhone, or Desktop to run with no address bar or tabs.')}
                 </p>
               </div>
             </div>
@@ -1288,7 +1314,7 @@ export const SettingsView: React.FC = () => {
               className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black font-black text-xs flex items-center justify-center gap-2 shadow-md shadow-[#ff6b1a]/20 transition-all cursor-pointer flex-shrink-0"
             >
               <Download className="w-4 h-4" />
-              <span>{isStandalone ? 'View App Info' : 'Install App'}</span>
+              <span>{isStandalone ? t('settings.viewAppInfo', 'View App Info') : t('settings.installAppBtn', 'Install App')}</span>
             </button>
           </div>
         </section>
@@ -1300,7 +1326,7 @@ export const SettingsView: React.FC = () => {
           <div className="flex items-center gap-2 pb-1 border-b border-white/10">
             <HardDrive className="w-4 h-4 text-[#ff6b1a]" />
             <h3 className="font-extrabold text-xs uppercase tracking-wider text-white/70">
-              Storage & System Diagnostics
+              {t('settings.system', 'Storage & System Diagnostics')}
             </h3>
           </div>
 
@@ -1311,11 +1337,11 @@ export const SettingsView: React.FC = () => {
               className="cursor-pointer group flex-1"
             >
               <h4 className="font-bold text-sm text-white group-hover:text-[#ff6b1a] transition-colors flex items-center gap-1.5">
-                <span>Manage Offline Songs</span>
+                <span>{t('settings.manageDownloads', 'Manage Offline Songs')}</span>
                 <ChevronRight className="w-4 h-4 text-white/40" />
               </h4>
               <p className="text-xs text-white/50 mt-0.5">
-                {downloadedSet.size} offline tracks stored • <strong className="text-white">{downloadSize}</strong>
+                {downloadedSet.size} {t('settings.offlineTracksStored', 'offline tracks stored')} • <strong className="text-white">{downloadSize}</strong>
               </p>
             </div>
 
@@ -1323,8 +1349,8 @@ export const SettingsView: React.FC = () => {
               type="button"
               onClick={() => {
                 setModalConfirm({
-                  title: 'Clear all offline music?',
-                  text: 'This will delete all downloaded audio files from your browser storage.',
+                  title: t('settings.clearDownloadsConfirmTitle', 'Clear all offline music?'),
+                  text: t('settings.clearDownloadsConfirmDesc', 'This will delete all downloaded audio files from your browser storage.'),
                   onConfirm: async () => {
                     await clearAllDownloads();
                     showToast('All downloads cleared', true);
@@ -1334,7 +1360,7 @@ export const SettingsView: React.FC = () => {
               className="w-full sm:w-auto py-2 px-3 rounded-xl border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer flex-shrink-0"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear Downloads</span>
+              <span>{t('settings.clearDownloads', 'Clear Downloads')}</span>
             </button>
           </div>
 
@@ -1342,13 +1368,13 @@ export const SettingsView: React.FC = () => {
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex flex-col gap-1 max-w-xl">
               <div className="flex items-center gap-2">
-                <h4 className="font-bold text-sm text-white">Check for Updates & Force Reload</h4>
+                <h4 className="font-bold text-sm text-white">{t('settings.forceUpdate', 'Check for Updates & Force Reload')}</h4>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                  Safe Refresh
+                  {t('settings.forceUpdateBadge', 'Safe Refresh')}
                 </span>
               </div>
               <p className="text-xs text-white/50 leading-relaxed">
-                Purges stale browser code cache and loads the newest release. Downloaded songs and playlists are 100% preserved.
+                {t('settings.forceUpdateDesc', 'Purges stale browser code cache and loads the newest release. Downloaded songs and playlists are 100% preserved.')}
               </p>
             </div>
 
@@ -1367,7 +1393,7 @@ export const SettingsView: React.FC = () => {
               ) : (
                 <RefreshCw className="w-3.5 h-3.5 text-[#ff6b1a]" />
               )}
-              <span>{isRefreshingApp ? 'Refreshing...' : 'Force Reload App'}</span>
+              <span>{isRefreshingApp ? t('settings.refreshing', 'Refreshing...') : t('settings.forceReloadBtn', 'Force Reload App')}</span>
             </button>
           </div>
 
@@ -1377,10 +1403,10 @@ export const SettingsView: React.FC = () => {
               <div>
                 <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
                   <Activity className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                  <span>Streaming Server Latency</span>
+                  <span>{t('settings.pingServers', 'Streaming Server Latency')}</span>
                 </h4>
                 <p className="text-xs text-white/50 mt-0.5">
-                  Test connectivity to backend audio servers and video streams.
+                  {t('settings.pingServersDesc', 'Test connectivity to backend audio servers and video streams.')}
                 </p>
               </div>
               <button
@@ -1394,7 +1420,7 @@ export const SettingsView: React.FC = () => {
                 ) : (
                   <Wifi className="w-3 h-3 text-[#ff6b1a]" />
                 )}
-                <span>Ping Servers</span>
+                <span>{t('settings.pingBtn', 'Ping Servers')}</span>
               </button>
             </div>
 
@@ -1430,8 +1456,8 @@ export const SettingsView: React.FC = () => {
             type="button"
             onClick={() => {
               setModalConfirm({
-                title: 'Reset settings to defaults?',
-                text: 'Your theme, quality, and appearance preferences will be restored to defaults. Your saved songs and playlists remain safe.',
+                title: t('settings.resetDefaultsConfirmTitle', 'Reset settings to defaults?'),
+                text: t('settings.resetDefaultsConfirmDesc', 'Your theme, quality, and appearance preferences will be restored to defaults. Your saved songs and playlists remain safe.'),
                 onConfirm: async () => {
                   syncProfile({
                     ...userProfile,
@@ -1443,7 +1469,7 @@ export const SettingsView: React.FC = () => {
                     downloadArtOffline: true,
                     artQualityOffline: 'low',
                     appLogo: 'default',
-                    autoCachePlayed: true,
+                    autoCachePlayed: false,
                     liquidGlass: true,
                     theme: 'dark',
                     accentColor: 'orange',
@@ -1459,7 +1485,7 @@ export const SettingsView: React.FC = () => {
             className="self-start flex items-center gap-2 px-3.5 py-2 rounded-xl border border-white/10 text-white/60 hover:text-white font-semibold text-xs transition-colors cursor-pointer mt-2"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Preferences to Defaults</span>
+            <span>{t('settings.resetDefaults', 'Reset Preferences to Defaults')}</span>
           </button>
         </section>
       )}
