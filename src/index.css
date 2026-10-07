@@ -151,9 +151,8 @@ body.liquid-glass {
 }
 
 body.liquid-glass .glass-panel,
-body.liquid-glass .bg-white\/\\[0\\.03\\],
-body.liquid-glass .bg-black\/40,
-body.liquid-glass .bg-black\/50 {
+body.liquid-glass [class*="bg-white/"],
+body.liquid-glass [class*="bg-black/"] {
   background: rgba(20, 20, 26, 0.72) !important;
   backdrop-filter: blur(28px) saturate(180%) brightness(1.02);
   -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.02);
@@ -169,9 +168,8 @@ body.liquid-glass-ultra {
 }
 
 body.liquid-glass-ultra .glass-panel,
-body.liquid-glass-ultra .bg-white\/\\[0\\.03\\],
-body.liquid-glass-ultra .bg-black\/40,
-body.liquid-glass-ultra .bg-black\/50,
+body.liquid-glass-ultra [class*="bg-white/"],
+body.liquid-glass-ultra [class*="bg-black/"],
 body.liquid-glass-ultra .popover-menu {
   background: rgba(16, 16, 22, 0.44) !important;
   backdrop-filter: blur(80px) saturate(280%) brightness(1.18) contrast(1.05);
