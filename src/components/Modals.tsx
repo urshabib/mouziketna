@@ -8,7 +8,6 @@ import {
   DownloadCloud,
   Link as LinkIcon,
   AlertTriangle,
-  Mic,
   Loader2,
   Gift,
 } from 'lucide-react';
@@ -410,35 +409,7 @@ export const Modals: React.FC = () => {
         </div>
       )}
 
-      {/* 5. AUDIO RECOGNITION (SHAZAM-STYLE) */}
-      {modalAudioRecognitionOpen && (
-        <div
-          onClick={() => setModalAudioRecognitionOpen(false)}
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center gap-4 animate-in zoom-in-95 duration-200"
-          >
-            <div className="relative flex items-center justify-center my-4">
-              <div className="w-24 h-24 rounded-full bg-[var(--accent)] text-black flex items-center justify-center shadow-2xl animate-pulse">
-                <Mic className="w-10 h-10" />
-              </div>
-              <div className="absolute inset-0 rounded-full border-2 border-[var(--accent)] animate-ping opacity-75" />
-            </div>
-            <h3 className="font-black text-xl text-white">Listening…</h3>
-            <p className="text-xs text-white/60">Hold your device near the audio source</p>
-            <button
-              onClick={() => setModalAudioRecognitionOpen(false)}
-              className="mt-2 px-6 py-2.5 rounded-full bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 6. AUTH GATE MODAL */}
+      {/* 5. AUTH GATE MODAL */}
       {isAuthGateOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none">
           <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4">

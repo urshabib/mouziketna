@@ -109,15 +109,15 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
     const render = () => {
       animId = requestAnimationFrame(render);
 
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const width = canvas.width / dpr;
       const height = canvas.height / dpr;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Dynamic center with subtle organic tilt/leak towards the left
-      const centerX = width * 0.48;
-      const centerY = height * 0.50;
+      // Perfectly centered disc coordinates (symmetrical across 360 degrees)
+      const centerX = width * 0.5;
+      const centerY = height * 0.5;
       const baseRadius = Math.min(width, height) * 0.28;
 
       let hasRealAudio = false;
@@ -135,10 +135,10 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
       if (!hasRealAudio || (rawBass === 0 && rawVol === 0)) {
         if (isPlaying) {
           const t = Date.now() / 1000;
-          rawBass = 0.4 + Math.sin(t * 3) * 0.22;
-          rawVol = 0.35 + Math.sin(t * 3.5) * 0.18;
+          rawBass = 0.35 + Math.sin(t * 3) * 0.18;
+          rawVol = 0.3 + Math.sin(t * 3.5) * 0.15;
           for (let i = 0; i < 64; i++) {
-            freqBuffer[i] = Math.max(0, Math.sin(t * 3.2 + i * 0.3) * 130 + 90);
+            freqBuffer[i] = Math.max(0, Math.sin(t * 3.2 + i * 0.25) * 110 + 80);
           }
         } else {
           rawBass = 0;
@@ -156,91 +156,144 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
       ctx.save();
       ctx.scale(dpr, dpr);
 
-      // 1. Soft Glowing Neon Aura leaking prominently to the left
-      const auraRadius = baseRadius * (1.15 + smoothedBass * 0.2);
+      // 1. Centered Soft Glowing Neon Aura
+      const auraRadius = baseRadius * (1.12 + smoothedBass * 0.15);
       const auraGrad = ctx.createRadialGradient(
-        centerX - width * 0.06,
+        centerX,
         centerY,
         baseRadius * 0.6,
         centerX,
         centerY,
-        auraRadius * 1.55
+        auraRadius * 1.45
       );
-      auraGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.45 * (0.6 + smoothedBass * 0.5)})`);
-      auraGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${0.18 * (0.6 + smoothedBass * 0.5)})`);
+      auraGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.4 * (0.6 + smoothedBass * 0.5)})`);
+      auraGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${0.15 * (0.6 + smoothedBass * 0.5)})`);
       auraGrad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = auraGrad;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, auraRadius * 1.55, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, auraRadius * 1.45, 0, Math.PI * 2);
       ctx.fill();
 
       // 2. Render Chosen Visualizer Style
       if (visStyle === 'wave') {
-        // --- MULTI-LAYER ROTATING FLUID ACOUSTIC WAVEFORM (Leaking Left) ---
-        wavePhase += isPlaying ? 0.045 : 0.01;
-        angleOffset += isPlaying ? 0.005 : 0.001;
+        // --- SLEEK HORIZONTAL LAYERED SINE WAVE VISUALIZER ---
+        // 2-3 smooth flowing waves running horizontally across the disc responding dynamically to peaks/troughs
+        wavePhase += isPlaying ? 0.05 : 0.015;
 
-        const numRings = 3;
-        for (let ring = 0; ring < numRings; ring++) {
-          const ringRadius = baseRadius * (1.06 + ring * 0.14);
-          const ringColor = ring === 0 ? primaryNeon : ring === 1 ? secondaryNeon : 'rgba(255, 255, 255, 0.75)';
-          const ringWidth = ring === 0 ? 3.2 : ring === 1 ? 2.2 : 1.5;
+        const waveWidth = width * 0.95;
+        const startX = centerX - waveWidth / 2;
+        const endX = centerX + waveWidth / 2;
 
+        const numWaves = 3;
+        const waveConfigs = [
+          {
+            color: primaryNeon,
+            lineWidth: 3.5,
+            freqMultiplier: 1.8,
+            speedMultiplier: 1.0,
+            ampMultiplier: 1.0,
+            phaseOffset: 0,
+            glow: 14,
+          },
+          {
+            color: secondaryNeon,
+            lineWidth: 2.5,
+            freqMultiplier: 2.6,
+            speedMultiplier: 1.3,
+            ampMultiplier: 0.75,
+            phaseOffset: Math.PI * 0.5,
+            glow: 8,
+          },
+          {
+            color: 'rgba(255, 255, 255, 0.85)',
+            lineWidth: 2.0,
+            freqMultiplier: 3.2,
+            speedMultiplier: 0.8,
+            ampMultiplier: 0.55,
+            phaseOffset: Math.PI,
+            glow: 6,
+          },
+        ];
+
+        waveConfigs.forEach((cfg, wIdx) => {
           ctx.beginPath();
-          ctx.lineWidth = ringWidth;
-          ctx.strokeStyle = ringColor;
-          ctx.shadowColor = primaryNeon;
-          ctx.shadowBlur = ring === 0 ? 10 : 6;
+          ctx.lineWidth = cfg.lineWidth;
+          ctx.strokeStyle = cfg.color;
+          ctx.shadowColor = cfg.color;
+          ctx.shadowBlur = cfg.glow;
 
-          const points = 72;
-          for (let i = 0; i <= points; i++) {
-            const angle = (i / points) * Math.PI * 2 + angleOffset * (ring % 2 === 0 ? 1 : -1.2);
-            const freqIdx = Math.floor(Math.abs(Math.sin(angle * 2 + wavePhase)) * (freqBuffer.length - 1));
-            const binVal = (freqBuffer[freqIdx] || 0) / 255;
+          const steps = 90;
+          for (let i = 0; i <= steps; i++) {
+            const x = startX + (i / steps) * waveWidth;
+            const normX = (i / steps); // 0 to 1
 
-            // Organic leftward expansion & rotation wave
-            const leftBias = 1.0 + Math.max(0, -Math.cos(angle)) * 0.45;
-            const waveDelta = Math.sin(angle * 6 + wavePhase + ring * 1.2) * (14 + binVal * 32 * (1 + smoothedBass * 0.5)) * leftBias;
+            // Bell-curve envelope so waves taper gracefully at screen edges and peak vividly around center
+            const envelope = Math.sin(normX * Math.PI);
 
-            const rCurr = ringRadius + waveDelta;
-            const px = centerX + Math.cos(angle) * rCurr;
-            const py = centerY + Math.sin(angle) * rCurr;
+            // Sample frequency energy
+            const freqSampleIdx = Math.floor(normX * (freqBuffer.length - 1));
+            const freqAmp = (freqBuffer[freqSampleIdx] || 0) / 255;
 
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
+            const baseAmplitude = 18 + smoothedBass * 32 + freqAmp * 24;
+            const totalAmplitude = baseAmplitude * cfg.ampMultiplier * envelope;
+
+            const waveAngle = normX * Math.PI * 2 * cfg.freqMultiplier + wavePhase * cfg.speedMultiplier + cfg.phaseOffset;
+            const y = centerY + Math.sin(waveAngle) * totalAmplitude;
+
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
           }
-          ctx.closePath();
           ctx.stroke();
-        }
+
+          // Highlight crest particles along the primary wave
+          if (wIdx === 0 && isPlaying) {
+            for (let i = 1; i < steps; i += 12) {
+              const normX = (i / steps);
+              const envelope = Math.sin(normX * Math.PI);
+              if (envelope > 0.4) {
+                const x = startX + normX * waveWidth;
+                const waveAngle = normX * Math.PI * 2 * cfg.freqMultiplier + wavePhase * cfg.speedMultiplier;
+                const y = centerY + Math.sin(waveAngle) * (18 + smoothedBass * 32) * envelope;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(x, y, 2.5 + smoothedBass * 1.5, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            }
+          }
+        });
+
         ctx.shadowBlur = 0;
       } else {
-        // --- NCS / SPICETIFY CIRCULAR EQUALIZER SPECTRUM (Leaking Left & Rotating Layers) ---
+        // --- NCS / SPICETIFY CIRCULAR EQUALIZER SPECTRUM (100% Symmetrical, Clamped Peaks) ---
         const numBars = 64;
-        angleOffset += isPlaying ? 0.0045 : 0.001;
+        angleOffset += isPlaying ? 0.004 : 0.001;
 
-        ctx.lineWidth = 3.2;
+        ctx.lineWidth = 3.0;
         ctx.lineCap = 'round';
 
         // Inner orbital energy ring
         ctx.beginPath();
         ctx.lineWidth = 1.5;
-        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.35)`;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.4)`;
         ctx.arc(centerX, centerY, baseRadius * 1.03, 0, Math.PI * 2);
         ctx.stroke();
 
+        // Constrained maximum peak length so radial bars NEVER clip off the canvas
+        const maxAllowedBarLength = baseRadius * 0.40;
+
         for (let i = 0; i < numBars; i++) {
           const angle = (i / numBars) * Math.PI * 2 + angleOffset;
-          const freqIdx = Math.floor(Math.abs(i - numBars / 2) * (freqBuffer.length / (numBars / 2)));
+          // Symmetrical frequency index mirroring across 360 degrees
+          const halfI = i < numBars / 2 ? i : numBars - i;
+          const freqIdx = Math.floor((halfI / (numBars / 2)) * (freqBuffer.length - 1));
           const val = freqBuffer[Math.min(freqIdx, freqBuffer.length - 1)] || 0;
           const normalizedVal = val / 255;
 
-          // Asymmetric acoustic expansion leaking to the left (angle near PI)
-          const leftBias = 1.0 + Math.max(0, -Math.cos(angle)) * 0.42;
+          // Pure symmetrical bar length with safe ceiling limit
+          const rawLength = normalizedVal * maxAllowedBarLength * (0.8 + smoothedBass * 0.4);
+          const barLength = Math.max(4, Math.min(maxAllowedBarLength, rawLength));
 
-          const barLength = Math.max(
-            5,
-            normalizedVal * (baseRadius * 0.85) * (0.85 + smoothedBass * 0.5) * leftBias
-          );
           const rStart = baseRadius * 1.04;
           const rEnd = rStart + barLength;
 
@@ -251,12 +304,12 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
 
           const barGrad = ctx.createLinearGradient(x1, y1, x2, y2);
           barGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-          barGrad.addColorStop(0.35, primaryNeon);
+          barGrad.addColorStop(0.4, primaryNeon);
           barGrad.addColorStop(1, secondaryNeon);
 
           ctx.strokeStyle = barGrad;
           ctx.shadowColor = primaryNeon;
-          ctx.shadowBlur = (7 + smoothedBass * 5) * normalizedVal;
+          ctx.shadowBlur = (6 + smoothedBass * 4) * normalizedVal;
 
           ctx.beginPath();
           ctx.moveTo(x1, y1);
@@ -267,27 +320,27 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
           if (normalizedVal > 0.45) {
             ctx.fillStyle = '#ffffff';
             ctx.beginPath();
-            ctx.arc(x2, y2, 2.0 + normalizedVal * 1.2, 0, Math.PI * 2);
+            ctx.arc(x2, y2, 2.0 + normalizedVal * 1.0, 0, Math.PI * 2);
             ctx.fill();
           }
         }
         ctx.shadowBlur = 0;
       }
 
-      // 3. Floating Ambient Neon Embers drifting with leftward momentum
-      if (isPlaying && particles.length < maxParticles && Math.random() < 0.3) {
+      // 3. Symmetrical Floating Ambient Neon Embers
+      if (isPlaying && particles.length < maxParticles && Math.random() < 0.28) {
         const pAngle = Math.random() * Math.PI * 2;
         const pDist = baseRadius * (1.05 + Math.random() * 0.25);
-        const speed = 0.6 + Math.random() * 1.4;
+        const speed = 0.5 + Math.random() * 1.2;
         particles.push({
           x: centerX + Math.cos(pAngle) * pDist,
           y: centerY + Math.sin(pAngle) * pDist,
-          vx: Math.cos(pAngle) * speed - (Math.random() * 0.6), // slight leftward drift
+          vx: Math.cos(pAngle) * speed,
           vy: Math.sin(pAngle) * speed,
-          size: 1.6 + Math.random() * 2.2,
-          alpha: 0.9,
+          size: 1.6 + Math.random() * 2.0,
+          alpha: 0.85,
           life: 0,
-          maxLife: 45 + Math.random() * 35,
+          maxLife: 45 + Math.random() * 30,
         });
       }
 
@@ -297,7 +350,7 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
         p.y += p.vy;
         p.life++;
         const lifeFraction = p.life / p.maxLife;
-        p.alpha = Math.max(0, (1 - lifeFraction) * 0.8);
+        p.alpha = Math.max(0, (1 - lifeFraction) * 0.75);
 
         ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${p.alpha})`;
         ctx.beginPath();

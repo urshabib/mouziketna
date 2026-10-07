@@ -221,9 +221,60 @@ export const Sidebar: React.FC = () => {
 };
 
 export const MobileNav: React.FC = () => {
-  const { activePane, setActivePane, t } = useMusic();
+  const { activePane, setActivePane, userProfile, t } = useMusic();
+  const isLiquidGlass = userProfile.liquidGlass !== false && userProfile.liquidGlassLevel !== 'off';
 
-  const navItems: { id: NavigationPane; label: string; icon: React.ReactNode }[] = [
+  const pillItems: { id: NavigationPane; label: string; icon: React.ReactNode }[] = [
+    { id: 'home', label: t('nav.home', 'Home'), icon: <Home className="w-5 h-5" /> },
+    { id: 'library', label: t('nav.library', 'Library'), icon: <Library className="w-5 h-5" /> },
+    { id: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="w-5 h-5" /> },
+  ];
+
+  if (isLiquidGlass) {
+    return (
+      <nav className="md:hidden fixed left-3 right-3 bottom-[calc(0.65rem+env(safe-area-inset-bottom))] z-40 flex items-center justify-between gap-2.5 pointer-events-none select-none">
+        {/* Left/Center Pill Capsule Container */}
+        <div className="flex-1 h-14 bg-[#141418]/80 glass-panel rounded-full px-2 py-1.5 flex items-center justify-around border border-white/10 shadow-2xl backdrop-blur-2xl pointer-events-auto">
+          {pillItems.map((item) => {
+            const isActive = activePane === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActivePane(item.id)}
+                className={`flex flex-col items-center justify-center transition-all duration-200 cursor-pointer ${
+                  isActive
+                    ? 'bg-white/15 text-[var(--accent)] px-4 py-1 rounded-full shadow-sm scale-102 font-bold'
+                    : 'text-white/50 hover:text-white/80 px-3 py-1 font-medium'
+                }`}
+              >
+                {item.icon}
+                <span className="text-[10px] leading-tight tracking-tight mt-0.5">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Standalone Circular Search Floating Button on Right */}
+        <button
+          type="button"
+          onClick={() => setActivePane('search')}
+          className={`w-14 h-14 rounded-full glass-panel border border-white/10 shadow-2xl backdrop-blur-2xl flex items-center justify-center cursor-pointer transition-all active:scale-95 pointer-events-auto flex-shrink-0 ${
+            activePane === 'search'
+              ? 'bg-[var(--accent)] text-black ring-2 ring-white/40 shadow-[0_0_20px_var(--accent-soft)]'
+              : 'bg-[#141418]/80 text-white/80 hover:text-white'
+          }`}
+          title={t('nav.search', 'Search')}
+          aria-label={t('nav.search', 'Search')}
+        >
+          <Search className="w-5 h-5 stroke-[2.5]" />
+        </button>
+      </nav>
+    );
+  }
+
+  // Classic Standard Full-Width Bottom Bar when Liquid Glass is OFF
+  const classicNavItems: { id: NavigationPane; label: string; icon: React.ReactNode }[] = [
     { id: 'home', label: t('nav.home', 'Home'), icon: <Home className="w-5 h-5" /> },
     { id: 'search', label: t('nav.search', 'Search'), icon: <Search className="w-5 h-5" /> },
     { id: 'library', label: t('nav.library', 'Library'), icon: <Library className="w-5 h-5" /> },
@@ -231,15 +282,16 @@ export const MobileNav: React.FC = () => {
   ];
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/80 backdrop-blur-xl border-t border-white/10 px-6 py-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex justify-between items-center select-none">
-      {navItems.map((item) => {
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/90 border-t border-white/10 px-6 py-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex justify-between items-center select-none">
+      {classicNavItems.map((item) => {
         const isActive = activePane === item.id;
         return (
           <button
             key={item.id}
+            type="button"
             onClick={() => setActivePane(item.id)}
-            className={`flex flex-col items-center gap-1 transition-all ${
-              isActive ? 'text-[var(--accent)] scale-105' : 'text-white/50 hover:text-white/80'
+            className={`flex flex-col items-center gap-1 transition-all cursor-pointer ${
+              isActive ? 'text-[var(--accent)] scale-105 font-bold' : 'text-white/50 hover:text-white/80'
             }`}
           >
             {item.icon}
@@ -264,6 +316,7 @@ export const TopBar: React.FC = () => {
   } = useMusic();
 
   const [isStandalone, setIsStandalone] = useState(false);
+  const isLiquidGlass = userProfile.liquidGlass !== false && userProfile.liquidGlassLevel !== 'off';
 
   useEffect(() => {
     const check =
@@ -280,7 +333,13 @@ export const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/60 backdrop-blur-xl border-b border-white/5">
+    <header
+      className={`sticky top-0 z-30 flex items-center justify-between transition-all select-none ${
+        isLiquidGlass
+          ? 'mx-3 sm:mx-6 my-2 mt-[max(0.5rem,env(safe-area-inset-top))] px-4 sm:px-6 py-2.5 bg-[#141418]/75 glass-panel rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl'
+          : 'px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/80 border-b border-white/10 backdrop-blur-xl'
+      }`}
+    >
       <div className="flex items-center gap-3.5">
         <button
           onClick={() => setActivePane('home')}

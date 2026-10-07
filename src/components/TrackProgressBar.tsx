@@ -34,6 +34,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
   const { userProfile, isPlaying } = useMusic();
   const style = userProfile.progressBarStyle || 'default';
   const keyPartsMode = userProfile.keyPartsDisplay || 'dots';
+  const barColor = userProfile.customProgressBarHex || userProfile.progressBarColor || '#ffffff';
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState<number | null>(null);
@@ -53,18 +54,17 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
     setDragValue(null);
   };
 
-  // Ultra-smooth 60fps/120fps Wavy Slider animation using direct SVG DOM ref updates (zero React re-render lag)
+  // Smooth Wavy Slider animation using direct SVG DOM ref updates (zero React re-render lag)
   const wavePathRef = useRef<SVGPathElement>(null);
   const waveUnplayedPathRef = useRef<SVGPathElement>(null);
-  const waveThumbRef = useRef<SVGCircleElement>(null);
   const phaseRef = useRef(0);
 
-  // Wavy geometry: smooth, circular loops inspired by Android 13 / Apple Music
+  // Wavy geometry: smooth, flowing sine waves
   const width = 300;
   const height = 28;
   const midY = height / 2;
-  const wavelength = 36;
-  const amplitude = 8.5;
+  const wavelength = 34;
+  const amplitude = 8;
 
   useEffect(() => {
     if (style !== 'wave') return;
@@ -75,17 +75,18 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
     const renderWave = (currentPhase: number) => {
       const playedW = (progressPct / 100) * width;
 
-      // Draw played animated sine wave with prominent circular crests
+      // Draw played animated sine wave with flowing crests, seamlessly tapering to baseline at playhead
       let d = `M 0 ${midY.toFixed(1)}`;
       const step = 2;
       for (let x = 0; x <= playedW; x += step) {
-        const y = midY + Math.sin((x / wavelength) * Math.PI * 2 - currentPhase) * amplitude;
+        const leadTaper = x < 8 ? x / 8 : 1;
+        const tailTaper = playedW - x < 12 ? Math.max(0, (playedW - x) / 12) : 1;
+        const env = leadTaper * tailTaper;
+        const y = midY + Math.sin((x / wavelength) * Math.PI * 2 - currentPhase) * amplitude * env;
         d += ` L ${x.toFixed(1)} ${y.toFixed(1)}`;
       }
-      if (playedW > 0) {
-        const endY = midY + Math.sin((playedW / wavelength) * Math.PI * 2 - currentPhase) * amplitude;
-        d += ` L ${playedW.toFixed(1)} ${endY.toFixed(1)}`;
-      }
+      // Guarantee exact baseline connection at playedW
+      d += ` L ${playedW.toFixed(1)} ${midY.toFixed(1)}`;
 
       if (wavePathRef.current) {
         wavePathRef.current.setAttribute('d', d);
@@ -94,15 +95,6 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
       if (waveUnplayedPathRef.current) {
         const unplayedD = `M ${playedW.toFixed(1)} ${midY.toFixed(1)} L ${width} ${midY.toFixed(1)}`;
         waveUnplayedPathRef.current.setAttribute('d', unplayedD);
-      }
-
-      if (waveThumbRef.current) {
-        const thumbY =
-          playedW > 0
-            ? midY + Math.sin((playedW / wavelength) * Math.PI * 2 - currentPhase) * amplitude
-            : midY;
-        waveThumbRef.current.setAttribute('cx', playedW.toFixed(1));
-        waveThumbRef.current.setAttribute('cy', thumbY.toFixed(1));
       }
     };
 
@@ -114,7 +106,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
     const loop = (now: number) => {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
-      phaseRef.current = (phaseRef.current + dt * 4.8) % (Math.PI * 2);
+      phaseRef.current = (phaseRef.current + dt * 4.2) % (Math.PI * 2);
       renderWave(phaseRef.current);
       animId = requestAnimationFrame(loop);
     };
@@ -139,20 +131,23 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
           className="custom-slider w-full show-thumb cursor-pointer"
           style={{
             height: '3.5px',
-            background: `linear-gradient(to right, #ffffff ${progressPct}%, rgba(255, 255, 255, 0.22) ${progressPct}%)`,
+            background: `linear-gradient(to right, ${barColor} ${progressPct}%, rgba(255, 255, 255, 0.22) ${progressPct}%)`,
           }}
         />
       )}
 
-      {/* Style 2: Block / Modern Capsule Thick Bar */}
+      {/* Style 2: Block / Thick Rectangular with subtle crisp rounded corners */}
       {style === 'block' && (
-        <div className="relative w-full h-3.5 bg-white/15 rounded-full overflow-hidden flex items-center cursor-pointer shadow-inner">
+        <div className="relative w-full h-4.5 bg-white/15 rounded-md overflow-hidden flex items-center cursor-pointer shadow-inner border border-white/10">
           <div
-            className="h-full bg-gradient-to-r from-white/80 to-white rounded-full transition-all duration-75 relative shadow-[0_0_10px_rgba(255,255,255,0.3)]"
-            style={{ width: `${progressPct}%` }}
+            className="h-full rounded-sm transition-all duration-75 relative shadow-[0_0_12px_rgba(255,255,255,0.25)]"
+            style={{
+              width: `${progressPct}%`,
+              backgroundColor: barColor,
+            }}
           >
-            {/* Front leading edge */}
-            <div className="absolute right-0 top-0 bottom-0 w-3 bg-white rounded-r-full shadow-sm" />
+            {/* Front crisp leading edge */}
+            <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-white/40 rounded-r-sm shadow-sm" />
           </div>
           <input
             type="range"
@@ -168,7 +163,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
         </div>
       )}
 
-      {/* Style 3: Wave / Big Animated Sine Wave Squiggle (Smoothed & slightly thicker) */}
+      {/* Style 3: Wave / Big Animated Sine Wave (No playhead dot - position purely via wave progress) */}
       {style === 'wave' && (
         <div className="relative w-full h-7 flex items-center cursor-pointer">
           <svg
@@ -185,25 +180,16 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
               strokeWidth="3.5"
               strokeLinecap="round"
             />
-            {/* Played big circular sine wave */}
+            {/* Played flowing sine wave */}
             <path
               ref={wavePathRef}
               d={`M 0 ${midY}`}
               fill="none"
-              stroke="#ffffff"
+              stroke={barColor}
               strokeWidth="4.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="drop-shadow-[0_0_6px_rgba(255,255,255,0.4)]"
-            />
-            {/* Prominent circular thumb riding on top of the wave */}
-            <circle
-              ref={waveThumbRef}
-              cx={(progressPct / 100) * width}
-              cy={midY}
-              r="7"
-              fill="#ffffff"
-              className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]"
+              style={{ filter: `drop-shadow(0 0 6px ${barColor}80)` }}
             />
           </svg>
           <input
@@ -220,16 +206,28 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
         </div>
       )}
 
-      {/* Style 4: Aurora Liquid Glow / Radiant Pulse Beam */}
+      {/* Style 4: Neon / Aurora Liquid Glow Enhanced with Ultra-Vibrant Shine */}
       {(style === 'aurora' || style === 'neon') && (
-        <div className="relative w-full h-3 bg-white/10 rounded-full overflow-hidden flex items-center cursor-pointer backdrop-blur-sm border border-white/10 shadow-inner">
+        <div className="relative w-full h-3.5 bg-black/60 rounded-full overflow-hidden flex items-center cursor-pointer backdrop-blur-md border border-white/20 shadow-[inset_0_1px_4px_rgba(0,0,0,0.8)]">
           <div
-            className="h-full bg-gradient-to-r from-[var(--accent)] via-white to-white rounded-full transition-all duration-75 relative shadow-[0_0_12px_var(--accent,rgba(255,255,255,0.8))]"
-            style={{ width: `${progressPct}%` }}
+            className="h-full rounded-full transition-all duration-75 relative"
+            style={{
+              width: `${progressPct}%`,
+              background: `linear-gradient(90deg, ${barColor}80, ${barColor}, #ffffff)`,
+              boxShadow: `0 0 16px ${barColor}, 0 0 30px ${barColor}80`,
+            }}
           >
             {/* Luminous Glowing Pulse Head */}
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 -mr-1 rounded-full bg-white shadow-[0_0_10px_white,0_0_16px_var(--accent,#ff6b1a)] flex items-center justify-center">
-              <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent,#ff6b1a)]" />
+            <div
+              className="absolute right-0 top-1/2 -translate-y-1/2 w-4 h-4 -mr-1 rounded-full bg-white flex items-center justify-center"
+              style={{
+                boxShadow: `0 0 12px #ffffff, 0 0 24px ${barColor}`,
+              }}
+            >
+              <div
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ backgroundColor: barColor }}
+              />
             </div>
           </div>
           <input
@@ -246,24 +244,36 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
         </div>
       )}
 
-      {/* BUILT-IN KEY MOMENTS MARKERS (Strictly shown ONLY on default classic progress bar) */}
+      {/* BUILT-IN KEY MOMENTS PREVIEW (Miniature progress milestone indicator) */}
       {style === 'default' &&
         keyPartsMode !== 'off' &&
         duration > 0 &&
         highlights.map((hl) => {
           const leftPct = (hl.startTime / duration) * 100;
           return (
-            <button
+            <div
               key={hl.id}
-              type="button"
               style={{ left: `${leftPct}%` }}
-              onClick={(e) => {
-                e.stopPropagation();
-                seekTo(hl.startTime);
-              }}
-              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1.5 h-3 rounded-[1.5px] bg-white/40 hover:bg-white/80 active:bg-white cursor-pointer transition-colors z-20 pointer-events-auto shadow-none border-none outline-none"
-              title={`${hl.label} (${formatTime(hl.startTime)})`}
-            />
+              className="group absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center"
+            >
+              {/* Miniature Milestone Indicator Bar */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  seekTo(hl.startTime);
+                }}
+                className="w-2.5 h-3.5 rounded-sm bg-white/70 hover:bg-white active:scale-125 hover:shadow-[0_0_8px_rgba(255,255,255,0.9)] cursor-pointer transition-all border border-black/40 flex items-center justify-center"
+                title={`${hl.label} (${formatTime(hl.startTime)})`}
+              >
+                <div className="w-0.5 h-2 bg-black/60 rounded-full" />
+              </button>
+
+              {/* Mini hover milestone pill */}
+              <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute bottom-full mb-1 px-1.5 py-0.5 rounded bg-black/90 text-[8px] font-bold text-white border border-white/20 whitespace-nowrap pointer-events-none shadow-lg">
+                {hl.label} {formatTime(hl.startTime)}
+              </div>
+            </div>
           );
         })}
     </div>

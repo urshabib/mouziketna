@@ -39,10 +39,19 @@ const AppShell: React.FC = () => {
     actionSheetTrack,
     setActionSheetTrack,
     goBack,
+    activeTrack,
+    isMiniPlayerDismissed,
   } = useMusic();
 
-  const themeClass = userProfile.theme === 'light' ? 'light-mode' : '';
-  const glassClass = userProfile.liquidGlass ? 'liquid-glass' : '';
+  const hasActiveMiniPlayer = !!activeTrack && !isMiniPlayerDismissed;
+
+  const isUltraGlass = userProfile.liquidGlassLevel === 'ultra';
+  const isMediumGlass = userProfile.liquidGlass && !isUltraGlass && userProfile.liquidGlassLevel !== 'off';
+  const glassClass = isUltraGlass
+    ? 'liquid-glass-ultra'
+    : isMediumGlass
+    ? 'liquid-glass'
+    : '';
   const tintClass =
     userProfile.presetTint && userProfile.presetTint !== 'none'
       ? `tint-${userProfile.presetTint}`
@@ -244,7 +253,9 @@ const AppShell: React.FC = () => {
 
   return (
     <div
-      className={`relative flex h-screen w-screen overflow-hidden bg-[#0d0905] text-[#f5f5f7] font-['Plus_Jakarta_Sans',sans-serif] ${themeClass} ${glassClass} ${tintClass}`}
+      className={`relative flex h-screen w-screen overflow-hidden text-[#f5f5f7] font-['Plus_Jakarta_Sans',sans-serif] ${
+        isUltraGlass ? 'bg-black/30' : isMediumGlass ? 'bg-[#0a0a0d]/60' : 'bg-[#0c0906]'
+      } ${glassClass} ${tintClass}`}
     >
       {/* Desktop Sidebar */}
       <Sidebar />
@@ -257,7 +268,9 @@ const AppShell: React.FC = () => {
         {/* Scrollable View Content */}
         <main
           id="main-scroll-container"
-          className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-8 py-6 pb-36 md:pb-28"
+          className={`flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-8 py-6 transition-all duration-200 ${
+            hasActiveMiniPlayer ? 'pb-56 md:pb-32' : 'pb-28 md:pb-24'
+          }`}
         >
           <AnimatePresence mode="wait">
             <motion.div

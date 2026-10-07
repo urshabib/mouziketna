@@ -287,6 +287,8 @@ export const MiniPlayer: React.FC = () => {
     duration,
     toggleLikeTrack,
     userProfile,
+    isMiniPlayerDismissed,
+    dismissMiniPlayer,
     setIsFullScreenOpen,
     setIsQueueOpen,
     playNext,
@@ -295,11 +297,12 @@ export const MiniPlayer: React.FC = () => {
 
   const thumbSrc = useTrackThumb(activeTrack);
   const [dragX, setDragX] = React.useState(0);
-  const [swipeHint, setSwipeHint] = React.useState<'next' | 'prev' | null>(null);
+  const [dragY, setDragY] = React.useState(0);
+  const [swipeHint, setSwipeHint] = React.useState<'next' | 'prev' | 'open' | 'dismiss' | null>(null);
   const startRef = React.useRef<{ x: number; y: number; time: number } | null>(null);
-  const isSwipingRef = React.useRef(false);
+  const activeDirectionRef = React.useRef<'horizontal' | 'vertical' | null>(null);
 
-  if (!activeTrack) return null;
+  if (!activeTrack || isMiniPlayerDismissed) return null;
 
   const isLiked = userProfile.likedSongs?.some((s) => s.id === activeTrack.id);
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -312,7 +315,7 @@ export const MiniPlayer: React.FC = () => {
     const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
 
     startRef.current = { x: clientX, y: clientY, time: Date.now() };
-    isSwipingRef.current = false;
+    activeDirectionRef.current = null;
   };
 
   const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
@@ -324,38 +327,65 @@ export const MiniPlayer: React.FC = () => {
     const diffX = clientX - startRef.current.x;
     const diffY = clientY - startRef.current.y;
 
-    if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY)) {
-      isSwipingRef.current = true;
-      setDragX(diffX * 0.7);
+    if (!activeDirectionRef.current) {
+      if (Math.abs(diffX) > 10 && Math.abs(diffX) > Math.abs(diffY)) {
+        activeDirectionRef.current = 'horizontal';
+      } else if (Math.abs(diffY) > 10 && Math.abs(diffY) > Math.abs(diffX)) {
+        activeDirectionRef.current = 'vertical';
+      }
+    }
+
+    if (activeDirectionRef.current === 'horizontal') {
+      setDragX(diffX * 0.75);
+      setDragY(0);
       if (diffX < -30) setSwipeHint('next');
       else if (diffX > 30) setSwipeHint('prev');
+      else setSwipeHint(null);
+    } else if (activeDirectionRef.current === 'vertical') {
+      setDragY(diffY * 0.75);
+      setDragX(0);
+      if (diffY < -25) setSwipeHint('open');
+      else if (diffY > 25) setSwipeHint('dismiss');
       else setSwipeHint(null);
     }
   };
 
   const handleTouchEnd = () => {
     if (!startRef.current) return;
-    const diff = dragX;
-    const wasSwiping = isSwipingRef.current;
+    const curDragX = dragX;
+    const curDragY = dragY;
+    const dir = activeDirectionRef.current;
 
-    if (wasSwiping) {
-      if (diff < -40) {
+    if (dir === 'horizontal') {
+      if (curDragX < -40) {
         playNext();
-      } else if (diff > 40) {
+      } else if (curDragX > 40) {
         playPrevious();
+      }
+    } else if (dir === 'vertical') {
+      if (curDragY < -35) {
+        setIsFullScreenOpen(true);
+      } else if (curDragY > 35) {
+        if (isPlaying) {
+          togglePlay();
+        }
+        dismissMiniPlayer();
       }
     } else {
       const elapsed = Date.now() - startRef.current.time;
-      if (elapsed < 400 && Math.abs(diff) < 15) {
+      if (elapsed < 400 && Math.abs(curDragX) < 12 && Math.abs(curDragY) < 12) {
         setIsFullScreenOpen(true);
       }
     }
 
     startRef.current = null;
-    isSwipingRef.current = false;
+    activeDirectionRef.current = null;
     setDragX(0);
+    setDragY(0);
     setSwipeHint(null);
   };
+
+  const isLiquidGlass = userProfile.liquidGlass !== false && userProfile.liquidGlassLevel !== 'off';
 
   return (
     <div
@@ -366,10 +396,14 @@ export const MiniPlayer: React.FC = () => {
       onMouseMove={handleTouchMove}
       onMouseUp={handleTouchEnd}
       style={{
-        transform: `translateX(${dragX}px)`,
-        transition: dragX === 0 ? 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+        transform: `translate3d(${dragX}px, ${dragY}px, 0)`,
+        transition: dragX === 0 && dragY === 0 ? 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
       }}
-      className="md:hidden fixed left-2.5 right-2.5 bottom-[calc(4.2rem+env(safe-area-inset-bottom))] z-30 bg-[#1c140d]/90 glass-panel border border-white/15 rounded-2xl p-2.5 flex items-center gap-3 shadow-2xl backdrop-blur-2xl cursor-pointer select-none touch-none active:scale-[0.99] transition-transform"
+      className={`md:hidden fixed z-30 flex items-center gap-3 shadow-2xl backdrop-blur-2xl cursor-pointer select-none touch-none active:scale-[0.99] transition-transform ${
+        isLiquidGlass
+          ? 'left-3 right-3 bottom-[calc(4.95rem+env(safe-area-inset-bottom))] bg-[#141418]/85 glass-panel border border-white/10 rounded-[24px] p-2.5 shadow-2xl'
+          : 'left-2.5 right-2.5 bottom-[calc(4.2rem+env(safe-area-inset-bottom))] bg-[#141418]/95 border border-white/10 rounded-2xl p-2.5'
+      }`}
     >
       {/* Thumbnail */}
       <div className="relative flex-shrink-0">
@@ -383,8 +417,14 @@ export const MiniPlayer: React.FC = () => {
           draggable={false}
         />
         {swipeHint && (
-          <div className="absolute inset-0 bg-[var(--accent)]/90 rounded-xl flex items-center justify-center text-black font-extrabold text-[10px]">
-            {swipeHint === 'next' ? 'NEXT' : 'PREV'}
+          <div className="absolute inset-0 bg-[var(--accent)]/95 rounded-xl flex items-center justify-center text-black font-extrabold text-[9px] text-center px-0.5">
+            {swipeHint === 'next'
+              ? 'NEXT'
+              : swipeHint === 'prev'
+              ? 'PREV'
+              : swipeHint === 'open'
+              ? 'OPEN'
+              : 'HIDE'}
           </div>
         )}
       </div>
@@ -432,7 +472,7 @@ export const MiniPlayer: React.FC = () => {
       </div>
 
       {/* Progress line */}
-      <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-white/10 rounded-full overflow-hidden">
+      <div className="absolute bottom-0 left-4 right-4 h-[2px] bg-white/10 rounded-full overflow-hidden">
         <div
           className="h-full bg-[var(--accent)] transition-all duration-200"
           style={{ width: `${progressPct}%` }}

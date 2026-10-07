@@ -339,15 +339,6 @@ export const SearchView: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={() => setModalAudioRecognitionOpen(true)}
-              className="p-2 text-white/50 hover:text-[var(--accent)] transition-colors cursor-pointer"
-              title={t('search.recognizeAudio', 'Identify Music')}
-            >
-              <Mic className="w-4 h-4" />
-            </button>
           </div>
         </div>
 

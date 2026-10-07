@@ -53,6 +53,7 @@ export interface UserProfile {
   artQualityOffline?: 'low' | 'medium' | 'high' | 'original';
   autoCachePlayed: boolean;
   liquidGlass: boolean;
+  liquidGlassLevel?: 'off' | 'medium' | 'ultra';
   language?: 'en' | 'fr';
   theme: 'dark' | 'light';
   accentColor: string;
@@ -63,6 +64,8 @@ export interface UserProfile {
   lyricsGlow?: 'off' | 'default' | 'strong';
   keyPartsDisplay?: 'off' | 'dots' | 'full';
   progressBarStyle?: 'default' | 'block' | 'wave' | 'aurora' | 'neon';
+  progressBarColor?: string;
+  customProgressBarHex?: string;
   presetTint: string;
   uiScale?: 'small' | 'default' | 'large' | 'extraLarge';
   activePreset: string | null;

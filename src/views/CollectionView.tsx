@@ -1055,6 +1055,9 @@ export const CollectionView: React.FC = () => {
           </div>
         </section>
       )}
+
+      {/* Bottom Clearance Spacer */}
+      <div className="w-full h-40 md:h-24 flex-shrink-0" />
     </div>
   );
 };

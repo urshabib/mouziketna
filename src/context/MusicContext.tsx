@@ -117,6 +117,9 @@ interface MusicContextType {
   // Overlays & Sheets
   isFullScreenOpen: boolean;
   setIsFullScreenOpen: (open: boolean) => void;
+  isMiniPlayerDismissed: boolean;
+  setIsMiniPlayerDismissed: (dismissed: boolean) => void;
+  dismissMiniPlayer: () => void;
   isLandscapeStageOpen: boolean;
   setIsLandscapeStageOpen: (open: boolean) => void;
   isLyricsOpen: boolean;
@@ -269,11 +272,41 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
 
   // Playback state
-  const [activeTrack, setActiveTrack] = useState<Track | null>(null);
+  const [activeTrack, setActiveTrack] = useState<Track | null>(() => {
+    try {
+      const saved = localStorage.getItem('mouzika_last_played_track');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.id && parsed.title) return parsed;
+      }
+    } catch {}
+    return null;
+  });
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(() => {
+    try {
+      const savedPos = localStorage.getItem('mouzika_last_played_pos');
+      if (savedPos && !isNaN(Number(savedPos))) {
+        return Math.max(0, Number(savedPos));
+      }
+    } catch {}
+    return 0;
+  });
+  const [duration, setDuration] = useState(() => {
+    try {
+      const saved = localStorage.getItem('mouzika_last_played_track');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.duration) return parsed.duration;
+      }
+    } catch {}
+    return 0;
+  });
+  const [isMiniPlayerDismissed, setIsMiniPlayerDismissed] = useState(false);
+  const dismissMiniPlayer = useCallback(() => {
+    setIsMiniPlayerDismissed(true);
+  }, []);
   const [volume, setVolume] = useState(() => {
     try {
       return Number(localStorage.getItem('hub_volume') ?? 50);
@@ -549,12 +582,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
     let lastTrackSec = 0;
+    let lastSavedPosSec = 0;
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
       updatePositionState();
 
-      // Accumulate listening seconds
+      // Persist playback position strictly in localStorage
       const curSec = Math.floor(audio.currentTime);
+      if (curSec > 0 && Math.abs(curSec - lastSavedPosSec) >= 1) {
+        lastSavedPosSec = curSec;
+        try {
+          localStorage.setItem('mouzika_last_played_pos', String(curSec));
+        } catch {}
+      }
+
+      // Accumulate listening seconds
       if (curSec !== lastTrackSec && curSec > 0) {
         lastTrackSec = curSec;
         listeningSecondsAccumRef.current += 1;
@@ -636,7 +678,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         devSettings.customAccentHex,
         devSettings.lyricsFont,
         devSettings.customLyricsHex,
-        devSettings.lyricsGlow
+        devSettings.lyricsGlow,
+        devSettings.liquidGlassLevel
       );
     }
 
@@ -698,7 +741,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     customAccentHex?: string,
     lyricsFont?: string,
     customLyricsHex?: string,
-    lyricsGlow?: string
+    lyricsGlow?: string,
+    liquidGlassLevel?: 'off' | 'medium' | 'ultra'
   ) => {
     document.documentElement.setAttribute('data-theme', theme);
     document.documentElement.setAttribute('data-accent', accent);
@@ -735,7 +779,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       document.documentElement.style.removeProperty('--lyrics-color-rgb');
     }
 
-    document.body.classList.toggle('liquid-glass', !!liquidGlass);
+    const isGlassOff = liquidGlassLevel === 'off' || liquidGlass === false;
+    const isUltra = liquidGlassLevel === 'ultra';
+    const isMedium = !isGlassOff && !isUltra;
+    document.body.classList.toggle('liquid-glass', isMedium);
+    document.body.classList.toggle('liquid-glass-ultra', isUltra);
   };
 
   const syncProfile = useCallback((updated?: UserProfile) => {
@@ -752,7 +800,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prof.customAccentHex,
       prof.lyricsFont,
       prof.customLyricsHex,
-      prof.lyricsGlow
+      prof.lyricsGlow,
+      prof.liquidGlassLevel
     );
     if (!globalUser || globalUser === 'admin') return;
     cacheProfileLocally(globalUser, prof);
@@ -1563,6 +1612,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     setActiveTrack(track);
+    setIsMiniPlayerDismissed(false);
+    try {
+      localStorage.setItem('mouzika_last_played_track', JSON.stringify(track));
+    } catch {}
     setIsBuffering(true);
     setCurrentTime(0);
 
@@ -2606,6 +2659,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         playCollectionFromIndex,
         isFullScreenOpen,
         setIsFullScreenOpen,
+        isMiniPlayerDismissed,
+        setIsMiniPlayerDismissed,
+        dismissMiniPlayer,
         isLandscapeStageOpen,
         setIsLandscapeStageOpen,
         isLyricsOpen,
