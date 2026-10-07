@@ -236,12 +236,12 @@ export const Modals: React.FC = () => {
                   placeholder={t('library.playlistName', 'Playlist name')}
                   value={newPlaylistName}
                   onChange={(e) => setNewPlaylistName(e.target.value)}
-                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors"
+                  className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
                 />
                 <button
                   type="submit"
                   disabled={!newPlaylistName.trim()}
-                  className="px-5 py-2.5 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all cursor-pointer"
+                  className="px-5 py-2.5 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:scale-100 transition-all cursor-pointer"
                 >
                   {t('common.save', 'Create')}
                 </button>
@@ -263,7 +263,7 @@ export const Modals: React.FC = () => {
           >
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="flex items-center gap-2.5">
-                <DownloadCloud className="w-5 h-5 text-[#ff6b1a]" />
+                <DownloadCloud className="w-5 h-5 text-[var(--accent)]" />
                 <h3 className="font-bold text-lg text-white">Import Playlist</h3>
               </div>
               <button
@@ -285,7 +285,7 @@ export const Modals: React.FC = () => {
                 placeholder="https://music.youtube.com/playlist?list=..."
                 value={importUrl}
                 onChange={(e) => setImportUrl(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
               />
 
               {importError && (
@@ -297,7 +297,7 @@ export const Modals: React.FC = () => {
               <button
                 type="submit"
                 disabled={importLoading || !importUrl.trim()}
-                className="w-full py-3 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg"
+                className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg"
               >
                 {importLoading ? (
                   <>
@@ -325,7 +325,7 @@ export const Modals: React.FC = () => {
           >
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="flex items-center gap-2.5">
-                <LinkIcon className="w-5 h-5 text-[#ff6b1a]" />
+                <LinkIcon className="w-5 h-5 text-[var(--accent)]" />
                 <h3 className="font-bold text-lg text-white">Add Song by Link</h3>
               </div>
               <button
@@ -346,7 +346,7 @@ export const Modals: React.FC = () => {
                 placeholder="https://music.youtube.com/watch?v=..."
                 value={songLink}
                 onChange={(e) => setSongLink(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
               />
 
               {songLinkError && (
@@ -358,7 +358,7 @@ export const Modals: React.FC = () => {
               <button
                 type="submit"
                 disabled={songLinkLoading || !songLink.trim()}
-                className="w-full py-3 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg"
+                className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg"
               >
                 {songLinkLoading ? (
                   <>
@@ -421,10 +421,10 @@ export const Modals: React.FC = () => {
             className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-8 shadow-2xl flex flex-col items-center text-center gap-4 animate-in zoom-in-95 duration-200"
           >
             <div className="relative flex items-center justify-center my-4">
-              <div className="w-24 h-24 rounded-full bg-[#ff6b1a] text-black flex items-center justify-center shadow-2xl animate-pulse">
+              <div className="w-24 h-24 rounded-full bg-[var(--accent)] text-black flex items-center justify-center shadow-2xl animate-pulse">
                 <Mic className="w-10 h-10" />
               </div>
-              <div className="absolute inset-0 rounded-full border-2 border-[#ff6b1a] animate-ping opacity-75" />
+              <div className="absolute inset-0 rounded-full border-2 border-[var(--accent)] animate-ping opacity-75" />
             </div>
             <h3 className="font-black text-xl text-white">Listening…</h3>
             <p className="text-xs text-white/60">Hold your device near the audio source</p>
@@ -442,7 +442,7 @@ export const Modals: React.FC = () => {
       {isAuthGateOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none">
           <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#ff6b1a] to-[#7a2c00] flex items-center justify-center shadow-lg text-white mb-1">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center shadow-lg text-white mb-1">
               <Gift className="w-7 h-7" />
             </div>
 
@@ -461,14 +461,14 @@ export const Modals: React.FC = () => {
                 onChange={(e) => setGateUser(e.target.value)}
                 autoCapitalize="none"
                 autoCorrect="off"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors text-center font-medium"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
               />
               <input
                 type="password"
                 placeholder={t('modal.password', 'Password')}
                 value={gatePass}
                 onChange={(e) => setGatePass(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#ff6b1a] transition-colors text-center font-medium"
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
               />
 
               {gateError && (
@@ -480,7 +480,7 @@ export const Modals: React.FC = () => {
               <button
                 type="submit"
                 disabled={gateLoading || !gateUser.trim() || !gatePass.trim()}
-                className="w-full py-3 bg-[#ff6b1a] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1 cursor-pointer"
+                className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1 cursor-pointer"
               >
                 {gateLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

@@ -312,7 +312,7 @@ const AppShell: React.FC = () => {
               className={`pointer-events-none px-4 py-2 rounded-full text-xs font-semibold shadow-2xl flex items-center justify-center text-center transition-all animate-in fade-in slide-in-from-top-4 duration-200 ${
                 toast.isGray
                   ? 'bg-neutral-900/90 text-white backdrop-blur-xl border border-white/10'
-                  : 'bg-[#ff6b1a] text-black font-bold'
+                  : 'bg-[var(--accent)] text-black font-bold'
               }`}
             >
               {toast.message}

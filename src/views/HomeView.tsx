@@ -63,7 +63,7 @@ const HomeRecentItem: React.FC<HomeRecentItemProps> = ({
       </div>
 
       <div className="min-w-0 flex-1 pointer-events-none">
-        <h4 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-[#ff6b1a] transition-colors leading-tight">
+        <h4 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-[var(--accent)] transition-colors leading-tight">
           {track.title}
         </h4>
         <p className="text-[10px] sm:text-xs text-white/50 truncate mt-0.5">{track.artist}</p>
@@ -100,7 +100,7 @@ const HomeTrendingItem: React.FC<HomeTrendingItemProps> = ({
       {...handlers}
       className="snap-start flex items-center gap-3 p-2 sm:p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] active:scale-[0.99] border border-white/5 hover:border-white/15 cursor-pointer transition-all duration-200 group select-none"
     >
-      <span className="w-5 text-center text-xs font-black text-white/40 group-hover:text-[#ff6b1a]">
+      <span className="w-5 text-center text-xs font-black text-white/40 group-hover:text-[var(--accent)]">
         {index + 1}
       </span>
       <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 shadow-sm">
@@ -114,7 +114,7 @@ const HomeTrendingItem: React.FC<HomeTrendingItemProps> = ({
         </div>
       </div>
       <div className="min-w-0 flex-1">
-        <h4 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-[#ff6b1a] transition-colors">
+        <h4 className="font-bold text-xs sm:text-sm text-white truncate group-hover:text-[var(--accent)] transition-colors">
           {track.title}
         </h4>
         <p className="text-[11px] sm:text-xs text-white/50 truncate mt-0.5">{track.artist}</p>
@@ -132,7 +132,7 @@ const HomeTrendingItem: React.FC<HomeTrendingItemProps> = ({
       >
         <Heart
           className={`w-3.5 h-3.5 ${
-            isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : ''
+            isLiked ? 'fill-[var(--accent)] text-[var(--accent)]' : ''
           }`}
         />
       </button>
@@ -352,7 +352,7 @@ export const HomeView: React.FC = () => {
                     type="button"
                     onClick={() => scrollToRecentPage(idx)}
                     className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                      isActive ? 'w-6 bg-[#ff6b1a]' : 'w-1.5 bg-white/20 hover:bg-white/40'
+                      isActive ? 'w-6 bg-[var(--accent)]' : 'w-1.5 bg-white/20 hover:bg-white/40'
                     }`}
                     aria-label={`Go to page ${idx + 1}`}
                   />
@@ -367,7 +367,7 @@ export const HomeView: React.FC = () => {
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-[#ff6b1a]" />
+            <TrendingUp className="w-5 h-5 text-[var(--accent)]" />
             <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
               {t('home.trending', 'Global Trending')}
             </h3>
@@ -450,7 +450,7 @@ export const HomeView: React.FC = () => {
                   type="button"
                   onClick={() => scrollToTrendingPage(idx)}
                   className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                    isActive ? 'w-6 bg-[#ff6b1a]' : 'w-1.5 bg-white/20 hover:bg-white/40'
+                    isActive ? 'w-6 bg-[var(--accent)]' : 'w-1.5 bg-white/20 hover:bg-white/40'
                   }`}
                   aria-label={`Go to trending page ${idx + 1}`}
                 />
@@ -464,7 +464,7 @@ export const HomeView: React.FC = () => {
       <section className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-[#ff6b1a]" />
+            <Sparkles className="w-5 h-5 text-[var(--accent)]" />
             <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
               {t('home.madeForYou', 'Just For You')}
             </h3>

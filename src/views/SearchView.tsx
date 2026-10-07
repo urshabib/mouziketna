@@ -318,7 +318,7 @@ export const SearchView: React.FC = () => {
               }
             }}
             onKeyDown={handleKeyDown}
-            className="w-full bg-[#1c1c1e] glass-panel border border-white/10 rounded-full pl-12 pr-24 py-3.5 text-white placeholder:text-white/40 text-sm font-medium focus:outline-none focus:border-[#ff6b1a] transition-all shadow-lg"
+            className="w-full bg-[#1c1c1e] glass-panel border border-white/10 rounded-full pl-12 pr-24 py-3.5 text-white placeholder:text-white/40 text-sm font-medium focus:outline-none focus:border-[var(--accent)] transition-all shadow-lg"
           />
 
           <div className="absolute right-3.5 flex items-center gap-1">
@@ -343,7 +343,7 @@ export const SearchView: React.FC = () => {
             <button
               type="button"
               onClick={() => setModalAudioRecognitionOpen(true)}
-              className="p-2 text-white/50 hover:text-[#ff6b1a] transition-colors cursor-pointer"
+              className="p-2 text-white/50 hover:text-[var(--accent)] transition-colors cursor-pointer"
               title={t('search.recognizeAudio', 'Identify Music')}
             >
               <Mic className="w-4 h-4" />
@@ -467,7 +467,7 @@ export const SearchView: React.FC = () => {
       {!query && (
         <div className="flex flex-col gap-2 mt-0.5">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-3.5 h-3.5 text-[#ff6b1a]" />
+            <TrendingUp className="w-3.5 h-3.5 text-[var(--accent)]" />
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-white/70">{t('search.trendingSearches', 'Popular Searches')}</h4>
           </div>
           <div className="flex flex-wrap gap-1.5 sm:gap-2 max-h-28 overflow-hidden">
@@ -481,11 +481,11 @@ export const SearchView: React.FC = () => {
                     setQuery(vib.query);
                     executeSearch(vib.query);
                   }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg sm:rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/10 hover:border-[#ff6b1a]/40 text-[11px] sm:text-xs font-semibold text-white/90 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg sm:rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/10 hover:border-[var(--accent)]/40 text-[11px] sm:text-xs font-semibold text-white/90 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95"
                 >
-                  <Icon className="w-3 h-3 text-[#ff6b1a] group-hover:scale-110 transition-transform flex-shrink-0" />
+                  <Icon className="w-3 h-3 text-[var(--accent)] group-hover:scale-110 transition-transform flex-shrink-0" />
                   <span className="truncate max-w-[150px] sm:max-w-none">{vib.label}</span>
-                  <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase bg-[#ff6b1a]/20 text-[#ff6b1a] flex-shrink-0">
+                  <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase bg-[var(--accent-soft)] text-[var(--accent)] flex-shrink-0">
                     {vib.tag}
                   </span>
                 </button>

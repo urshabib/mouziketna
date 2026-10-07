@@ -92,9 +92,9 @@ export const TrackRow: React.FC<TrackRowProps> = ({
       onClick={(e) => handleLongPressClick(e)}
       className={`group flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer select-none gpu-layer ${
         isSelected
-          ? 'bg-white/15 border border-[#ff6b1a]/40 shadow-sm'
+          ? 'bg-white/15 border border-[var(--accent)]/40 shadow-sm'
           : isCurrent
-          ? 'bg-[#ff6b1a]/15 hover:bg-[#ff6b1a]/20'
+          ? 'bg-[var(--accent-soft)] hover:brightness-125'
           : 'hover:bg-white/[0.06]'
       }`}
     >
@@ -112,7 +112,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
             }}
             className={`w-5 h-5 rounded-full flex items-center justify-center transition-all cursor-pointer ${
               isSelected
-                ? 'bg-[#ff6b1a] text-black shadow-md scale-105'
+                ? 'bg-[var(--accent)] text-black shadow-md scale-105'
                 : 'border-2 border-white/40 hover:border-white/80 bg-black/20'
             }`}
             aria-label={isSelected ? 'Deselect track' : 'Select track'}
@@ -122,7 +122,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
         ) : dragHandleProps ? (
           <div
             {...dragHandleProps}
-            className="w-8 h-9 -ml-2 mr-0.5 text-white/50 hover:text-white active:text-[#ff6b1a] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-all rounded-lg hover:bg-white/10 active:bg-[#ff6b1a]/20 flex-shrink-0 z-10"
+            className="w-8 h-9 -ml-2 mr-0.5 text-white/50 hover:text-white active:text-[var(--accent)] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-all rounded-lg hover:bg-white/10 active:bg-[var(--accent-soft)] flex-shrink-0 z-10"
             title="Hold (0.5s) to reorder"
             aria-label="Hold to reorder"
             onClick={(e) => {
@@ -146,7 +146,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
               dragHandleProps.onTouchCancel?.(e);
             }}
           >
-            <div className="p-1 rounded-lg bg-white/[0.04] group-hover:bg-white/10 group-active:bg-[#ff6b1a]/25 transition-colors pointer-events-none">
+            <div className="p-1 rounded-lg bg-white/[0.04] group-hover:bg-white/10 group-active:bg-[var(--accent-soft)] transition-colors pointer-events-none">
               <GripVertical className="w-4 h-4 text-white/70 group-hover:text-white" />
             </div>
           </div>
@@ -154,9 +154,9 @@ export const TrackRow: React.FC<TrackRowProps> = ({
           <div className="w-5 min-w-[20px] text-center flex items-center justify-center text-xs font-bold text-white/40">
             {isCurrent && isPlaying ? (
               <div className="flex items-end gap-0.5 h-3.5">
-                <span className="w-0.5 bg-[#ff6b1a] rounded-sm animate-eq-1" />
-                <span className="w-0.5 bg-[#ff6b1a] rounded-sm animate-eq-2" />
-                <span className="w-0.5 bg-[#ff6b1a] rounded-sm animate-eq-3" />
+                <span className="w-0.5 bg-[var(--accent)] rounded-sm animate-eq-1" />
+                <span className="w-0.5 bg-[var(--accent)] rounded-sm animate-eq-2" />
+                <span className="w-0.5 bg-[var(--accent)] rounded-sm animate-eq-3" />
               </div>
             ) : (
               <span className="group-hover:hidden">{typeof index === 'number' ? index + 1 : ''}</span>
@@ -184,7 +184,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
 
         {/* Title & Artist */}
         <div className="flex-1 min-w-0">
-          <h4 className={`font-semibold text-sm truncate leading-snug ${isCurrent ? 'text-[#ff6b1a]' : 'text-white'}`}>
+          <h4 className={`font-semibold text-sm truncate leading-snug ${isCurrent ? 'text-[var(--accent)]' : 'text-white'}`}>
             {track.title}
           </h4>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -231,11 +231,11 @@ export const TrackRow: React.FC<TrackRowProps> = ({
                 toggleLikeTrack(track);
               }}
               className={`p-1.5 rounded-full hover:bg-white/10 transition-colors ${
-                isLiked ? 'text-[#ff6b1a]' : 'text-white/40 hover:text-white'
+                isLiked ? 'text-[var(--accent)]' : 'text-white/40 hover:text-white'
               }`}
               title={isLiked ? 'Unlike' : 'Like'}
             >
-              <Heart className={`w-4 h-4 ${isLiked ? 'fill-[#ff6b1a]' : ''}`} />
+              <Heart className={`w-4 h-4 ${isLiked ? 'fill-[var(--accent)]' : ''}`} />
             </button>
 
             <button

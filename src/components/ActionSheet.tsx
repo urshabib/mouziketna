@@ -218,7 +218,7 @@ export const ActionSheet: React.FC = () => {
           className="w-full flex flex-col items-center justify-center py-2 -mt-1 cursor-grab active:cursor-grabbing touch-none select-none group"
           title="Drag down or tap to close"
         >
-          <div className="w-12 h-1.5 rounded-full bg-white/30 group-hover:bg-white/60 group-active:bg-[#ff6b1a] transition-all duration-150" />
+          <div className="w-12 h-1.5 rounded-full bg-white/30 group-hover:bg-white/60 group-active:bg-[var(--accent)] transition-all duration-150" />
         </div>
 
         {/* Track Preview Header (also draggable down) */}
@@ -282,7 +282,7 @@ export const ActionSheet: React.FC = () => {
             }}
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
-            <Heart className={`w-5 h-5 ${isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/70'}`} />
+            <Heart className={`w-5 h-5 ${isLiked ? 'fill-[var(--accent)] text-[var(--accent)]' : 'text-white/70'}`} />
             <span>{isLiked ? t('player.unlike', 'Remove from Liked Songs') : t('player.like', 'Add to Liked Songs')}</span>
           </button>
 
@@ -295,7 +295,7 @@ export const ActionSheet: React.FC = () => {
             }}
             className="flex items-center gap-3.5 px-3 py-3 rounded-xl hover:bg-white/10 text-white font-semibold text-sm transition-colors cursor-pointer"
           >
-            <Sparkles className={`w-5 h-5 ${isInterested ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-[#ff6b1a]'}`} />
+            <Sparkles className={`w-5 h-5 ${isInterested ? 'fill-[var(--accent)] text-[var(--accent)]' : 'text-[var(--accent)]'}`} />
             <span>{isInterested ? t('modal.removeTaste', 'Remove from Music Taste') : t('modal.markInterested', 'Add to Music Taste (Interested)')}</span>
           </button>
 

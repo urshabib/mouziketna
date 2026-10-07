@@ -198,9 +198,9 @@ export const AdminView: React.FC = () => {
             <Users className="w-4 h-4 text-white/60" />
             <span className="text-xs font-bold text-white/80">{users.length} Users</span>
           </div>
-          <div className="px-4 py-2 rounded-2xl bg-[#ff6b1a]/10 border border-[#ff6b1a]/20 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#ff6b1a]" />
-            <span className="text-xs font-bold text-[#ff6b1a]">{totalAdmins} Admins</span>
+          <div className="px-4 py-2 rounded-2xl bg-[var(--accent-soft)] border border-[var(--accent)]/30 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-[var(--accent)]" />
+            <span className="text-xs font-bold text-[var(--accent)]">{totalAdmins} Admins</span>
           </div>
         </div>
       </div>
@@ -208,7 +208,7 @@ export const AdminView: React.FC = () => {
       {/* 1. Create User Card */}
       <div className="p-6 sm:p-7 rounded-3xl bg-white/[0.03] glass-panel border border-white/10 flex flex-col gap-5 shadow-xl">
         <h3 className="font-black text-lg text-white flex items-center gap-2.5">
-          <UserPlus className="w-5 h-5 text-[#ff6b1a]" />
+          <UserPlus className="w-5 h-5 text-[var(--accent)]" />
           <span>Create New User</span>
         </h3>
 
@@ -221,7 +221,7 @@ export const AdminView: React.FC = () => {
                 placeholder="e.g. sarah"
                 value={newUsername}
                 onChange={(e) => setNewUsername(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#ff6b1a] transition-colors"
+                className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[var(--accent)] transition-colors"
                 autoComplete="off"
               />
             </div>
@@ -232,7 +232,7 @@ export const AdminView: React.FC = () => {
                 placeholder="••••••••"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[#ff6b1a] transition-colors"
+                className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[var(--accent)] transition-colors"
                 autoComplete="new-password"
               />
             </div>
@@ -244,7 +244,7 @@ export const AdminView: React.FC = () => {
                 type="checkbox"
                 checked={newIsAdmin}
                 onChange={(e) => setNewIsAdmin(e.target.checked)}
-                className="w-4 h-4 rounded accent-[#ff6b1a] cursor-pointer"
+                className="w-4 h-4 rounded accent-[var(--accent)] cursor-pointer"
               />
               <span>Grant Administrator Rights</span>
             </label>
@@ -252,7 +252,7 @@ export const AdminView: React.FC = () => {
             <button
               type="submit"
               disabled={creating || !newUsername.trim() || !newPassword.trim()}
-              className="px-6 py-3 bg-[#ff6b1a] hover:bg-[#ff8b47] text-black font-extrabold text-xs rounded-2xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-lg shadow-[#ff6b1a]/20"
+              className="px-6 py-3 bg-[var(--accent)] hover:opacity-90 text-black font-extrabold text-xs rounded-2xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-lg shadow-[var(--accent-soft)]"
             >
               {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
               <span>Create Account</span>
@@ -265,7 +265,7 @@ export const AdminView: React.FC = () => {
       <div className="p-6 sm:p-7 rounded-3xl bg-white/[0.03] glass-panel border border-white/10 flex flex-col gap-5 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="font-black text-lg text-white flex items-center gap-2.5">
-            <Users className="w-5 h-5 text-[#ff6b1a]" />
+            <Users className="w-5 h-5 text-[var(--accent)]" />
             <span>Registered Users ({users.length})</span>
           </h3>
 
@@ -278,7 +278,7 @@ export const AdminView: React.FC = () => {
                 placeholder="Search users..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[#ff6b1a] transition-colors w-40 sm:w-52"
+                className="bg-white/5 border border-white/10 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-[var(--accent)] transition-colors w-40 sm:w-52"
               />
             </div>
 
@@ -289,14 +289,14 @@ export const AdminView: React.FC = () => {
               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors disabled:opacity-50"
               title="Refresh users list"
             >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[#ff6b1a]' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-[var(--accent)]' : ''}`} />
             </button>
           </div>
         </div>
 
         {loading && users.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 gap-3">
-            <Loader2 className="w-8 h-8 animate-spin text-[#ff6b1a]" />
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" />
             <p className="text-xs font-semibold text-white/50">Fetching registered accounts...</p>
           </div>
         ) : filteredUsers.length === 0 ? (
@@ -325,7 +325,7 @@ export const AdminView: React.FC = () => {
                     <div
                       className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm shadow-md ${
                         u.isAdmin
-                          ? 'bg-gradient-to-br from-[#ff6b1a] to-[#7a2c00] text-white shadow-[#ff6b1a]/20'
+                          ? 'bg-gradient-to-br from-[var(--accent)] to-[#401500] text-white shadow-[var(--accent-soft)]'
                           : 'bg-white/10 text-white/90'
                       }`}
                     >
@@ -342,7 +342,7 @@ export const AdminView: React.FC = () => {
                           </span>
                         )}
                         {u.isAdmin && (
-                          <span className="px-2 py-0.5 rounded-md bg-[#ff6b1a]/15 border border-[#ff6b1a]/30 text-[#ff6b1a] text-[10px] font-black uppercase tracking-wider">
+                          <span className="px-2 py-0.5 rounded-md bg-[var(--accent-soft)] border border-[var(--accent)]/30 text-[var(--accent)] text-[10px] font-black uppercase tracking-wider">
                             Admin
                           </span>
                         )}
@@ -372,7 +372,7 @@ export const AdminView: React.FC = () => {
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                         u.isAdmin
                           ? 'bg-white/5 hover:bg-red-500/10 text-white/70 hover:text-red-400'
-                          : 'bg-white/5 hover:bg-[#ff6b1a]/15 text-white/70 hover:text-[#ff6b1a]'
+                          : 'bg-white/5 hover:bg-[var(--accent-soft)] text-white/70 hover:text-[var(--accent)]'
                       } disabled:opacity-40 disabled:pointer-events-none`}
                       title={u.isAdmin ? 'Revoke admin rights' : 'Promote to admin'}
                     >

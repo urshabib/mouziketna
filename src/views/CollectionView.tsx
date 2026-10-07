@@ -534,14 +534,14 @@ export const CollectionView: React.FC = () => {
   const getHeroArt = () => {
     if (target.type === 'liked') {
       return (
-        <div className="w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-gradient-to-br from-[#ff6b1a] to-[#6b2600] flex items-center justify-center text-white shadow-2xl flex-shrink-0">
+        <div className="w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[#401500] flex items-center justify-center text-white shadow-2xl flex-shrink-0">
           <Heart className="w-20 h-20 fill-white" />
         </div>
       );
     }
     if (target.type === 'downloads') {
       return (
-        <div className="w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-[#1c1c1e] border border-white/10 flex items-center justify-center text-[#ff6b1a] shadow-2xl flex-shrink-0">
+        <div className="w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-[#1c1c1e] border border-white/10 flex items-center justify-center text-[var(--accent)] shadow-2xl flex-shrink-0">
           <Download className="w-20 h-20" />
         </div>
       );
@@ -641,7 +641,7 @@ export const CollectionView: React.FC = () => {
                     setIsRenaming(false);
                   }
                 }}
-                className="w-full bg-[#1c1c1e] border border-[#ff6b1a] rounded-xl px-3 py-2 text-2xl sm:text-3xl font-black text-white focus:outline-none"
+                className="w-full bg-[#1c1c1e] border border-[var(--accent)] rounded-xl px-3 py-2 text-2xl sm:text-3xl font-black text-white focus:outline-none"
               />
               <button
                 type="button"
@@ -651,7 +651,7 @@ export const CollectionView: React.FC = () => {
                     setIsRenaming(false);
                   }
                 }}
-                className="px-4 py-2.5 rounded-xl bg-[#ff6b1a] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all"
+                className="px-4 py-2.5 rounded-xl bg-[var(--accent)] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all"
               >
                 {t('common.save', 'Save')}
               </button>
@@ -675,7 +675,7 @@ export const CollectionView: React.FC = () => {
                     setNameInput(getTitle());
                     setIsRenaming(true);
                   }}
-                  className="p-2 text-white/40 hover:text-[#ff6b1a] hover:bg-white/5 rounded-xl transition-all cursor-pointer"
+                  className="p-2 text-white/40 hover:text-[var(--accent)] hover:bg-white/5 rounded-xl transition-all cursor-pointer"
                   title="Rename Playlist"
                 >
                   <Edit3 className="w-5 h-5" />
@@ -691,7 +691,7 @@ export const CollectionView: React.FC = () => {
               <>
                 <button
                   onClick={() => playWholeCollection(tracks)}
-                  className="flex items-center gap-2 px-6 py-3 rounded-full bg-[#ff6b1a] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
+                  className="flex items-center gap-2 px-6 py-3 rounded-full bg-[var(--accent)] text-black font-extrabold text-sm hover:scale-105 active:scale-95 transition-all shadow-lg cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-black" />
                   <span>{t('collection.playAll', 'Play')}</span>
@@ -714,7 +714,7 @@ export const CollectionView: React.FC = () => {
                 onClick={() => setIsReorderMode(!isReorderMode)}
                 className={`flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm transition-all cursor-pointer ${
                   isReorderMode
-                    ? 'bg-[#ff6b1a] text-black shadow-lg shadow-[#ff6b1a]/20 scale-105'
+                    ? 'bg-[var(--accent)] text-black shadow-lg shadow-[var(--accent-soft)] scale-105'
                     : 'bg-white/10 hover:bg-white/15 text-white/80 hover:text-white'
                 }`}
                 title="Reorder songs in playlist"
@@ -734,7 +734,7 @@ export const CollectionView: React.FC = () => {
                 }}
                 className={`flex items-center gap-2 px-4 py-3 rounded-full font-bold text-sm transition-all cursor-pointer ${
                   isSelectMode
-                    ? 'bg-[#ff6b1a] text-black shadow-md'
+                    ? 'bg-[var(--accent)] text-black shadow-md'
                     : 'bg-white/10 hover:bg-white/15 text-white/80 hover:text-white'
                 }`}
               >
@@ -815,7 +815,7 @@ export const CollectionView: React.FC = () => {
             >
               {selectedIds.length === tracks.length ? (
                 <>
-                  <CheckSquare className="w-4 h-4 text-[#ff6b1a]" />
+                  <CheckSquare className="w-4 h-4 text-[var(--accent)]" />
                   <span>{t('collection.deselectAll', 'Deselect All')}</span>
                 </>
               ) : (
@@ -839,7 +839,7 @@ export const CollectionView: React.FC = () => {
                   disabled={selectedIds.length === 0}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:pointer-events-none text-white text-xs font-bold transition-colors"
                 >
-                  <FolderPlus className="w-4 h-4 text-[#ff6b1a]" />
+                  <FolderPlus className="w-4 h-4 text-[var(--accent)]" />
                   <span>{t('collection.addToPlaylist', 'Add to Playlist')}</span>
                 </button>
 
@@ -895,14 +895,14 @@ export const CollectionView: React.FC = () => {
 
       {/* Reorder Mode Sticky Toolbar */}
       {isReorderMode && (
-        <div className="sticky top-16 z-30 flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#ff6b1a]/20 backdrop-blur-xl border border-[#ff6b1a]/40 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="sticky top-16 z-30 flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[var(--accent-soft)] backdrop-blur-xl border border-[var(--accent)]/40 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-2 text-xs font-bold text-white">
-            <ArrowUpDown className="w-4 h-4 text-[#ff6b1a] flex-shrink-0" />
+            <ArrowUpDown className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
             <span>{t('collection.reorderHelp', 'Hold handle 0.5s or tap ▲/▼ to reorder songs.')}</span>
           </div>
           <button
             onClick={() => setIsReorderMode(false)}
-            className="px-3.5 py-1.5 rounded-xl bg-[#ff6b1a] hover:bg-[#ff7d33] text-black text-xs font-black transition-colors shadow-md flex-shrink-0 cursor-pointer"
+            className="px-3.5 py-1.5 rounded-xl bg-[var(--accent)] hover:opacity-90 text-black text-xs font-black transition-colors shadow-md flex-shrink-0 cursor-pointer"
           >
             {t('collection.done', 'Done')}
           </button>
@@ -930,10 +930,10 @@ export const CollectionView: React.FC = () => {
               onDragOver={(e) => handleDragOver(e, idx)}
               onDrop={(e) => handleDrop(e, idx)}
               className={`transition-all rounded-xl ${
-                dragOverIndex === idx ? 'border-t-2 border-[#ff6b1a] bg-[#ff6b1a]/10' : ''
+                dragOverIndex === idx ? 'border-t-2 border-[var(--accent)] bg-[var(--accent-soft)]' : ''
               } ${
                 reorderingTrackIndex === idx
-                  ? 'ring-2 ring-[#ff6b1a] shadow-2xl bg-[#ff6b1a]/20 scale-[1.02] z-20'
+                  ? 'ring-2 ring-[var(--accent)] shadow-2xl bg-[var(--accent-soft)] scale-[1.02] z-20'
                   : ''
               }`}
             >
@@ -1003,7 +1003,7 @@ export const CollectionView: React.FC = () => {
                     }
                   }}
                   className={`group flex items-center justify-between p-2 rounded-xl transition-all cursor-pointer select-none ${
-                    isSugActive ? 'bg-[#ff6b1a]/15 hover:bg-[#ff6b1a]/20' : 'hover:bg-white/[0.06]'
+                    isSugActive ? 'bg-[var(--accent-soft)] hover:bg-[var(--accent-soft)]' : 'hover:bg-white/[0.06]'
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -1028,7 +1028,7 @@ export const CollectionView: React.FC = () => {
                     <div className="min-w-0 flex-1">
                       <h5
                         className={`text-sm font-semibold truncate ${
-                          isSugActive ? 'text-[#ff6b1a]' : 'text-white'
+                          isSugActive ? 'text-[var(--accent)]' : 'text-white'
                         }`}
                       >
                         {sug.title}
@@ -1044,7 +1044,7 @@ export const CollectionView: React.FC = () => {
                       setSuggestions((prev) => prev.filter((s) => s.id !== sug.id));
                       showToast(`Added "${sug.title}" to playlist`);
                     }}
-                    className="p-2 rounded-full border border-white/20 text-white hover:border-[#ff6b1a] hover:text-[#ff6b1a] transition-all hover:scale-110 active:scale-95 ml-2 flex-shrink-0"
+                    className="p-2 rounded-full border border-white/20 text-white hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all hover:scale-110 active:scale-95 ml-2 flex-shrink-0"
                     title="Add to Playlist"
                   >
                     <Plus className="w-4 h-4" />

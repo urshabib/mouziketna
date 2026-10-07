@@ -94,7 +94,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
               if (onPlay) onPlay();
               else playTrack(track);
             }}
-            className="absolute right-2.5 bottom-2.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#ff6b1a] text-black flex items-center justify-center shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:scale-110 active:scale-95 transition-all duration-200 z-10 cursor-pointer"
+            className="absolute right-2.5 bottom-2.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[var(--accent)] text-black flex items-center justify-center shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:scale-110 active:scale-95 transition-all duration-200 z-10 cursor-pointer"
             title="Play"
           >
             <Play className="w-5 h-5 fill-black ml-0.5" />
@@ -104,9 +104,9 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
         {/* Live EQ Indicator */}
         {isCurrent && (
           <div className="absolute left-2.5 bottom-2.5 flex items-end gap-0.5 h-4 bg-black/70 backdrop-blur-md px-2 py-1 rounded-md shadow-md">
-            <span className="w-1 bg-[#ff6b1a] rounded-sm animate-eq-1" />
-            <span className="w-1 bg-[#ff6b1a] rounded-sm animate-eq-2" />
-            <span className="w-1 bg-[#ff6b1a] rounded-sm animate-eq-3" />
+            <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-1" />
+            <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-2" />
+            <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-3" />
           </div>
         )}
 
@@ -118,11 +118,11 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
               toggleLikeTrack(track);
             }}
             className={`w-8 h-8 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center text-white/80 hover:text-white hover:scale-110 transition-all ${
-              isLiked ? 'text-[#ff6b1a] !opacity-100' : ''
+              isLiked ? 'text-[var(--accent)] !opacity-100' : ''
             }`}
             title={isLiked ? 'Unlike' : 'Like'}
           >
-            <Heart className={`w-4 h-4 ${isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : ''}`} />
+            <Heart className={`w-4 h-4 ${isLiked ? 'fill-[var(--accent)] text-[var(--accent)]' : ''}`} />
           </button>
 
           <button
@@ -141,7 +141,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
 
       {/* Meta */}
       <div className="flex flex-col min-w-0">
-        <h4 className={`font-bold text-sm truncate leading-snug ${isCurrent ? 'text-[#ff6b1a]' : 'text-white'}`}>
+        <h4 className={`font-bold text-sm truncate leading-snug ${isCurrent ? 'text-[var(--accent)]' : 'text-white'}`}>
           {track.title}
         </h4>
         <div className="flex items-center gap-1.5 mt-0.5">

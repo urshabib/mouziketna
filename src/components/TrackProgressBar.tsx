@@ -59,12 +59,12 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
   const waveThumbRef = useRef<SVGCircleElement>(null);
   const phaseRef = useRef(0);
 
-  // Wavy geometry: big, smooth, circular loops inspired by Mahozad's wavy-slider / Android 13
+  // Wavy geometry: smooth, circular loops inspired by Android 13 / Apple Music
   const width = 300;
   const height = 28;
   const midY = height / 2;
-  const wavelength = 38; // Wide, circular crests and troughs
-  const amplitude = 8; // Prominent large wave loops
+  const wavelength = 36;
+  const amplitude = 8.5;
 
   useEffect(() => {
     if (style !== 'wave') return;
@@ -114,8 +114,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
     const loop = (now: number) => {
       const dt = (now - lastTime) / 1000;
       lastTime = now;
-      // Smooth continuous velocity
-      phaseRef.current = (phaseRef.current + dt * 5.2) % (Math.PI * 2);
+      phaseRef.current = (phaseRef.current + dt * 4.8) % (Math.PI * 2);
       renderWave(phaseRef.current);
       animId = requestAnimationFrame(loop);
     };
@@ -139,7 +138,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
           onPointerUp={handleSliderCommit}
           className="custom-slider w-full show-thumb cursor-pointer"
           style={{
-            height: '3px',
+            height: '3.5px',
             background: `linear-gradient(to right, #ffffff ${progressPct}%, rgba(255, 255, 255, 0.22) ${progressPct}%)`,
           }}
         />
@@ -147,13 +146,13 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
 
       {/* Style 2: Block / Modern Capsule Thick Bar */}
       {style === 'block' && (
-        <div className="relative w-full h-3 bg-white/20 rounded-full overflow-hidden flex items-center cursor-pointer shadow-inner">
+        <div className="relative w-full h-3.5 bg-white/15 rounded-full overflow-hidden flex items-center cursor-pointer shadow-inner">
           <div
-            className="h-full bg-gradient-to-r from-white/90 to-white rounded-full transition-all duration-75 relative"
+            className="h-full bg-gradient-to-r from-white/80 to-white rounded-full transition-all duration-75 relative shadow-[0_0_10px_rgba(255,255,255,0.3)]"
             style={{ width: `${progressPct}%` }}
           >
             {/* Front leading edge */}
-            <div className="absolute right-0 top-0 bottom-0 w-2.5 bg-white rounded-r-full" />
+            <div className="absolute right-0 top-0 bottom-0 w-3 bg-white rounded-r-full shadow-sm" />
           </div>
           <input
             type="range"
@@ -169,7 +168,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
         </div>
       )}
 
-      {/* Style 3: Wave / Big Animated Sine Wave Squiggle (Android 13 / Apple Music style) */}
+      {/* Style 3: Wave / Big Animated Sine Wave Squiggle (Smoothed & slightly thicker) */}
       {style === 'wave' && (
         <div className="relative w-full h-7 flex items-center cursor-pointer">
           <svg
@@ -182,7 +181,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
               ref={waveUnplayedPathRef}
               d={`M ${(progressPct / 100) * width} ${midY} L ${width} ${midY}`}
               fill="none"
-              stroke="rgba(255, 255, 255, 0.28)"
+              stroke="rgba(255, 255, 255, 0.25)"
               strokeWidth="3.5"
               strokeLinecap="round"
             />
@@ -192,18 +191,19 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
               d={`M 0 ${midY}`}
               fill="none"
               stroke="#ffffff"
-              strokeWidth="4"
+              strokeWidth="4.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              className="drop-shadow-[0_0_6px_rgba(255,255,255,0.4)]"
             />
             {/* Prominent circular thumb riding on top of the wave */}
             <circle
               ref={waveThumbRef}
               cx={(progressPct / 100) * width}
               cy={midY}
-              r="6.5"
+              r="7"
               fill="#ffffff"
-              className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.6)]"
+              className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.7)]"
             />
           </svg>
           <input
@@ -220,15 +220,17 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
         </div>
       )}
 
-      {/* Style 4: Neon Laser / Glowing Radiant Beam */}
-      {style === 'neon' && (
-        <div className="relative w-full h-2.5 bg-white/15 rounded-full overflow-hidden flex items-center cursor-pointer">
+      {/* Style 4: Aurora Liquid Glow / Radiant Pulse Beam */}
+      {(style === 'aurora' || style === 'neon') && (
+        <div className="relative w-full h-3 bg-white/10 rounded-full overflow-hidden flex items-center cursor-pointer backdrop-blur-sm border border-white/10 shadow-inner">
           <div
-            className="h-full bg-gradient-to-r from-white/70 via-white to-white rounded-full transition-all duration-75 relative"
+            className="h-full bg-gradient-to-r from-[var(--accent)] via-white to-white rounded-full transition-all duration-75 relative shadow-[0_0_12px_var(--accent,rgba(255,255,255,0.8))]"
             style={{ width: `${progressPct}%` }}
           >
-            {/* Laser head */}
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 -mr-1.5 rounded-full bg-white shadow-[0_0_8px_#ffffff]" />
+            {/* Luminous Glowing Pulse Head */}
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3.5 h-3.5 -mr-1 rounded-full bg-white shadow-[0_0_10px_white,0_0_16px_var(--accent,#ff6b1a)] flex items-center justify-center">
+              <div className="w-1.5 h-1.5 rounded-full bg-[var(--accent,#ff6b1a)]" />
+            </div>
           </div>
           <input
             type="range"
@@ -244,8 +246,9 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
         </div>
       )}
 
-      {/* BUILT-IN KEY MOMENTS MARKERS (Clean, subtle, non-glowy, semi-transparent rectangles embedded into the track) */}
-      {keyPartsMode !== 'off' &&
+      {/* BUILT-IN KEY MOMENTS MARKERS (Strictly shown ONLY on default classic progress bar) */}
+      {style === 'default' &&
+        keyPartsMode !== 'off' &&
         duration > 0 &&
         highlights.map((hl) => {
           const leftPct = (hl.startTime / duration) * 100;
@@ -268,8 +271,8 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
 
   return (
     <div className={`w-full flex flex-col gap-0.5 select-none no-swipe ${className}`}>
-      {/* Optional Top Key Moment Pills (only if setting is 'full' and not hidden) */}
-      {!hideBadges && keyPartsMode === 'full' && highlights.length > 0 && (
+      {/* Optional Top Key Moment Pills (Strictly shown ONLY on default classic progress bar) */}
+      {!hideBadges && style === 'default' && keyPartsMode === 'full' && highlights.length > 0 && (
         <div className="flex items-center justify-center gap-1 overflow-x-auto scrollbar-none py-0.5 mb-0.5">
           <span className="text-[8px] uppercase font-bold text-white/40 flex items-center gap-0.5 flex-shrink-0 mr-0.5">
             <Flame className="w-2.5 h-2.5 text-white/70 fill-white/70" />

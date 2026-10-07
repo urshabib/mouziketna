@@ -49,6 +49,77 @@ import {
 } from '../services/pwa';
 import { LogoCropperModal } from '../components/LogoCropperModal';
 
+const MiniProgressBarPreview: React.FC<{ style: string; isSelected: boolean }> = ({ style, isSelected }) => {
+  if (style === 'wave') {
+    return (
+      <div className="w-full h-7 flex items-center justify-center overflow-hidden relative px-1">
+        <svg viewBox="0 0 100 24" className="w-full h-5 overflow-visible">
+          <path
+            d="M 50,12 Q 62.5,5 75,12 T 100,12"
+            fill="none"
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+          <path
+            d="M 0,12 Q 12.5,5 25,12 T 50,12"
+            fill="none"
+            stroke="var(--accent)"
+            strokeWidth="3.8"
+            strokeLinecap="round"
+          >
+            <animate
+              attributeName="d"
+              dur="1.6s"
+              repeatCount="indefinite"
+              values="
+                M 0,12 Q 12.5,5 25,12 T 50,12;
+                M 0,12 Q 12.5,19 25,12 T 50,12;
+                M 0,12 Q 12.5,5 25,12 T 50,12
+              "
+            />
+          </path>
+          <circle cx="50" cy="12" r="3.5" fill="white" stroke="var(--accent)" strokeWidth="1.5" />
+        </svg>
+      </div>
+    );
+  }
+  if (style === 'aurora') {
+    return (
+      <div className="w-full h-7 flex items-center justify-center px-1">
+        <div className="w-full h-2.5 bg-white/10 rounded-full relative overflow-visible flex items-center">
+          <div
+            className="h-full w-1/2 rounded-full relative shadow-[0_0_10px_var(--accent)]"
+            style={{
+              background: 'linear-gradient(90deg, rgba(255,255,255,0.5) 0%, var(--accent) 70%, #ffffff 100%)',
+            }}
+          >
+            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_10px_var(--accent)] animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (style === 'block') {
+    return (
+      <div className="w-full h-7 flex items-center justify-center px-1">
+        <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden p-0.5">
+          <div className="h-full w-1/2 rounded-full bg-[var(--accent)] shadow-sm" />
+        </div>
+      </div>
+    );
+  }
+  // default
+  return (
+    <div className="w-full h-7 flex items-center justify-center px-1">
+      <div className="w-full h-1.5 bg-white/15 rounded-full relative flex items-center">
+        <div className="h-full w-1/2 rounded-full bg-[var(--accent)]" />
+        <div className="w-3 h-3 rounded-full bg-white shadow-md border border-black/20 -ml-1.5" />
+      </div>
+    </div>
+  );
+};
+
 const ACCENTS = [
   { id: 'orange', name: 'Flame Orange', color: '#ff6b1a' },
   { id: 'purple', name: 'Cosmic Purple', color: '#a259ff' },
@@ -1037,16 +1108,16 @@ export const SettingsView: React.FC = () => {
                     {t('settings.progressBarStyleDesc', 'Changes both the normal player and the full-screen stage player.')}
                   </p>
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff6b1a] bg-[#ff6b1a]/10 px-2 py-0.5 rounded-md border border-[#ff6b1a]/20">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md border border-[var(--accent)]/30">
                   {userProfile.progressBarStyle || 'default'}
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                 {[
-                  { id: 'default', label: t('settings.barSlim', 'Classic Slim'), desc: t('settings.barSlimDesc', 'Default thin line & dot') },
-                  { id: 'block', label: t('settings.barBlock', 'Thick Bar'), desc: t('settings.barBlockDesc', 'Advancing full rectangle') },
-                  { id: 'wave', label: t('settings.barWave', 'Sine Wave'), desc: t('settings.barWaveDesc', 'Animated zigzag squiggle') },
-                  { id: 'neon', label: t('settings.barNeon', 'Neon Laser'), desc: t('settings.barNeonDesc', 'Radiant beam & laser head') },
+                  { id: 'default', label: t('settings.barSlim', 'Classic Slim') },
+                  { id: 'block', label: t('settings.barBlock', 'Thick Bar') },
+                  { id: 'wave', label: t('settings.barWave', 'Sine Wave') },
+                  { id: 'aurora', label: t('settings.barAurora', 'Aurora Ribbon') },
                 ].map((opt) => {
                   const isSelected = (userProfile.progressBarStyle || 'default') === opt.id;
                   return (
@@ -1056,18 +1127,17 @@ export const SettingsView: React.FC = () => {
                       onClick={() => {
                         syncProfile({ ...userProfile, progressBarStyle: opt.id as any });
                       }}
-                      className={`p-3 rounded-xl border text-center flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${
+                      className={`p-3 rounded-xl border text-center flex flex-col items-center justify-between gap-1.5 transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-[#ff6b1a]/15 border-[#ff6b1a] text-white shadow-md'
+                          ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-white shadow-md'
                           : 'bg-white/[0.02] border-white/5 text-white/70 hover:bg-white/[0.06] hover:text-white'
                       }`}
                     >
-                      <span className="text-xs sm:text-sm font-black tracking-wide">
+                      <span className="text-xs font-black tracking-wide">
                         {opt.label}
                       </span>
-                      <span className="text-[10px] text-white/40 leading-tight">
-                        {opt.desc}
-                      </span>
+                      {/* Live running mini version of the progress bar */}
+                      <MiniProgressBarPreview style={opt.id} isSelected={isSelected} />
                     </button>
                   );
                 })}

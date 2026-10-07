@@ -116,11 +116,11 @@ export const PlayerBar: React.FC = () => {
           <button
             onClick={() => toggleLikeTrack(activeTrack)}
             className={`p-2 rounded-full hover:bg-white/10 transition-colors ${
-              isLiked ? 'text-[#ff6b1a]' : 'hover:text-white'
+              isLiked ? 'text-[var(--accent)]' : 'hover:text-white'
             }`}
             title={isLiked ? 'Unlike' : 'Like'}
           >
-            <Heart className={`w-4 h-4 ${isLiked ? 'fill-[#ff6b1a]' : ''}`} />
+            <Heart className={`w-4 h-4 ${isLiked ? 'fill-[var(--accent)]' : ''}`} />
           </button>
           <button
             onClick={() => setModalAddToPlaylistTrack(activeTrack)}
@@ -138,7 +138,7 @@ export const PlayerBar: React.FC = () => {
           <button
             onClick={toggleShuffle}
             className={`p-1.5 transition-colors ${
-              isShuffle ? 'text-[#ff6b1a]' : 'text-white/40 hover:text-white'
+              isShuffle ? 'text-[var(--accent)]' : 'text-white/40 hover:text-white'
             }`}
             title="Shuffle"
           >
@@ -201,7 +201,7 @@ export const PlayerBar: React.FC = () => {
           <button
             onClick={toggleLoop}
             className={`p-1.5 transition-colors ${
-              isLooping ? 'text-[#ff6b1a]' : 'text-white/40 hover:text-white'
+              isLooping ? 'text-[var(--accent)]' : 'text-white/40 hover:text-white'
             }`}
             title={isLooping ? 'Repeat One' : 'Repeat Off'}
           >
@@ -227,7 +227,7 @@ export const PlayerBar: React.FC = () => {
         <button
           onClick={() => setIsLyricsOpen(!isLyricsOpen)}
           className={`p-2 rounded-full transition-colors ${
-            isLyricsOpen ? 'text-[#ff6b1a] bg-white/10' : 'text-white/50 hover:text-white'
+            isLyricsOpen ? 'text-[var(--accent)] bg-white/10' : 'text-white/50 hover:text-white'
           }`}
           title="Lyrics"
         >
@@ -237,7 +237,7 @@ export const PlayerBar: React.FC = () => {
         <button
           onClick={() => setIsQueueOpen(!isQueueOpen)}
           className={`p-2 rounded-full transition-colors ${
-            isQueueOpen ? 'text-[#ff6b1a] bg-white/10' : 'text-white/50 hover:text-white'
+            isQueueOpen ? 'text-[var(--accent)] bg-white/10' : 'text-white/50 hover:text-white'
           }`}
           title="Queue"
         >
@@ -383,7 +383,7 @@ export const MiniPlayer: React.FC = () => {
           draggable={false}
         />
         {swipeHint && (
-          <div className="absolute inset-0 bg-[#ff6b1a]/90 rounded-xl flex items-center justify-center text-black font-extrabold text-[10px]">
+          <div className="absolute inset-0 bg-[var(--accent)]/90 rounded-xl flex items-center justify-center text-black font-extrabold text-[10px]">
             {swipeHint === 'next' ? 'NEXT' : 'PREV'}
           </div>
         )}
@@ -400,11 +400,11 @@ export const MiniPlayer: React.FC = () => {
         <button
           onClick={() => toggleLikeTrack(activeTrack)}
           className={`p-2 rounded-full transition-colors ${
-            isLiked ? 'text-[#ff6b1a]' : 'text-white/60 hover:text-white'
+            isLiked ? 'text-[var(--accent)]' : 'text-white/60 hover:text-white'
           }`}
           title={isLiked ? 'Unlike' : 'Like'}
         >
-          <Heart className={`w-5 h-5 ${isLiked ? 'fill-[#ff6b1a]' : ''}`} />
+          <Heart className={`w-5 h-5 ${isLiked ? 'fill-[var(--accent)]' : ''}`} />
         </button>
 
         <button
@@ -434,7 +434,7 @@ export const MiniPlayer: React.FC = () => {
       {/* Progress line */}
       <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-white/10 rounded-full overflow-hidden">
         <div
-          className="h-full bg-[#ff6b1a] transition-all duration-200"
+          className="h-full bg-[var(--accent)] transition-all duration-200"
           style={{ width: `${progressPct}%` }}
         />
       </div>

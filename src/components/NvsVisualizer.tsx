@@ -115,8 +115,9 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const centerX = width / 2;
-      const centerY = height / 2;
+      // Dynamic center with subtle organic tilt/leak towards the left
+      const centerX = width * 0.48;
+      const centerY = height * 0.50;
       const baseRadius = Math.min(width, height) * 0.28;
 
       let hasRealAudio = false;
@@ -134,10 +135,10 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
       if (!hasRealAudio || (rawBass === 0 && rawVol === 0)) {
         if (isPlaying) {
           const t = Date.now() / 1000;
-          rawBass = 0.35 + Math.sin(t * 3) * 0.18;
-          rawVol = 0.3 + Math.sin(t * 3.5) * 0.15;
+          rawBass = 0.4 + Math.sin(t * 3) * 0.22;
+          rawVol = 0.35 + Math.sin(t * 3.5) * 0.18;
           for (let i = 0; i < 64; i++) {
-            freqBuffer[i] = Math.max(0, Math.sin(t * 3 + i * 0.25) * 120 + 80);
+            freqBuffer[i] = Math.max(0, Math.sin(t * 3.2 + i * 0.3) * 130 + 90);
           }
         } else {
           rawBass = 0;
@@ -145,78 +146,87 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
         }
       }
 
-      smoothedBass += (rawBass - smoothedBass) * 0.18;
-      smoothedVol += (rawVol - smoothedVol) * 0.18;
+      smoothedBass += (rawBass - smoothedBass) * 0.22;
+      smoothedVol += (rawVol - smoothedVol) * 0.22;
 
       const { r, g, b } = dominantColor;
       const primaryNeon = `rgb(${r}, ${g}, ${b})`;
-      const secondaryNeon = `rgb(${Math.min(255, r + 45)}, ${Math.min(255, g + 35)}, ${Math.min(255, b + 65)})`;
+      const secondaryNeon = `rgb(${Math.min(255, r + 55)}, ${Math.min(255, g + 40)}, ${Math.min(255, b + 75)})`;
 
       ctx.save();
       ctx.scale(dpr, dpr);
 
-      // 1. Soft Glowing Neon Aura
-      const auraRadius = baseRadius * (1.1 + smoothedBass * 0.15);
+      // 1. Soft Glowing Neon Aura leaking prominently to the left
+      const auraRadius = baseRadius * (1.15 + smoothedBass * 0.2);
       const auraGrad = ctx.createRadialGradient(
+        centerX - width * 0.06,
+        centerY,
+        baseRadius * 0.6,
         centerX,
         centerY,
-        baseRadius * 0.7,
-        centerX,
-        centerY,
-        auraRadius * 1.45
+        auraRadius * 1.55
       );
-      auraGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.35 * (0.5 + smoothedBass * 0.5)})`);
-      auraGrad.addColorStop(0.6, `rgba(${r}, ${g}, ${b}, ${0.12 * (0.5 + smoothedBass * 0.5)})`);
+      auraGrad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${0.45 * (0.6 + smoothedBass * 0.5)})`);
+      auraGrad.addColorStop(0.5, `rgba(${r}, ${g}, ${b}, ${0.18 * (0.6 + smoothedBass * 0.5)})`);
       auraGrad.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = auraGrad;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, auraRadius * 1.45, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, auraRadius * 1.55, 0, Math.PI * 2);
       ctx.fill();
 
       // 2. Render Chosen Visualizer Style
       if (visStyle === 'wave') {
-        // --- MULTI-LAYER FLUID ACOUSTIC WAVEFORM ---
-        wavePhase += isPlaying ? 0.035 : 0.008;
-        const waveLayers = [
-          { freqMult: 1.0, ampMult: 1.0, alpha: 0.85, color: primaryNeon, width: 3.0 },
-          { freqMult: 1.4, ampMult: 0.7, alpha: 0.55, color: secondaryNeon, width: 2.2 },
-          { freqMult: 0.7, ampMult: 1.1, alpha: 0.35, color: '#ffffff', width: 1.6 },
-        ];
+        // --- MULTI-LAYER ROTATING FLUID ACOUSTIC WAVEFORM (Leaking Left) ---
+        wavePhase += isPlaying ? 0.045 : 0.01;
+        angleOffset += isPlaying ? 0.005 : 0.001;
 
-        waveLayers.forEach((layer) => {
+        const numRings = 3;
+        for (let ring = 0; ring < numRings; ring++) {
+          const ringRadius = baseRadius * (1.06 + ring * 0.14);
+          const ringColor = ring === 0 ? primaryNeon : ring === 1 ? secondaryNeon : 'rgba(255, 255, 255, 0.75)';
+          const ringWidth = ring === 0 ? 3.2 : ring === 1 ? 2.2 : 1.5;
+
           ctx.beginPath();
-          ctx.lineWidth = layer.width;
-          ctx.strokeStyle = layer.color;
-          ctx.shadowColor = layer.color;
-          ctx.shadowBlur = 8;
+          ctx.lineWidth = ringWidth;
+          ctx.strokeStyle = ringColor;
+          ctx.shadowColor = primaryNeon;
+          ctx.shadowBlur = ring === 0 ? 10 : 6;
 
-          const points = 48;
+          const points = 72;
           for (let i = 0; i <= points; i++) {
-            const x = (i / points) * width;
-            const normX = i / points;
-            const freqIdx = Math.floor(Math.abs(normX - 0.5) * 2 * (freqBuffer.length - 1));
+            const angle = (i / points) * Math.PI * 2 + angleOffset * (ring % 2 === 0 ? 1 : -1.2);
+            const freqIdx = Math.floor(Math.abs(Math.sin(angle * 2 + wavePhase)) * (freqBuffer.length - 1));
             const binVal = (freqBuffer[freqIdx] || 0) / 255;
 
-            const envelope = Math.sin(normX * Math.PI); // Pin nicely to left & right edges
-            const waveY =
-              centerY +
-              Math.sin(normX * 8 * layer.freqMult + wavePhase) *
-                (28 * layer.ampMult + binVal * 38) *
-                envelope;
+            // Organic leftward expansion & rotation wave
+            const leftBias = 1.0 + Math.max(0, -Math.cos(angle)) * 0.45;
+            const waveDelta = Math.sin(angle * 6 + wavePhase + ring * 1.2) * (14 + binVal * 32 * (1 + smoothedBass * 0.5)) * leftBias;
 
-            if (i === 0) ctx.moveTo(x, waveY);
-            else ctx.lineTo(x, waveY);
+            const rCurr = ringRadius + waveDelta;
+            const px = centerX + Math.cos(angle) * rCurr;
+            const py = centerY + Math.sin(angle) * rCurr;
+
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
           }
+          ctx.closePath();
           ctx.stroke();
-        });
+        }
         ctx.shadowBlur = 0;
       } else {
-        // --- NCS / SPICETIFY CIRCULAR EQUALIZER SPECTRUM ---
-        const numBars = 56;
-        angleOffset += isPlaying ? 0.003 : 0.0008;
+        // --- NCS / SPICETIFY CIRCULAR EQUALIZER SPECTRUM (Leaking Left & Rotating Layers) ---
+        const numBars = 64;
+        angleOffset += isPlaying ? 0.0045 : 0.001;
 
-        ctx.lineWidth = 3.0;
+        ctx.lineWidth = 3.2;
         ctx.lineCap = 'round';
+
+        // Inner orbital energy ring
+        ctx.beginPath();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.35)`;
+        ctx.arc(centerX, centerY, baseRadius * 1.03, 0, Math.PI * 2);
+        ctx.stroke();
 
         for (let i = 0; i < numBars; i++) {
           const angle = (i / numBars) * Math.PI * 2 + angleOffset;
@@ -224,7 +234,13 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
           const val = freqBuffer[Math.min(freqIdx, freqBuffer.length - 1)] || 0;
           const normalizedVal = val / 255;
 
-          const barLength = Math.max(4, normalizedVal * (baseRadius * 0.75) * (0.8 + smoothedBass * 0.4));
+          // Asymmetric acoustic expansion leaking to the left (angle near PI)
+          const leftBias = 1.0 + Math.max(0, -Math.cos(angle)) * 0.42;
+
+          const barLength = Math.max(
+            5,
+            normalizedVal * (baseRadius * 0.85) * (0.85 + smoothedBass * 0.5) * leftBias
+          );
           const rStart = baseRadius * 1.04;
           const rEnd = rStart + barLength;
 
@@ -234,43 +250,44 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
           const y2 = centerY + Math.sin(angle) * rEnd;
 
           const barGrad = ctx.createLinearGradient(x1, y1, x2, y2);
-          barGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-          barGrad.addColorStop(0.4, primaryNeon);
+          barGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+          barGrad.addColorStop(0.35, primaryNeon);
           barGrad.addColorStop(1, secondaryNeon);
 
           ctx.strokeStyle = barGrad;
           ctx.shadowColor = primaryNeon;
-          ctx.shadowBlur = 6 * normalizedVal;
+          ctx.shadowBlur = (7 + smoothedBass * 5) * normalizedVal;
 
           ctx.beginPath();
           ctx.moveTo(x1, y1);
           ctx.lineTo(x2, y2);
           ctx.stroke();
 
-          if (normalizedVal > 0.5) {
+          // Glowing tip bead for energetic audio peaks
+          if (normalizedVal > 0.45) {
             ctx.fillStyle = '#ffffff';
             ctx.beginPath();
-            ctx.arc(x2, y2, 1.8, 0, Math.PI * 2);
+            ctx.arc(x2, y2, 2.0 + normalizedVal * 1.2, 0, Math.PI * 2);
             ctx.fill();
           }
         }
         ctx.shadowBlur = 0;
       }
 
-      // 3. Floating Ambient Neon Embers
-      if (isPlaying && particles.length < maxParticles && Math.random() < 0.25) {
+      // 3. Floating Ambient Neon Embers drifting with leftward momentum
+      if (isPlaying && particles.length < maxParticles && Math.random() < 0.3) {
         const pAngle = Math.random() * Math.PI * 2;
-        const pDist = baseRadius * (1.05 + Math.random() * 0.2);
-        const speed = 0.5 + Math.random() * 1.2;
+        const pDist = baseRadius * (1.05 + Math.random() * 0.25);
+        const speed = 0.6 + Math.random() * 1.4;
         particles.push({
           x: centerX + Math.cos(pAngle) * pDist,
           y: centerY + Math.sin(pAngle) * pDist,
-          vx: Math.cos(pAngle) * speed,
+          vx: Math.cos(pAngle) * speed - (Math.random() * 0.6), // slight leftward drift
           vy: Math.sin(pAngle) * speed,
-          size: 1.5 + Math.random() * 2.0,
-          alpha: 0.85,
+          size: 1.6 + Math.random() * 2.2,
+          alpha: 0.9,
           life: 0,
-          maxLife: 40 + Math.random() * 30,
+          maxLife: 45 + Math.random() * 35,
         });
       }
 

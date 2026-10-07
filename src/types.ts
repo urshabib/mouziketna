@@ -62,7 +62,7 @@ export interface UserProfile {
   customLyricsHex?: string;
   lyricsGlow?: 'off' | 'default' | 'strong';
   keyPartsDisplay?: 'off' | 'dots' | 'full';
-  progressBarStyle?: 'default' | 'block' | 'wave' | 'neon';
+  progressBarStyle?: 'default' | 'block' | 'wave' | 'aurora' | 'neon';
   presetTint: string;
   uiScale?: 'small' | 'default' | 'large' | 'extraLarge';
   activePreset: string | null;

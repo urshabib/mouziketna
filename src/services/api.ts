@@ -9,6 +9,8 @@ export const STREAM_MIRRORS = [
   'https://yt.omada.cafe/api/v1/videos/',
   'https://invidious.no-logs.com/api/v1/videos/',
   'https://inv.tux.pizza/api/v1/videos/',
+  'https://invidious.private.coffee/api/v1/videos/',
+  'https://vid.priv.au/api/v1/videos/',
 ];
 
 export const FALLBACK_ART = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300';
@@ -390,6 +392,22 @@ export async function resolveSaavnStream(
   } catch {
     throw new Error('No match found on primary Saavn resolver');
   }
+}
+
+export async function resolveWorkerStream(id: string): Promise<string | null> {
+  if (!id || id.length < 5) return null;
+  try {
+    const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}`, 5500);
+    if (r.ok) {
+      const j = await r.json();
+      const audio = (j?.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
+      if (audio.length) {
+        audio.sort((a: any, b: any) => parseInt(b.bitrate || 0) - parseInt(a.bitrate || 0));
+        return audio[0].url;
+      }
+    }
+  } catch {}
+  return null;
 }
 
 export async function resolveMirrorStreams(id: string): Promise<string[]> {

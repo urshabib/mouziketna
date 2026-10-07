@@ -181,16 +181,16 @@ export const LyricsSheet: React.FC = () => {
               onClick={handleToggleLyricsPlus}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-sm ${
                 isLyricsPlusActive
-                  ? 'bg-gradient-to-r from-[#ff6b1a] via-amber-500 to-orange-400 text-black shadow-[0_0_15px_rgba(255,107,26,0.6)] scale-105'
+                  ? 'bg-gradient-to-r from-[var(--accent)] via-amber-500 to-orange-400 text-black shadow-[0_0_15px_rgba(255,107,26,0.6)] scale-105'
                   : 'bg-white/10 hover:bg-white/20 text-white/80 hover:text-white border border-white/10'
               }`}
               title={isLyricsPlusActive ? 'Switch to Standard Lyrics' : 'Switch to Lyrics+ Ultra Motion'}
             >
-              <Sparkles className={`w-3.5 h-3.5 ${isLyricsPlusActive ? 'fill-black text-black' : 'text-[#ff6b1a]'}`} />
+              <Sparkles className={`w-3.5 h-3.5 ${isLyricsPlusActive ? 'fill-black text-black' : 'text-[var(--accent)]'}`} />
               <span className="tracking-wide">Lyrics+</span>
               <span
                 className={`text-[9px] px-1 py-0.5 rounded font-extrabold uppercase leading-none tracking-wider ${
-                  isLyricsPlusActive ? 'bg-black/25 text-black' : 'bg-[#ff6b1a]/25 text-[#ff6b1a]'
+                  isLyricsPlusActive ? 'bg-black/25 text-black' : 'bg-[var(--accent-soft)] text-[var(--accent)]'
                 }`}
               >
                 Ultra
@@ -232,7 +232,7 @@ export const LyricsSheet: React.FC = () => {
         >
         {currentLyrics.mode === 'loading' && (
           <div className="flex flex-col items-center justify-center my-auto gap-3 text-white/50">
-            <Loader2 className="w-8 h-8 animate-spin text-[#ff6b1a]" />
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--accent)]" />
             <p className="font-semibold text-sm">{t('lyrics.synchronizing', 'Synchronizing lyrics…')}</p>
           </div>
         )}

@@ -93,9 +93,9 @@ export const Sidebar: React.FC = () => {
           <button
             id="sidebar-install-app-btn"
             onClick={() => setIsInstallModalOpen(true)}
-            className="flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm text-[#ff6b1a] hover:bg-[#ff6b1a]/10 transition-all border border-[#ff6b1a]/20 cursor-pointer"
+            className="flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all border border-[var(--accent)]/20 cursor-pointer"
           >
-            <Download className="w-5 h-5 text-[#ff6b1a]" /> {t('modal.installApp', 'Install App')}
+            <Download className="w-5 h-5 text-[var(--accent)]" /> {t('modal.installApp', 'Install App')}
           </button>
 
           {(globalUser === 'admin' || userProfile.isAdmin) && (
@@ -137,11 +137,11 @@ export const Sidebar: React.FC = () => {
             onClick={() => openCollection('liked')}
             className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
           >
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#ff6b1a] to-[#7a2c00] flex items-center justify-center flex-shrink-0 text-white shadow-md">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center flex-shrink-0 text-white shadow-md">
               <Heart className="w-5 h-5 fill-white" />
             </div>
             <div className="min-w-0 flex-1">
-              <h5 className="text-sm font-semibold truncate text-white group-hover:text-[#ff6b1a] transition-colors">
+              <h5 className="text-sm font-semibold truncate text-white group-hover:text-[var(--accent)] transition-colors">
                 {t('library.likedSongs', 'Liked Songs')}
               </h5>
               <p className="text-xs text-white/50 truncate">
@@ -155,11 +155,11 @@ export const Sidebar: React.FC = () => {
             onClick={() => openCollection('downloads')}
             className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
           >
-            <div className="w-10 h-10 rounded-lg bg-[#1c1c1e] flex items-center justify-center flex-shrink-0 text-[#ff6b1a] shadow-md border border-white/5">
+            <div className="w-10 h-10 rounded-lg bg-[#1c1c1e] flex items-center justify-center flex-shrink-0 text-[var(--accent)] shadow-md border border-white/5">
               <Download className="w-5 h-5" />
             </div>
             <div className="min-w-0 flex-1">
-              <h5 className="text-sm font-semibold truncate text-white group-hover:text-[#ff6b1a] transition-colors">
+              <h5 className="text-sm font-semibold truncate text-white group-hover:text-[var(--accent)] transition-colors">
                 {t('library.downloads', 'Downloaded')}
               </h5>
               <p className="text-xs text-white/50 truncate">{t('common.offline', 'Offline music')}</p>
@@ -182,7 +182,7 @@ export const Sidebar: React.FC = () => {
                 className="flex-shrink-0"
               />
               <div className="min-w-0 flex-1">
-                <h5 className="text-sm font-semibold truncate text-white group-hover:text-[#ff6b1a] transition-colors">
+                <h5 className="text-sm font-semibold truncate text-white group-hover:text-[var(--accent)] transition-colors">
                   {pl.name}
                 </h5>
                 <p className="text-xs text-white/50 truncate">
@@ -207,7 +207,7 @@ export const Sidebar: React.FC = () => {
                 </div>
               )}
               <div className="min-w-0 flex-1">
-                <h5 className="text-sm font-semibold truncate text-white group-hover:text-[#ff6b1a] transition-colors">
+                <h5 className="text-sm font-semibold truncate text-white group-hover:text-[var(--accent)] transition-colors">
                   {artist.title}
                 </h5>
                 <p className="text-xs text-white/50 truncate">Artist</p>
@@ -239,7 +239,7 @@ export const MobileNav: React.FC = () => {
             key={item.id}
             onClick={() => setActivePane(item.id)}
             className={`flex flex-col items-center gap-1 transition-all ${
-              isActive ? 'text-[#ff6b1a] scale-105' : 'text-white/50 hover:text-white/80'
+              isActive ? 'text-[var(--accent)] scale-105' : 'text-white/50 hover:text-white/80'
             }`}
           >
             {item.icon}
@@ -306,7 +306,7 @@ export const TopBar: React.FC = () => {
           <button
             id="topbar-install-btn"
             onClick={() => setIsInstallModalOpen(true)}
-            className="flex items-center justify-center gap-1.5 bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-95 text-black p-2 sm:px-3.5 sm:py-1.5 rounded-full font-black text-xs transition-all shadow-md shadow-[#ff6b1a]/25 flex-shrink-0 cursor-pointer"
+            className="flex items-center justify-center gap-1.5 bg-[var(--accent)] hover:brightness-110 active:scale-95 text-black p-2 sm:px-3.5 sm:py-1.5 rounded-full font-black text-xs transition-all shadow-md shadow-[var(--accent)]/25 flex-shrink-0 cursor-pointer"
             title={t('modal.installApp', 'Install App')}
             aria-label={t('modal.installApp', 'Install App')}
           >
@@ -319,7 +319,7 @@ export const TopBar: React.FC = () => {
         {bulkDownloadState.inProgress && (
           <button
             onClick={() => openCollection('downloads')}
-            className="flex items-center gap-2 bg-[#ff6b1a]/20 text-[#ff6b1a] text-xs font-bold px-3 py-1.5 rounded-full border border-[#ff6b1a]/30 animate-pulse"
+            className="flex items-center gap-2 bg-[var(--accent-soft)] text-[var(--accent)] text-xs font-bold px-3 py-1.5 rounded-full border border-[var(--accent)]/30 animate-pulse"
           >
             <Loader2 className="w-3.5 h-3.5 animate-spin" />
             <span>{bulkDownloadState.done}/{bulkDownloadState.total}</span>
@@ -339,7 +339,7 @@ export const TopBar: React.FC = () => {
               className="w-6 h-6 rounded-full object-cover flex-shrink-0"
             />
           ) : (
-            <div className="w-6 h-6 rounded-full bg-[#ff6b1a] text-black font-bold text-xs flex items-center justify-center flex-shrink-0">
+            <div className="w-6 h-6 rounded-full bg-[var(--accent)] text-black font-bold text-xs flex items-center justify-center flex-shrink-0">
               {userProfile.username ? userProfile.username.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
             </div>
           )}

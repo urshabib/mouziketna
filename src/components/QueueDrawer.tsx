@@ -158,7 +158,7 @@ export const QueueDrawer: React.FC = () => {
           className="w-full flex flex-col items-center justify-center py-2 -mt-1 cursor-grab active:cursor-grabbing touch-none select-none group"
           title="Drag down or tap to close queue"
         >
-          <div className="w-12 h-1.5 rounded-full bg-white/30 group-hover:bg-white/60 group-active:bg-[#ff6b1a] transition-all duration-150" />
+          <div className="w-12 h-1.5 rounded-full bg-white/30 group-hover:bg-white/60 group-active:bg-[var(--accent)] transition-all duration-150" />
         </div>
 
         {/* Header */}
@@ -219,7 +219,7 @@ export const QueueDrawer: React.FC = () => {
                   onClick={() => playQueueIndex(i)}
                   className={`group flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${
                     isCurrent
-                      ? 'bg-[#ff6b1a]/20 border border-[#ff6b1a]/30 shadow-lg text-white'
+                      ? 'bg-[var(--accent-soft)] border border-[var(--accent)]/30 shadow-lg text-white'
                       : 'hover:bg-white/5 border border-transparent text-white/80'
                   }`}
                 >
@@ -231,20 +231,20 @@ export const QueueDrawer: React.FC = () => {
                     />
                     {isCurrent && (
                       <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center">
-                        <Volume2 className="w-4 h-4 text-[#ff6b1a] animate-pulse" />
+                        <Volume2 className="w-4 h-4 text-[var(--accent)] animate-pulse" />
                       </div>
                     )}
                   </div>
 
                   <div className="min-w-0 flex-1">
                     {isCurrent && (
-                      <span className="text-[10px] font-black uppercase tracking-wider text-[#ff6b1a] block leading-tight mb-0.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-[var(--accent)] block leading-tight mb-0.5">
                         {t('nav.nowPlaying', 'Now Playing')}
                       </span>
                     )}
                     <h5
                       className={`text-sm font-semibold truncate ${
-                        isCurrent ? 'text-[#ff6b1a] font-bold' : 'text-white'
+                        isCurrent ? 'text-[var(--accent)] font-bold' : 'text-white'
                       }`}
                     >
                       {track.title}

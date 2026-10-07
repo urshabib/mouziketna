@@ -13,6 +13,7 @@ import {
   prefetchTrackStream,
   resolveMirrorStreams,
   resolveSaavnStream,
+  resolveWorkerStream,
   canonicalThumbUrl,
   fetchArtworkBlob,
   FALLBACK_ART,
@@ -299,6 +300,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const activeTrackRef = useRef<Track | null>(null);
   const isShuffleRef = useRef(false);
   const isLoopingRef = useRef(false);
+  const playTrackRef = useRef<((t: Track, isRetry?: boolean) => Promise<boolean>) | null>(null);
   const playNextRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const playPreviousRef = useRef<() => void>(() => {});
 
@@ -590,6 +592,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
+    // Auto-reconnect & self-heal if audio stream encounters an unexpected network stall or disconnect
+    const onAudioError = () => {
+      const active = activeTrackRef.current;
+      if (active && audio && !audio.ended && audio.currentTime > 0) {
+        const resumePos = audio.currentTime;
+        console.warn('Audio stream drop detected, automatically reconnecting from:', resumePos);
+        if (playTrackRef.current) {
+          playTrackRef.current(active, true).then((ok) => {
+            if (ok && audioRef.current && resumePos > 0) {
+              audioRef.current.currentTime = resumePos;
+            }
+          });
+        }
+      }
+    };
+
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('waiting', onWaiting);
@@ -597,6 +615,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
+    audio.addEventListener('error', onAudioError);
 
     // Init downloads registry
     initDownloadsRegistry().then(() => {
@@ -1226,8 +1245,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const onPlaying = () => finish(true);
       const onCanPlay = () => finish(true);
       const onError = () => finish(false);
-      // Give initial candidate up to 8.5s (grace period on initial page load / low network), subsequent fallbacks 5.5s
-      const timer = setTimeout(() => finish(false), idx === 0 ? 8500 : 5500);
+      // Give candidates ample time (9.5s on cold start, 6.5s for fallbacks) to avoid false negative "sources down"
+      const timer = setTimeout(() => finish(false), idx === 0 ? 9500 : 6500);
 
       audio.addEventListener('playing', onPlaying, { once: true });
       audio.addEventListener('canplay', onCanPlay, { once: true });
@@ -1236,7 +1255,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       try {
         audio.src = url;
-        audio.play().catch(() => {});
+        audio.load();
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {
+            // Might be autoplay policy or transient network error, wait for listeners or timer
+          });
+        }
       } catch {
         finish(false);
       }
@@ -1660,37 +1685,40 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const candidates: string[] = [];
-    const mirrorPromise = resolveMirrorStreams(resolvedTrack.id).catch(() => []);
 
-    // Try Saavn first
-    try {
-      const saavnUrl = await resolveSaavnStream(
+    // Parallel Stream Resolution across Worker Proxy, JioSaavn and Global Invidious/Piped Mirrors
+    const [workerUrl, saavnUrl, mirrors] = await Promise.all([
+      resolveWorkerStream(resolvedTrack.id).catch(() => null),
+      resolveSaavnStream(
         cleanTitleForLyrics(resolvedTrack.title) || resolvedTrack.title,
         cleanedArtist,
         quality,
         resolvedTrack.title,
         resolvedTrack.artist
-      );
-      if (saavnUrl) candidates.push(saavnUrl);
-    } catch {}
+      ).catch(() => null),
+      resolveMirrorStreams(resolvedTrack.id).catch(() => []),
+    ]);
 
-    try {
-      const mirrors = await mirrorPromise;
-      candidates.push(...mirrors);
-    } catch {}
+    if (workerUrl) candidates.push(workerUrl);
+    if (saavnUrl) candidates.push(saavnUrl);
+    if (mirrors && mirrors.length > 0) candidates.push(...mirrors);
 
     if (token !== playTokenRef.current) {
       clearTimeout(slowNoticeTimer);
       return false;
     }
 
-    // Startup Race Condition Deferral: Defer audio stream error until mirrors settle
+    // Startup Race Condition Deferral: fallback search if no candidates were found
     if (candidates.length === 0) {
       try {
         const fallbackSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
-        if (fallbackSearch.length > 0 && fallbackSearch[0].id && fallbackSearch[0].id !== resolvedTrack.id) {
-          const altMirrors = await resolveMirrorStreams(fallbackSearch[0].id).catch(() => []);
-          candidates.push(...altMirrors);
+        if (fallbackSearch.length > 0 && fallbackSearch[0].id) {
+          const [altWorker, altMirrors] = await Promise.all([
+            resolveWorkerStream(fallbackSearch[0].id).catch(() => null),
+            resolveMirrorStreams(fallbackSearch[0].id).catch(() => []),
+          ]);
+          if (altWorker) candidates.push(altWorker);
+          if (altMirrors && altMirrors.length > 0) candidates.push(...altMirrors);
         }
       } catch {}
     }
@@ -1698,12 +1726,23 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (candidates.length === 0) {
       clearTimeout(slowNoticeTimer);
       setIsBuffering(false);
-      showToast('Sources are resolving. Please wait or try another track.', true);
+      showToast('Sources are resolving. Please wait a moment or tap track again.', true);
       return false;
     }
 
     // Play first working candidate
-    const ok = await tryPlayCandidates(candidates, token, 0);
+    let ok = await tryPlayCandidates(candidates, token, 0);
+    
+    // Auto-retry once with refreshed mirror list if first cycle had a network warmup hiccup
+    if (!ok && token === playTokenRef.current) {
+      try {
+        const freshMirrors = await resolveMirrorStreams(resolvedTrack.id).catch(() => []);
+        if (freshMirrors.length > 0) {
+          ok = await tryPlayCandidates(freshMirrors, token, 0);
+        }
+      } catch {}
+    }
+
     clearTimeout(slowNoticeTimer);
     if (token !== playTokenRef.current) return false;
 
@@ -1719,10 +1758,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     } else {
       setIsBuffering(false);
-      showToast('Playback failed across available mirrors. Please try another track.', true);
+      showToast('Playback connection issue. Tap track to retry.', true);
       return false;
     }
   };
+
+  useEffect(() => {
+    playTrackRef.current = playTrack;
+  });
 
   const updateMediaSession = (t: Track) => {
     if (!('mediaSession' in navigator)) return;
@@ -1784,7 +1827,31 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) {
-      audio.play().catch(() => {});
+      resumeAudioContext();
+      if (audio.error || !audio.src || audio.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
+        if (activeTrack) {
+          const resumePos = currentTime;
+          playTrack(activeTrack, true).then((ok) => {
+            if (ok && resumePos > 0 && audioRef.current) {
+              audioRef.current.currentTime = resumePos;
+            }
+          });
+          return;
+        }
+      }
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {
+          if (activeTrack) {
+            const resumePos = currentTime;
+            playTrack(activeTrack, true).then((ok) => {
+              if (ok && resumePos > 0 && audioRef.current) {
+                audioRef.current.currentTime = resumePos;
+              }
+            });
+          }
+        });
+      }
     } else {
       audio.pause();
     }

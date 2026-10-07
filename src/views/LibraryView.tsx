@@ -47,13 +47,13 @@ export const LibraryView: React.FC = () => {
               onClick={() => setModalImportPlaylistOpen(true)}
               className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition-all hover:scale-105 active:scale-95 cursor-pointer"
             >
-              <DownloadCloud className="w-4 h-4 text-[#ff6b1a]" />
+              <DownloadCloud className="w-4 h-4 text-[var(--accent)]" />
               <span>{t('library.importPlaylist', 'Import Playlist')}</span>
             </button>
 
             <button
               onClick={() => setModalCreatePlaylistOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#ff6b1a] text-black text-xs font-extrabold transition-all hover:scale-105 active:scale-95 shadow-md cursor-pointer"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[var(--accent)] text-black text-xs font-extrabold transition-all hover:scale-105 active:scale-95 shadow-md cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t('library.createPlaylist', 'New Playlist')}</span>
@@ -112,7 +112,7 @@ export const LibraryView: React.FC = () => {
             onClick={() => openCollection('liked')}
             className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
           >
-            <div className="relative w-full aspect-square rounded-xl bg-gradient-to-br from-[#ff6b1a] to-[#6b2600] flex items-center justify-center text-white mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
+            <div className="relative w-full aspect-square rounded-xl bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center text-white mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
               <Heart className="w-12 h-12 fill-white" />
             </div>
             <h4 className="font-bold text-sm text-white truncate">{t('library.likedSongs', 'Liked Songs')}</h4>
@@ -126,7 +126,7 @@ export const LibraryView: React.FC = () => {
             onClick={() => openCollection('downloads')}
             className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
           >
-            <div className="relative w-full aspect-square rounded-xl bg-[#1c1c1e] border border-white/10 flex items-center justify-center text-[#ff6b1a] mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
+            <div className="relative w-full aspect-square rounded-xl bg-[#1c1c1e] border border-white/10 flex items-center justify-center text-[var(--accent)] mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
               <Download className="w-12 h-12" />
             </div>
             <h4 className="font-bold text-sm text-white truncate">{t('library.downloads', 'Downloaded')}</h4>

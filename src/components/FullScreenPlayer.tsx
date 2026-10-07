@@ -275,7 +275,7 @@ export const FullScreenPlayer: React.FC = () => {
                 {activeTrack.album || 'MOUZIKETNA'}
               </span>
               {swipeHint && (
-                <span className="text-[9px] sm:text-[10px] font-bold text-[#ff6b1a] animate-pulse truncate">
+                <span className="text-[9px] sm:text-[10px] font-bold text-[var(--accent)] animate-pulse truncate">
                   {swipeHint === 'next'
                     ? 'Swipe for Next Track ❯'
                     : swipeHint === 'prev'
@@ -317,7 +317,7 @@ export const FullScreenPlayer: React.FC = () => {
                   onClick={handleToggleBooster}
                   className={`p-1.5 sm:p-2 transition-all relative rounded-full active:scale-95 cursor-pointer ${
                     boosterSettings.bassMode !== 'off' || boosterSettings.volumeBoost > 100
-                      ? 'text-[#ff6b1a] bg-[#ff6b1a]/20 shadow-[0_0_12px_rgba(255,107,26,0.4)]'
+                      ? 'text-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_12px_rgba(255,107,26,0.4)]'
                       : 'text-white/70 hover:text-white'
                   }`}
                   title="Bass & Volume Booster"
@@ -341,7 +341,7 @@ export const FullScreenPlayer: React.FC = () => {
                     {/* Header with Title and Reset Button */}
                     <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-[#ff6b1a]" />
+                        <Zap className="w-4 h-4 text-[var(--accent)]" />
                         <span className="text-xs uppercase font-extrabold tracking-wider text-white">
                           Audio Booster
                         </span>
@@ -361,7 +361,7 @@ export const FullScreenPlayer: React.FC = () => {
                     <div className="flex flex-col gap-2">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-white/80">Bass Enhancement</span>
-                        <span className="text-[11px] font-extrabold text-[#ff6b1a] uppercase tracking-wide">
+                        <span className="text-[11px] font-extrabold text-[var(--accent)] uppercase tracking-wide">
                           {boosterSettings.bassMode === 'off'
                             ? 'Studio Bypass'
                             : boosterSettings.bassMode === 'on'
@@ -381,7 +381,7 @@ export const FullScreenPlayer: React.FC = () => {
                               onClick={() => setBassBoostMode(mode)}
                               className={`py-1.5 rounded-lg text-xs font-extrabold transition-all cursor-pointer ${
                                 isActive
-                                  ? 'bg-[#ff6b1a] text-black shadow-lg scale-[1.02]'
+                                  ? 'bg-[var(--accent)] text-black shadow-lg scale-[1.02]'
                                   : 'text-white/60 hover:text-white hover:bg-white/5'
                               }`}
                             >
@@ -414,7 +414,7 @@ export const FullScreenPlayer: React.FC = () => {
                               boosterSettings.bassMode === 'off'
                                 ? 'text-zinc-500'
                                 : boosterSettings.vocalClarity
-                                ? 'text-[#ff6b1a]'
+                                ? 'text-[var(--accent)]'
                                 : 'text-white/60'
                             }`}
                           />
@@ -436,7 +436,7 @@ export const FullScreenPlayer: React.FC = () => {
                                 ? 'bg-zinc-800 text-zinc-400 border border-zinc-700/60 cursor-not-allowed'
                                 : 'bg-zinc-900 text-zinc-500 border border-zinc-800 cursor-not-allowed'
                               : boosterSettings.vocalClarity
-                              ? 'bg-[#ff6b1a] text-black shadow-sm'
+                              ? 'bg-[var(--accent)] text-black shadow-sm'
                               : 'bg-white/10 text-white/50 hover:bg-white/15 hover:text-white'
                           }`}
                         >
@@ -457,7 +457,7 @@ export const FullScreenPlayer: React.FC = () => {
                         <span
                           className={`text-xs font-black px-2 py-0.5 rounded-md ${
                             boosterSettings.volumeBoost > 100
-                              ? 'bg-[#ff6b1a]/20 text-[#ff6b1a] border border-[#ff6b1a]/30'
+                              ? 'bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/30'
                               : 'bg-white/10 text-white/70'
                           }`}
                         >
@@ -473,7 +473,7 @@ export const FullScreenPlayer: React.FC = () => {
                         step="1"
                         value={boosterSettings.volumeBoost}
                         onChange={(e) => setVolumeBoostPercent(Number(e.target.value))}
-                        className="w-full accent-[#ff6b1a] bg-white/20 h-1.5 rounded-lg cursor-pointer"
+                        className="w-full accent-[var(--accent)] bg-white/20 h-1.5 rounded-lg cursor-pointer"
                       />
 
                       {/* Quick Presets Underneath */}
@@ -485,7 +485,7 @@ export const FullScreenPlayer: React.FC = () => {
                             onClick={() => setVolumeBoostPercent(pct)}
                             className={`py-1 rounded-lg text-[11px] font-bold transition-all ${
                               boosterSettings.volumeBoost === pct
-                                ? 'bg-[#ff6b1a] text-black font-extrabold'
+                                ? 'bg-[var(--accent)] text-black font-extrabold'
                                 : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
                             }`}
                           >
@@ -511,13 +511,13 @@ export const FullScreenPlayer: React.FC = () => {
                     setIsBoosterMenuOpen(false);
                   }}
                   className={`p-2 transition-colors relative ${
-                    sleepTimerRemaining !== null ? 'text-[#ff6b1a]' : 'text-white/70 hover:text-white'
+                    sleepTimerRemaining !== null ? 'text-[var(--accent)]' : 'text-white/70 hover:text-white'
                   }`}
                   title="Sleep Timer"
                 >
                   <Moon className="w-5 h-5" />
                   {sleepTimerRemaining !== null && (
-                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#ff6b1a] text-black text-[9px] font-extrabold flex items-center justify-center">
+                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent)] text-black text-[9px] font-extrabold flex items-center justify-center">
                       {Math.ceil(sleepTimerRemaining / 60)}m
                     </span>
                   )}
@@ -581,15 +581,15 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
           </div>
 
-          {/* Center Artwork with Horizontal Swipe Motion & Generous Proportional Sizing */}
-          <div className="flex-1 min-h-0 flex items-center justify-center w-full max-w-md mx-auto my-auto py-2 sm:py-3">
+          {/* Center Artwork with Horizontal Swipe Motion & Lifted Higher */}
+          <div className="flex-1 min-h-0 flex items-center justify-center w-full max-w-md mx-auto pt-0 pb-1 sm:pt-1 sm:pb-2">
             <motion.div
               style={{
                 aspectRatio: '1 / 1',
                 width: 'min(88vw, 360px)',
                 height: 'min(88vw, 360px)',
-                maxHeight: 'calc(100dvh - 340px)',
-                maxWidth: 'calc(100dvh - 340px)',
+                maxHeight: 'calc(100dvh - 330px)',
+                maxWidth: 'calc(100dvh - 330px)',
                 x: dragX,
                 rotate: dragX * 0.04,
                 scale: 1 - Math.min(Math.abs(dragX) / 1000, 0.1),
@@ -712,8 +712,8 @@ export const FullScreenPlayer: React.FC = () => {
             </motion.div>
           </div>
 
-          {/* Bottom Track Meta, Timeline & Controls */}
-          <div className="w-full max-w-md mx-auto flex flex-col gap-3 sm:gap-4 mt-2 sm:mt-4 mb-1 sm:mb-2 flex-shrink-0">
+          {/* Bottom Track Meta, Timeline & Controls (Positioned closer up to the artwork) */}
+          <div className="w-full max-w-md mx-auto flex flex-col gap-2.5 sm:gap-3.5 mt-1 sm:mt-2 mb-1 flex-shrink-0">
             {/* Title & Actions Row (Matching reference layout) */}
             <div className="flex items-center justify-between">
               <div className="min-w-0 flex-1 pr-3">
@@ -741,7 +741,7 @@ export const FullScreenPlayer: React.FC = () => {
                 >
                   <Heart
                     className={`w-6 h-6 sm:w-7 sm:h-7 ${
-                      isLiked ? 'fill-[#ff6b1a] text-[#ff6b1a]' : 'text-white/60'
+                      isLiked ? 'fill-[var(--accent)] text-[var(--accent)]' : 'text-white/60'
                     }`}
                   />
                 </button>
@@ -756,12 +756,12 @@ export const FullScreenPlayer: React.FC = () => {
               seekTo={seekTo}
             />
 
-            {/* Main Playback Controls (Clean 5 buttons matching reference image) */}
+            {/* Main Playback Controls */}
             <div className="flex items-center justify-between px-1 sm:px-2 no-swipe">
               <button
                 onClick={toggleShuffle}
                 className={`p-2 transition-colors cursor-pointer ${
-                  isShuffle ? 'text-[#ff6b1a]' : 'text-white/40 hover:text-white'
+                  isShuffle ? 'text-[var(--accent)]' : 'text-white/40 hover:text-white'
                 }`}
                 title="Shuffle"
               >
@@ -802,7 +802,7 @@ export const FullScreenPlayer: React.FC = () => {
               <button
                 onClick={toggleLoop}
                 className={`p-2 transition-colors cursor-pointer ${
-                  isLooping ? 'text-[#ff6b1a]' : 'text-white/40 hover:text-white'
+                  isLooping ? 'text-[var(--accent)]' : 'text-white/40 hover:text-white'
                 }`}
                 title={isLooping ? 'Repeat One' : 'Repeat Off'}
               >

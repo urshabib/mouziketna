@@ -62,6 +62,7 @@
   --dimmer: #85858c;
 }
 
+:root[data-accent="orange"] { --accent: #ff6b1a; --accent-hover: #ff8b47; --accent-soft: rgba(255, 107, 26, 0.15); }
 :root[data-accent="purple"] { --accent: #a259ff; --accent-hover: #b87bff; --accent-soft: rgba(162, 89, 255, 0.15); }
 :root[data-accent="blue"]   { --accent: #3b9dff; --accent-hover: #63b3ff; --accent-soft: rgba(59, 157, 255, 0.15); }
 :root[data-accent="green"]  { --accent: #28c76f; --accent-hover: #4ddb8c; --accent-soft: rgba(40, 199, 111, 0.15); }
