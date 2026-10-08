@@ -270,14 +270,14 @@ export const LyricsSheet: React.FC = () => {
               fontStyle: 'var(--lyrics-font-style, normal)',
               letterSpacing: 'var(--lyrics-letter-spacing, normal)',
             }}
-            className="whitespace-pre-wrap font-semibold leading-relaxed text-white/80 py-6"
+            className="whitespace-pre-wrap font-semibold leading-relaxed text-white/80 py-6 break-words max-w-full"
           >
             {currentLyrics.lines}
           </div>
         )}
 
         {currentLyrics.mode === 'synced' && Array.isArray(currentLyrics.lines) && (
-          <div className="flex flex-col gap-5 py-8">
+          <div className="flex flex-col gap-5 py-8 max-w-full">
             {(currentLyrics.lines as SyncedLyricsLine[]).map((line, idx) => {
               const isActive = idx === activeLineIndex;
               const isPassed = idx < activeLineIndex;
@@ -305,9 +305,9 @@ export const LyricsSheet: React.FC = () => {
                     fontStyle: 'var(--lyrics-font-style, normal)',
                     letterSpacing: 'var(--lyrics-letter-spacing, normal)',
                   }}
-                  className={`lyric-line font-extrabold text-xl sm:text-2xl md:text-3xl leading-snug cursor-pointer transition-all duration-300 ${
+                  className={`lyric-line font-extrabold text-xl sm:text-2xl md:text-3xl leading-snug cursor-pointer transition-all duration-300 break-words max-w-full origin-left rtl:origin-right ${
                     isActive
-                      ? 'active scale-[1.03] text-white opacity-100'
+                      ? 'active scale-[1.02] text-white opacity-100'
                       : isPassed
                       ? 'text-white/50 opacity-70'
                       : 'text-white/30 opacity-40 hover:opacity-75'

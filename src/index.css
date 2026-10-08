@@ -105,14 +105,14 @@
   --lyrics-glow-shadow: rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.95) 0 0 10px, rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.8) 0 0 24px, rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.5) 0 0 44px; 
   --lyrics-glow-filter: drop-shadow(0 0 6px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.95)) drop-shadow(0 0 18px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.75)) drop-shadow(0 0 35px rgba(var(--lyrics-color-rgb, 255, 255, 255), 0.5));
 }
-:root[data-lyrics-font="poppins"]   { --lyrics-font: 'Poppins', sans-serif; --lyrics-font-scale: 1.05; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
-:root[data-lyrics-font="bebas"]     { --lyrics-font: 'Bebas Neue', Impact, sans-serif; --lyrics-letter-spacing: 0.05em; --lyrics-font-scale: 1.25; --lyrics-font-style: normal; }
-:root[data-lyrics-font="caveat"]    { --lyrics-font: 'Caveat', cursive, sans-serif; --lyrics-font-scale: 1.25; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
-:root[data-lyrics-font="playfair"]  { --lyrics-font: 'Playfair Display', Georgia, serif; --lyrics-font-style: italic; --lyrics-font-scale: 1.15; --lyrics-letter-spacing: normal; }
-:root[data-lyrics-font="righteous"] { --lyrics-font: 'Righteous', cursive, sans-serif; --lyrics-letter-spacing: 0.03em; --lyrics-font-scale: 1.18; --lyrics-font-style: normal; }
-:root[data-lyrics-font="jetbrains"] { --lyrics-font: 'JetBrains Mono', monospace; --lyrics-font-scale: 1.12; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
-:root[data-lyrics-font="nunito"]    { --lyrics-font: 'Nunito', sans-serif; --lyrics-font-scale: 1.15; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
-:root[data-lyrics-font="inter"]     { --lyrics-font: 'Inter', sans-serif; --lyrics-font-scale: 1.05; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
+:root[data-lyrics-font="poppins"]   { --lyrics-font: 'Poppins', sans-serif; --lyrics-font-scale: 1.0; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
+:root[data-lyrics-font="bebas"]     { --lyrics-font: 'Bebas Neue', Impact, sans-serif; --lyrics-letter-spacing: 0.04em; --lyrics-font-scale: 1.06; --lyrics-font-style: normal; }
+:root[data-lyrics-font="caveat"]    { --lyrics-font: 'Caveat', cursive, sans-serif; --lyrics-font-scale: 1.08; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
+:root[data-lyrics-font="playfair"]  { --lyrics-font: 'Playfair Display', Georgia, serif; --lyrics-font-style: italic; --lyrics-font-scale: 0.98; --lyrics-letter-spacing: normal; }
+:root[data-lyrics-font="righteous"] { --lyrics-font: 'Righteous', cursive, sans-serif; --lyrics-letter-spacing: 0.02em; --lyrics-font-scale: 1.02; --lyrics-font-style: normal; }
+:root[data-lyrics-font="jetbrains"] { --lyrics-font: 'JetBrains Mono', monospace; --lyrics-font-scale: 0.94; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
+:root[data-lyrics-font="nunito"]    { --lyrics-font: 'Nunito', sans-serif; --lyrics-font-scale: 1.0; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
+:root[data-lyrics-font="inter"]     { --lyrics-font: 'Inter', sans-serif; --lyrics-font-scale: 1.0; --lyrics-letter-spacing: normal; --lyrics-font-style: normal; }
 
 * {
   box-sizing: border-box;
@@ -160,11 +160,11 @@ body.liquid-glass .card-surface {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
 }
 
-/* Liquid Glass Ultra mode (Max Hyper-Blur Dynamic Island Glass with iOS Refraction) */
+/* Liquid Glass Ultra mode (Enhanced iOS Dynamic Island Liquid Glass with Radiant Accent Aura & Specular Refraction) */
 body.liquid-glass-ultra {
-  background: radial-gradient(circle at 15% 0%, rgba(255, 107, 26, 0.35), transparent 60%),
-              radial-gradient(circle at 85% 100%, rgba(255, 140, 60, 0.28), transparent 55%),
-              #040406;
+  background: radial-gradient(circle at 15% 0%, var(--accent-soft, rgba(255, 107, 26, 0.28)), transparent 60%),
+              radial-gradient(circle at 85% 100%, var(--accent-soft, rgba(255, 140, 60, 0.22)), transparent 55%),
+              #050508;
 }
 
 body.liquid-glass-ultra .glass-panel,
@@ -172,11 +172,11 @@ body.liquid-glass-ultra .card-surface,
 body.liquid-glass-ultra .popover-menu,
 body.liquid-glass-ultra div[class*="rounded-2xl"][class*="bg-white/"]:not([data-preset-swatch]),
 body.liquid-glass-ultra div[class*="rounded-xl"][class*="bg-white/"]:not([data-preset-swatch]):not(button):not([class*="aspect-square"]) {
-  background: rgba(255, 255, 255, 0.07) !important;
-  backdrop-filter: blur(50px) saturate(220%) brightness(1.1) contrast(1.02);
-  -webkit-backdrop-filter: blur(50px) saturate(220%) brightness(1.1) contrast(1.02);
-  border: 1px solid rgba(255, 255, 255, 0.14) !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.25) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(52px) saturate(230%) brightness(1.12) contrast(1.04);
+  -webkit-backdrop-filter: blur(52px) saturate(230%) brightness(1.12) contrast(1.04);
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 0 24px var(--accent-soft, rgba(255, 107, 26, 0.22)), inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 2px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
 /* Preserve Preset color swatches and buttons from glass transparency overrides */

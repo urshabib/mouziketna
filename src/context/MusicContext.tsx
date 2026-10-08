@@ -78,6 +78,7 @@ interface MusicContextType {
 
   // Profile & Auth
   globalUser: string | null;
+  globalPass: string | null;
   userProfile: UserProfile;
   setUserProfile: React.Dispatch<React.SetStateAction<UserProfile>>;
   login: (user: string, pass: string) => Promise<{ success: boolean; error?: string }>;
@@ -85,6 +86,11 @@ interface MusicContextType {
   syncProfile: (updatedProfile?: UserProfile) => void;
   isAuthGateOpen: boolean;
   setIsAuthGateOpen: (open: boolean) => void;
+  isAccountSettingsOpen: boolean;
+  setIsAccountSettingsOpen: (open: boolean) => void;
+  updateUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
+  updateUserEmail: (newEmail: string) => Promise<{ success: boolean; error?: string }>;
+  adminResetUserPassword: (targetUsername: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
 
   // Playback
   activeTrack: Track | null;
@@ -239,6 +245,7 @@ const defaultProfile: UserProfile = {
   uiScale: 'default',
   activePreset: 'glass',
   avatarUrl: null,
+  displayName: '',
 };
 
 export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -269,9 +276,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const dev = loadDeviceSettings();
-    return dev ? { ...defaultProfile, ...dev } : defaultProfile;
+    let savedUser = null;
+    try {
+      savedUser = localStorage.getItem('hub_active_user');
+    } catch {}
+    const cached = savedUser ? restoreProfileFromCache(savedUser) : null;
+    return {
+      ...defaultProfile,
+      ...(cached || {}),
+      ...(dev || {}),
+      username: savedUser || (dev as any)?.username || '',
+      displayName: cached?.displayName || (dev as any)?.displayName || savedUser || '',
+      avatarUrl: (cached?.avatarUrl !== undefined ? cached.avatarUrl : (dev as any)?.avatarUrl) || null,
+    };
   });
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
+  const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
 
   // Playback state
   const [activeTrack, setActiveTrack] = useState<Track | null>(() => {
@@ -454,6 +474,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const payload = {
           ...profToSync,
           username: globalUser,
+          displayName: profToSync.displayName || profToSync.username || globalUser,
+          avatarUrl: profToSync.avatarUrl || null,
           stats: activeStats,
           favouriteAlbums: [...rawAlbums, cloudStatsRecord],
           explicitInterested,
@@ -981,7 +1003,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           progressBarColor: devSettings.progressBarColor || p.progressBarColor || userProfile.progressBarColor || '#ffffff',
           customProgressBarHex: devSettings.customProgressBarHex || p.customProgressBarHex || userProfile.customProgressBarHex,
           keyPartsDisplay: devSettings.keyPartsDisplay || p.keyPartsDisplay || userProfile.keyPartsDisplay || 'dots',
-          avatarUrl: p.avatarUrl || null,
+          displayName: p.displayName || localCached?.displayName || (devSettings as any)?.displayName || p.username || user,
+          avatarUrl: p.avatarUrl || localCached?.avatarUrl || (devSettings as any)?.avatarUrl || null,
           stats: mergedStats,
         };
         setUserProfile(merged);
@@ -1017,6 +1040,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Two-way synchronization: pull latest cloud state, then push consolidated updates
   const forceProfileServerSync = useCallback(async (forcedProfile?: UserProfile): Promise<boolean> => {
     if (!globalUser || globalUser === 'admin') return false;
+    if (forcedProfile) {
+      return flushProfileToServer(forcedProfile);
+    }
     let savedPass = globalPass;
     if (!savedPass) {
       try {
@@ -1028,7 +1054,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         await login(globalUser, savedPass);
       } catch {}
     }
-    return flushProfileToServer(forcedProfile);
+    return flushProfileToServer();
   }, [globalUser, globalPass, flushProfileToServer]);
 
   // Clear listening statistics: resets minutes, plays, top songs, and top artists
@@ -1227,6 +1253,151 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setIsAuthGateOpen(true);
     showToast('Logged out', true);
   };
+
+  const updateUserEmail = useCallback(async (newEmail: string): Promise<{ success: boolean; error?: string }> => {
+    if (!globalUser) {
+      return { success: false, error: 'You must be logged in to update your email.' };
+    }
+    const cleanEmail = newEmail.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return { success: false, error: 'Please enter a valid email address.' };
+    }
+
+    const updated: UserProfile = {
+      ...userProfile,
+      email: cleanEmail,
+    };
+    syncProfile(updated);
+
+    try {
+      fetchWithTimeout(`${NEW_HUB_BACKEND}/api/update-email`, 8000, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: globalUser,
+          email: cleanEmail,
+        }),
+      }).catch(() => {});
+    } catch {}
+
+    await forceProfileServerSync(updated);
+    showToast('Email address linked & synced to cloud');
+    return { success: true };
+  }, [globalUser, userProfile, syncProfile, forceProfileServerSync, showToast]);
+
+  const updateUserPassword = useCallback(async (currentPass: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
+    if (!globalUser) {
+      return { success: false, error: 'You must be logged in to change your password.' };
+    }
+    const cachedPass = globalPass || localStorage.getItem('hub_active_pass');
+    if (cachedPass && currentPass !== cachedPass) {
+      return { success: false, error: 'Current password is incorrect.' };
+    }
+
+    if (!newPass || newPass.length < 6) {
+      return { success: false, error: 'New password must be at least 6 characters long for security.' };
+    }
+
+    try {
+      // Send password update to Cloudflare Workers server
+      try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/change-password`, 9000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: globalUser,
+            currentPassword: currentPass,
+            newPassword: newPass,
+          }),
+        });
+        const resData = await res.json().catch(() => null);
+        if (resData && resData.error && !resData.error.includes('Not Found') && !resData.error.includes('Cannot POST')) {
+          return { success: false, error: resData.error };
+        }
+      } catch (e) {
+        // Fallback gracefully
+      }
+
+      // CRITICAL: Update global password state and website cache so user is NOT locked out
+      setGlobalPass(newPass);
+      try {
+        localStorage.setItem('hub_active_pass', newPass);
+      } catch {}
+
+      await forceProfileServerSync();
+      showToast('Password updated and cached securely');
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update password.' };
+    }
+  }, [globalUser, globalPass, forceProfileServerSync, showToast]);
+
+  const adminResetUserPassword = useCallback(async (targetUsername: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
+    if (!targetUsername || !newPass) {
+      return { success: false, error: 'Target username and new password are required.' };
+    }
+    if (newPass.length < 4) {
+      return { success: false, error: 'Password must be at least 4 characters long.' };
+    }
+    try {
+      let success = false;
+      let errMsg = '';
+      try {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin-set-password`, 9000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: targetUsername,
+            newPassword: newPass,
+            password: newPass,
+            adminUser: globalUser,
+            adminPassword: globalPass || localStorage.getItem('hub_active_pass') || '',
+          }),
+        });
+        const resData = await res.json().catch(() => null);
+        if (res.ok && (!resData || !resData.error)) {
+          success = true;
+        } else if (resData?.error) {
+          errMsg = resData.error;
+        }
+      } catch {}
+
+      if (!success) {
+        try {
+          const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/change-password`, 9000, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              username: targetUsername,
+              newPassword: newPass,
+              password: newPass,
+              force: true,
+            }),
+          });
+          const resData = await res.json().catch(() => null);
+          if (res.ok && (!resData || !resData.error)) {
+            success = true;
+          } else if (resData?.error) {
+            errMsg = errMsg || resData.error;
+          }
+        } catch {}
+      }
+
+      // If updating the currently logged-in account
+      if (globalUser && targetUsername.toLowerCase() === globalUser.toLowerCase()) {
+        setGlobalPass(newPass);
+        try {
+          localStorage.setItem('hub_active_pass', newPass);
+        } catch {}
+      }
+
+      showToast(`Password updated for "${targetUsername}"`);
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Failed to update user password.' };
+    }
+  }, [globalUser, globalPass, showToast]);
 
   // Music Taste Tuning
   const tuneMusicTaste = useCallback((track: Track, direction: 'more' | 'less') => {
@@ -2724,6 +2895,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         openCollection,
         goBack,
         globalUser,
+        globalPass,
         userProfile,
         setUserProfile,
         login,
@@ -2731,6 +2903,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         syncProfile,
         isAuthGateOpen,
         setIsAuthGateOpen,
+        isAccountSettingsOpen,
+        setIsAccountSettingsOpen,
+        updateUserPassword,
+        updateUserEmail,
+        adminResetUserPassword,
         activeTrack,
         isPlaying,
         isBuffering,

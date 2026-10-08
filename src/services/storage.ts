@@ -273,6 +273,8 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       progressBarColor: profile.progressBarColor || '#ffffff',
       customProgressBarHex: profile.customProgressBarHex || undefined,
       keyPartsDisplay: profile.keyPartsDisplay || 'dots',
+      displayName: profile.displayName || undefined,
+      avatarUrl: profile.avatarUrl !== undefined ? profile.avatarUrl : undefined,
     }));
   } catch {}
 }

@@ -13,6 +13,18 @@ import {
   ShieldOff,
   Heart,
   ListMusic,
+  KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
+  HelpCircle,
+  Cloud,
+  Database,
+  Copy,
+  Check,
+  Sparkles,
+  X,
+  Mail,
 } from 'lucide-react';
 import { NEW_HUB_BACKEND, fetchWithTimeout, fetchJsonRetry } from '../services/api';
 
@@ -21,10 +33,12 @@ interface AdminUserRecord {
   isAdmin: boolean;
   likedCount?: number;
   playlistCount?: number;
+  password?: string;
+  email?: string;
 }
 
 export const AdminView: React.FC = () => {
-  const { goBack, globalUser, showToast, setModalConfirm } = useMusic();
+  const { goBack, globalUser, showToast, setModalConfirm, adminResetUserPassword } = useMusic();
 
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [loading, setLoading] = useState(false);
@@ -36,6 +50,17 @@ export const AdminView: React.FC = () => {
   const [newIsAdmin, setNewIsAdmin] = useState(false);
   const [creating, setCreating] = useState(false);
   const [updatingUser, setUpdatingUser] = useState<string | null>(null);
+
+  // Modify password state
+  const [editingPasswordUser, setEditingPasswordUser] = useState<AdminUserRecord | null>(null);
+  const [targetNewPassword, setTargetNewPassword] = useState('');
+  const [showTargetPassword, setShowTargetPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Cloudflare guide modal state
+  const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
 
   const loadUsers = async () => {
     setLoading(true);
@@ -163,8 +188,57 @@ export const AdminView: React.FC = () => {
     }
   };
 
+  const handleAdminUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPasswordUser) return;
+    const target = editingPasswordUser.username;
+    const newPass = targetNewPassword.trim();
+    if (!newPass) {
+      showToast('Please enter a new password', true);
+      return;
+    }
+    if (newPass.length < 4) {
+      showToast('Password must be at least 4 characters long', true);
+      return;
+    }
+    setSavingPassword(true);
+    try {
+      const res = await adminResetUserPassword(target, newPass);
+      if (res.success) {
+        showToast(`Password updated for user "${target}"`);
+        setEditingPasswordUser(null);
+        setTargetNewPassword('');
+        loadUsers();
+      } else {
+        showToast(res.error || 'Failed to update password', true);
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error updating password', true);
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+    let pass = '';
+    for (let i = 0; i < 10; i++) {
+      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setTargetNewPassword(pass);
+    setShowTargetPassword(true);
+  };
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard?.writeText(text);
+    setCopiedKey(key);
+    showToast('Copied to clipboard');
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
   const filteredUsers = users.filter((u) =>
-    u.username.toLowerCase().includes(searchQuery.trim().toLowerCase())
+    u.username.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+    (u.email && u.email.toLowerCase().includes(searchQuery.trim().toLowerCase()))
   );
 
   const totalAdmins = users.filter((u) => u.isAdmin).length;
@@ -192,13 +266,22 @@ export const AdminView: React.FC = () => {
           </p>
         </div>
 
-        {/* Stats Badges */}
-        <div className="flex items-center gap-3">
-          <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-2">
+        {/* Stats Badges & Cloudflare DB button */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setShowCloudflareGuide(true)}
+            className="px-3.5 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white flex items-center gap-2 text-xs font-bold transition-all cursor-pointer"
+            title="How to view and inspect database on Cloudflare"
+          >
+            <Cloud className="w-4 h-4 text-sky-400" />
+            <span>Cloudflare DB Guide</span>
+          </button>
+          <div className="px-3.5 py-2 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-2">
             <Users className="w-4 h-4 text-white/60" />
             <span className="text-xs font-bold text-white/80">{users.length} Users</span>
           </div>
-          <div className="px-4 py-2 rounded-2xl bg-[var(--accent-soft)] border border-[var(--accent)]/30 flex items-center gap-2">
+          <div className="px-3.5 py-2 rounded-2xl bg-[var(--accent-soft)] border border-[var(--accent)]/30 flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-[var(--accent)]" />
             <span className="text-xs font-bold text-[var(--accent)]">{totalAdmins} Admins</span>
           </div>
@@ -348,8 +431,8 @@ export const AdminView: React.FC = () => {
                         )}
                       </div>
 
-                      {/* Counts / stats */}
-                      <div className="flex items-center gap-3 mt-1 text-[11px] font-medium text-white/50">
+                      {/* Counts / stats / email / password */}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px] font-medium text-white/50">
                         <span className="flex items-center gap-1">
                           <Heart className="w-3 h-3 text-white/30" />
                           <span>{u.likedCount ?? 0} liked</span>
@@ -359,12 +442,67 @@ export const AdminView: React.FC = () => {
                           <ListMusic className="w-3 h-3 text-white/30" />
                           <span>{u.playlistCount ?? 0} playlists</span>
                         </span>
+
+                        {u.email && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center gap-1 text-[var(--accent)] font-semibold">
+                              <Mail className="w-3 h-3 opacity-70" />
+                              <span className="truncate max-w-[160px]">{u.email}</span>
+                            </span>
+                          </>
+                        )}
+
+                        {u.password && (
+                          <>
+                            <span>•</span>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/70">
+                              <Lock className="w-2.5 h-2.5 text-white/40" />
+                              <span className="font-mono text-[10px]">
+                                {revealedPasswords[u.username] ? u.password : '••••••••'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRevealedPasswords((prev) => ({
+                                    ...prev,
+                                    [u.username]: !prev[u.username],
+                                  }))
+                                }
+                                className="text-white/40 hover:text-white"
+                                title={revealedPasswords[u.username] ? 'Hide password' : 'Show password'}
+                              >
+                                {revealedPasswords[u.username] ? (
+                                  <EyeOff className="w-3 h-3" />
+                                ) : (
+                                  <Eye className="w-3 h-3" />
+                                )}
+                              </button>
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
 
                   {/* Actions */}
-                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+                    {/* Modify User Password Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingPasswordUser(u);
+                        setTargetNewPassword(u.password || '');
+                        setShowTargetPassword(false);
+                      }}
+                      disabled={isBeingUpdated}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all bg-[var(--accent-soft)] hover:bg-[var(--accent)]/30 text-[var(--accent)] border border-[var(--accent)]/30 cursor-pointer disabled:opacity-40"
+                      title={`Modify password for ${u.username}`}
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Set Password</span>
+                    </button>
+
                     {/* Toggle Admin Button */}
                     <button
                       onClick={() => handleToggleAdmin(u.username, u.isAdmin)}
@@ -373,7 +511,7 @@ export const AdminView: React.FC = () => {
                         u.isAdmin
                           ? 'bg-white/5 hover:bg-red-500/10 text-white/70 hover:text-red-400'
                           : 'bg-white/5 hover:bg-[var(--accent-soft)] text-white/70 hover:text-[var(--accent)]'
-                      } disabled:opacity-40 disabled:pointer-events-none`}
+                      } disabled:opacity-40 disabled:pointer-events-none cursor-pointer`}
                       title={u.isAdmin ? 'Revoke admin rights' : 'Promote to admin'}
                     >
                       {isBeingUpdated ? (
@@ -396,7 +534,7 @@ export const AdminView: React.FC = () => {
                       <button
                         onClick={() => confirmDeleteUser(u.username)}
                         disabled={isBeingUpdated}
-                        className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors disabled:opacity-40"
+                        className="p-2 rounded-xl bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
                         title="Delete user account"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -409,6 +547,240 @@ export const AdminView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* CLOUDFLARE DATABASE INFO CARD */}
+      <div className="p-6 rounded-3xl bg-white/[0.02] border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 flex-shrink-0">
+            <Database className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-sm text-white flex items-center gap-2">
+              <span>Cloudflare Backend Database</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-white/70">
+                Workers KV / D1
+              </span>
+            </h4>
+            <p className="text-xs text-white/50 mt-0.5">
+              Forgot an administrator or user password? You can inspect and modify all records directly in Cloudflare.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowCloudflareGuide(true)}
+          className="px-4 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-sky-300 font-bold text-xs transition-all flex items-center gap-2 cursor-pointer self-start sm:self-auto"
+        >
+          <HelpCircle className="w-4 h-4" />
+          <span>View Cloudflare Instructions</span>
+        </button>
+      </div>
+
+      {/* MODAL: ADMIN SET / MODIFY USER PASSWORD */}
+      {editingPasswordUser && (
+        <div
+          onClick={() => setEditingPasswordUser(null)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-[#16161a] border border-white/20 rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200"
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)]">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-white">Modify User Password</h3>
+                  <p className="text-xs text-white/50">
+                    Account: <span className="font-bold text-white">@{editingPasswordUser.username}</span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingPasswordUser(null)}
+                className="p-1.5 rounded-full bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <form onSubmit={handleAdminUpdatePassword} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <label className="text-xs font-bold text-white/80">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showTargetPassword ? 'text' : 'password'}
+                    value={targetNewPassword}
+                    onChange={(e) => setTargetNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    autoFocus
+                    className="w-full bg-white/5 border border-white/15 rounded-2xl px-4 py-3 pr-10 text-sm text-white placeholder-white/30 focus:outline-none focus:border-[var(--accent)] transition-colors font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowTargetPassword(!showTargetPassword)}
+                    className="absolute right-3 top-3.5 text-white/40 hover:text-white transition-colors cursor-pointer"
+                  >
+                    {showTargetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Helper Actions */}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={generateRandomPassword}
+                  className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Generate Strong Password</span>
+                </button>
+
+                {targetNewPassword && (
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(targetNewPassword, 'modal-pass')}
+                    className="text-xs text-white/60 hover:text-white flex items-center gap-1 font-semibold cursor-pointer"
+                  >
+                    {copiedKey === 'modal-pass' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedKey === 'modal-pass' ? 'Copied' : 'Copy'}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 text-[11px] text-white/50 leading-relaxed">
+                This will immediately overwrite the password for <strong className="text-white">@{editingPasswordUser.username}</strong> on the Cloudflare server. If they are currently active, their login will remain valid without interruption.
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPasswordUser(null)}
+                  className="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPassword || !targetNewPassword.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-[var(--accent)] text-black font-extrabold text-xs transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-lg shadow-[var(--accent-soft)]"
+                >
+                  {savingPassword ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Saving to Cloudflare...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4 stroke-[2.5]" />
+                      <span>Update Password</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: STEP-BY-STEP CLOUDFLARE DATABASE ACCESS GUIDE */}
+      {showCloudflareGuide && (
+        <div
+          onClick={() => setShowCloudflareGuide(false)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-lg bg-[#141418] border border-white/20 rounded-3xl p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-white">Cloudflare Users Database</h3>
+                  <p className="text-xs text-white/50">How to inspect & recover passwords in Cloudflare</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCloudflareGuide(false)}
+                className="p-1.5 rounded-full bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Guide Steps */}
+            <div className="flex flex-col gap-4 text-xs text-white/80 leading-relaxed">
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col gap-2">
+                <div className="flex items-center gap-2 font-bold text-white text-sm">
+                  <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-black flex items-center justify-center text-[11px] font-black">1</span>
+                  <span>Log in to Cloudflare Dashboard</span>
+                </div>
+                <p className="text-white/60 pl-7">
+                  Open <strong className="text-sky-300">https://dash.cloudflare.com</strong> and sign in to your Cloudflare account.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col gap-2">
+                <div className="flex items-center gap-2 font-bold text-white text-sm">
+                  <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-black flex items-center justify-center text-[11px] font-black">2</span>
+                  <span>Open Workers & Pages</span>
+                </div>
+                <p className="text-white/60 pl-7">
+                  In the left sidebar, click <strong>Workers & Pages</strong>, then select your worker: <code className="bg-black/60 px-2 py-0.5 rounded text-[var(--accent)]">new-music-space-api</code>.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col gap-2">
+                <div className="flex items-center gap-2 font-bold text-white text-sm">
+                  <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-black flex items-center justify-center text-[11px] font-black">3</span>
+                  <span>Inspect Storage / KV Namespaces</span>
+                </div>
+                <p className="text-white/60 pl-7">
+                  Click the <strong>Storage</strong> (or <strong>Settings → Bindings → KV Namespaces</strong>) tab. Select the Users KV namespace (e.g., <code className="bg-black/60 px-1.5 py-0.5 rounded text-white/90">USERS</code> or <code className="bg-black/60 px-1.5 py-0.5 rounded text-white/90">MUSIC_KV</code>).
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col gap-2">
+                <div className="flex items-center gap-2 font-bold text-white text-sm">
+                  <span className="w-5 h-5 rounded-full bg-[var(--accent)] text-black flex items-center justify-center text-[11px] font-black">4</span>
+                  <span>View or Edit User Password</span>
+                </div>
+                <p className="text-white/60 pl-7">
+                  Click <strong>KV Pairs</strong>. Find the key <code className="bg-black/60 px-1.5 py-0.5 rounded text-white/90">user:[username]</code> or <code className="bg-black/60 px-1.5 py-0.5 rounded text-white/90">users</code>. Click <strong>View</strong> to read the JSON value containing their password, or edit it directly and click <strong>Save</strong>!
+                </p>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] flex items-center gap-2.5">
+                <Check className="w-4 h-4 flex-shrink-0" />
+                <span>
+                  <strong>Tip:</strong> You don't even need to visit Cloudflare! You can modify any user's password directly from this Admin Console using the <strong>Set Password</strong> button above.
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCloudflareGuide(false)}
+              className="w-full py-2.5 rounded-xl bg-[var(--accent)] text-black font-extrabold text-xs transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer shadow-md"
+            >
+              Got It
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

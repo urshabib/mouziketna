@@ -31,6 +31,7 @@ import {
   savePersistentPlaylistCover,
   getPersistentPlaylistCover,
 } from '../services/storage';
+import { normalizeImageFile } from '../services/imageUtils';
 import {
   fetchJsonRetry,
   NEW_HUB_BACKEND,
@@ -263,23 +264,28 @@ export const CollectionView: React.FC = () => {
     }
   };
 
-  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || target.type !== 'custom-playlist' || !target.id) return;
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.target.files?.[0];
+    if (!rawFile || target.type !== 'custom-playlist' || !target.id) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const pl = userProfile.customPlaylists.find((p) => p.id === target.id);
-      if (pl) {
-        pl.customCover = dataUrl;
-        pl.thumb = dataUrl;
-        savePersistentPlaylistCover(target.id!, dataUrl);
-        syncProfile();
-        showToast('Playlist cover updated');
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const file = await normalizeImageFile(rawFile);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const pl = userProfile.customPlaylists.find((p) => p.id === target.id);
+        if (pl) {
+          pl.customCover = dataUrl;
+          pl.thumb = dataUrl;
+          savePersistentPlaylistCover(target.id!, dataUrl);
+          syncProfile();
+          showToast('Playlist cover updated');
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Error processing playlist cover:', err);
+    }
   };
 
   // Multi-select handlers
@@ -610,7 +616,7 @@ export const CollectionView: React.FC = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.heic,.heif"
         onChange={handleCoverUpload}
         className="hidden"
       />

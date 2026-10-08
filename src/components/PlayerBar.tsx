@@ -17,7 +17,7 @@ import {
   ListMusic,
   Heart,
   Plus,
-  FileText,
+  Mic,
   Loader2,
 } from 'lucide-react';
 import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
@@ -231,7 +231,7 @@ export const PlayerBar: React.FC = () => {
           }`}
           title="Lyrics"
         >
-          <FileText className="w-4 h-4" />
+          <Mic className="w-4 h-4" />
         </button>
 
         <button

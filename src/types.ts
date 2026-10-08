@@ -35,6 +35,8 @@ export interface UserStats {
 
 export interface UserProfile {
   username: string;
+  displayName?: string;
+  email?: string;
   likedSongs: Track[];
   customPlaylists: CustomPlaylist[];
   favouriteArtists: Track[];
@@ -121,3 +123,5 @@ export interface CollectionTarget {
   title?: string;
   thumb?: string | null;
 }
+
+

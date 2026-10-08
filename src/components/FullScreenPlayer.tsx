@@ -242,13 +242,13 @@ export const FullScreenPlayer: React.FC = () => {
       }
       setDragX(0);
     } else if (isFlickDismiss) {
-      // Mark dismissing and trigger smooth exit animation without snapping back to top
+      // Mark dismissing and trigger smooth exit animation without lag or black blur
       isDismissingRef.current = true;
       setIsFullScreenOpen(false);
+      setDragY(0);
       setTimeout(() => {
-        setDragY(0);
         isDismissingRef.current = false;
-      }, 400);
+      }, 350);
     } else if (activeDirection.current === 'vertical-up' || dragY < -45) {
       setIsLyricsOpen(true);
       setDragY(0);
@@ -265,41 +265,32 @@ export const FullScreenPlayer: React.FC = () => {
   return (
     <AnimatePresence>
       {isFullScreenOpen && (
-        <>
-          {/* Soft backdrop scrim when swiping down */}
-          {dragY > 0 && (
+        <motion.div
+          key="fullscreen-player"
+          initial={{ y: '100%', opacity: 0.8 }}
+          animate={{ y: dragY > 0 ? dragY : 0, opacity: 1 }}
+          exit={{ y: '100%', opacity: 0 }}
+          transition={{ type: 'spring', damping: 30, stiffness: 320 }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleTouchStart}
+          onMouseMove={handleTouchMove}
+          onMouseUp={handleTouchEnd}
+          className="fixed inset-0 z-50 flex flex-col justify-between bg-[#08080a] text-white px-5 sm:px-10 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto select-none touch-none rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
+        >
+          {/* Dynamic seamless extended ambient glow */}
+          <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
             <div
-              className="fixed inset-0 z-40 bg-black/60 pointer-events-none transition-opacity"
-              style={{ opacity: Math.max(0, 1 - dragY / 300) }}
+              className="absolute -inset-24 opacity-60 blur-3xl scale-125 pointer-events-none"
+              style={{
+                backgroundImage: `url(${thumbSrc})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
             />
-          )}
-
-          <motion.div
-            key="fullscreen-player"
-            initial={{ y: '100%', opacity: 0.8 }}
-            animate={{ y: dragY > 0 ? dragY : 0, opacity: 1 }}
-            exit={{ y: '100%', opacity: 0 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 320 }}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onMouseDown={handleTouchStart}
-            onMouseMove={handleTouchMove}
-            onMouseUp={handleTouchEnd}
-            className="fixed inset-0 z-50 flex flex-col justify-between bg-[#08080a] text-white px-5 sm:px-10 pt-[max(0.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] overflow-y-auto select-none touch-none rounded-t-[32px] sm:rounded-t-[40px] shadow-[0_-12px_45px_rgba(0,0,0,0.85)] border-t border-white/10"
-          >
-            {/* Dynamic seamless extended ambient glow */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none -z-10">
-              <div
-                className="absolute -inset-24 opacity-60 blur-3xl scale-125 transition-all duration-700 pointer-events-none"
-                style={{
-                  backgroundImage: `url(${thumbSrc})`,
-                  backgroundSize: 'cover',
-                  backgroundPosition: 'center',
-                }}
-              />
-              <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/45 to-black/85" />
-            </div>
+            <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/45 to-black/85" />
+          </div>
 
             {/* Top Grab / Swipe Bar */}
             <div className="w-10 h-1 rounded-full bg-white/25 mx-auto mb-1 flex-shrink-0" />
@@ -348,13 +339,13 @@ export const FullScreenPlayer: React.FC = () => {
                 <Maximize2 className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               </button>
 
-              {/* Lyrics button */}
+              {/* Spotify-style Lyrics microphone button */}
               <button
                 onClick={() => setIsLyricsOpen(true)}
                 className="p-1.5 sm:p-2 text-white/70 hover:text-white transition-colors cursor-pointer"
                 title="Lyrics"
               >
-                <FileText className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
+                <Mic className="w-4.5 h-4.5 sm:w-5 sm:h-5" />
               </button>
 
               {/* BASS BOOSTER & VOLUME BOOSTER BUTTON */}
@@ -858,7 +849,6 @@ export const FullScreenPlayer: React.FC = () => {
             </div>
           </div>
         </motion.div>
-        </>
       )}
     </AnimatePresence>
   );

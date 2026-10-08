@@ -6,7 +6,7 @@ import {
   Pause,
   SkipBack,
   SkipForward,
-  FileText,
+  Mic,
   Moon,
   Loader2,
   Smartphone,
@@ -453,7 +453,7 @@ export const LandscapeStagePlayer: React.FC = () => {
                 }`}
                 title={showLyrics ? 'Hide Stage Lyrics' : 'Show Stage Lyrics'}
               >
-                <FileText className="w-3 h-3" />
+                <Mic className="w-3 h-3" />
                 <span className="hidden sm:inline">Lyrics</span>
               </button>
 

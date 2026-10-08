@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   Sparkles,
 } from 'lucide-react';
+import { normalizeImageFile } from '../services/imageUtils';
 
 interface LogoCropperModalProps {
   isOpen: boolean;
@@ -55,29 +56,34 @@ export const LogoCropperModal: React.FC<LogoCropperModalProps> = ({
     }
   }, [isOpen]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const src = reader.result as string;
-      setImageSrc(src);
-      setZoom(1);
-      setPan({ x: 0, y: 0 });
+    try {
+      const file = await normalizeImageFile(rawFile);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const src = reader.result as string;
+        setImageSrc(src);
+        setZoom(1);
+        setPan({ x: 0, y: 0 });
 
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        imgRef.current = img;
-        updatePreview(img, 1, { x: 0, y: 0 });
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          imgRef.current = img;
+          updatePreview(img, 1, { x: 0, y: 0 });
+        };
+        img.onerror = () => {
+          console.warn('Failed to load image for cropping');
+        };
+        img.src = src;
       };
-      img.onerror = () => {
-        console.warn('Failed to load image for cropping');
-      };
-      img.src = src;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    } catch (err) {
+      console.warn('Error processing image:', err);
+    }
     // Reset the input value so selecting the same file again triggers onChange
     e.target.value = '';
   };
@@ -400,7 +406,7 @@ export const LogoCropperModal: React.FC<LogoCropperModalProps> = ({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           className="hidden"
           onChange={handleFileChange}
         />

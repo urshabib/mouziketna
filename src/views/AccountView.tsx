@@ -8,6 +8,7 @@ import {
   Download,
   ShieldAlert,
   Settings,
+  KeyRound,
   LogOut,
   LogIn,
   Clock,
@@ -26,9 +27,16 @@ import {
   EyeOff,
   Eye,
   Info,
+  Edit3,
+  Check,
+  X,
+  Upload,
 } from 'lucide-react';
 import { TrackThumbImage } from '../services/useTrackThumb';
 import { Track, SongPlayStat } from '../types';
+import { AvatarCropperModal } from '../components/AvatarCropperModal';
+import { AccountSettingsModal } from '../components/AccountSettingsModal';
+import { normalizeImageFile } from '../services/imageUtils';
 
 export const AccountView: React.FC = () => {
   const {
@@ -60,6 +68,19 @@ export const AccountView: React.FC = () => {
   const [isClearingStats, setIsClearingStats] = useState(false);
   const [songToHideConfirm, setSongToHideConfirm] = useState<SongPlayStat | null>(null);
   const [songToUnhideConfirm, setSongToUnhideConfirm] = useState<SongPlayStat | null>(null);
+  
+  // Profile Picture management
+  const [isPhotoOptionsOpen, setIsPhotoOptionsOpen] = useState(false);
+  const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [cropperFile, setCropperFile] = useState<File | null>(null);
+
+  // Display Name management
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+
+  // Account Settings Modal
+  const [isAccountSettingsModalOpen, setIsAccountSettingsModalOpen] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isLongPressTriggeredRef = useRef(false);
@@ -71,20 +92,39 @@ export const AccountView: React.FC = () => {
     }
   }, [globalUser]);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.target.files?.[0];
+    if (!rawFile) return;
+    setIsPhotoOptionsOpen(false);
+    try {
+      const file = await normalizeImageFile(rawFile);
+      setCropperFile(file);
+      setIsCropperOpen(true);
+    } catch {
+      setCropperFile(rawFile);
+      setIsCropperOpen(true);
+    }
+    // Reset input so re-selecting same image works
+    e.target.value = '';
+  };
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      syncProfile({ ...userProfile, avatarUrl: dataUrl });
-      showToast('Avatar updated');
-    };
-    reader.readAsDataURL(file);
+  const handleRemovePhoto = async () => {
+    const updated = { ...userProfile, avatarUrl: null };
+    syncProfile(updated);
+    setIsPhotoOptionsOpen(false);
+    showToast('Profile photo removed');
+    await forceProfileServerSync(updated);
+  };
+
+  const handleApplyAvatarCrop = async (compactDataUrl: string) => {
+    const updated = { ...userProfile, avatarUrl: compactDataUrl };
+    syncProfile(updated);
+    showToast('Profile photo updated & synced');
+    await forceProfileServerSync(updated);
   };
 
   const username = globalUser || userProfile.username || t('account.guest', 'Guest');
+  const displayName = userProfile.displayName || username;
   const isAdmin = userProfile.isAdmin || globalUser === 'habib' || false;
 
   const stats = userProfile.stats || {
@@ -170,8 +210,8 @@ export const AccountView: React.FC = () => {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
-        onChange={handleAvatarChange}
+        accept="image/*,.heic,.heif"
+        onChange={handleFileChange}
         className="hidden"
       />
 
@@ -180,37 +220,120 @@ export const AccountView: React.FC = () => {
         {/* Ambient Glow */}
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-[#ff6b1a]/15 rounded-full blur-3xl pointer-events-none" />
 
-        <div
-          className="relative group cursor-pointer flex-shrink-0"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-[#ff6b1a] to-[#802a00] flex items-center justify-center text-white text-3xl font-black shadow-2xl border-2 border-white/20">
-            {userProfile.avatarUrl ? (
-              <img
-                src={userProfile.avatarUrl}
-                alt={username}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              username.charAt(0).toUpperCase()
-            )}
+        <div className="flex flex-col items-center gap-2 flex-shrink-0">
+          <div
+            className="relative group cursor-pointer flex-shrink-0"
+            onClick={() => setIsPhotoOptionsOpen(true)}
+            title="Profile Photo Options"
+          >
+            <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-[#ff6b1a] to-[#802a00] flex items-center justify-center text-white text-3xl font-black shadow-2xl border-2 border-white/20">
+              {userProfile.avatarUrl ? (
+                <img
+                  src={userProfile.avatarUrl}
+                  alt={displayName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                displayName.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity gap-1">
+              <Camera className="w-5 h-5 text-white" />
+              <span className="text-[10px] font-bold">Edit</span>
+            </div>
           </div>
-          <div className="absolute inset-0 rounded-full bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
-            <Camera className="w-6 h-6" />
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPhotoOptionsOpen(true)}
+              className="text-[11px] font-bold text-[var(--accent)] hover:underline cursor-pointer flex items-center gap-1"
+            >
+              <Camera className="w-3 h-3" />
+              <span>Change Photo</span>
+            </button>
+            {userProfile.avatarUrl && (
+              <button
+                type="button"
+                onClick={handleRemovePhoto}
+                className="text-[11px] font-bold text-red-400/90 hover:text-red-400 hover:underline cursor-pointer flex items-center gap-0.5"
+                title="Clear profile picture"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear</span>
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-col items-center sm:items-start gap-1.5 min-w-0 flex-1">
-          <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {username}
-            </h2>
-            {isAdmin && (
-              <span className="px-2.5 py-0.5 rounded-full bg-[#ff6b1a]/20 text-[#ff6b1a] border border-[#ff6b1a]/30 text-[10px] font-black uppercase tracking-wider">
-                Admin
-              </span>
-            )}
-          </div>
+        <div className="flex flex-col items-center sm:items-start gap-1 min-w-0 flex-1">
+          {isEditingName ? (
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const trimmed = nameInput.trim();
+                if (!trimmed) return;
+                const updated = { ...userProfile, displayName: trimmed };
+                syncProfile(updated);
+                setIsEditingName(false);
+                showToast('Display name saved & synced to cloud');
+                await forceProfileServerSync(updated);
+              }}
+              className="flex items-center gap-2 w-full max-w-sm mt-1"
+            >
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="Enter display name"
+                maxLength={32}
+                autoFocus
+                className="flex-1 bg-black/60 border border-[var(--accent)] rounded-xl px-3 py-1.5 text-sm font-bold text-white focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              />
+              <button
+                type="submit"
+                className="p-2 rounded-xl bg-[var(--accent)] text-black hover:brightness-110 active:scale-95 transition-all cursor-pointer font-bold"
+                title="Save Display Name"
+              >
+                <Check className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditingName(false)}
+                className="p-2 rounded-xl bg-white/10 text-white hover:bg-white/15 transition-colors cursor-pointer"
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </form>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap justify-center sm:justify-start">
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                {displayName}
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setNameInput(displayName);
+                  setIsEditingName(true);
+                }}
+                className="p-1.5 rounded-full hover:bg-white/10 text-white/60 hover:text-white transition-colors cursor-pointer"
+                title="Edit Display Name"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+              {isAdmin && (
+                <span className="px-2.5 py-0.5 rounded-full bg-[#ff6b1a]/20 text-[#ff6b1a] border border-[#ff6b1a]/30 text-[10px] font-black uppercase tracking-wider">
+                  Admin
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Login username displayed with @ in small size text under display name */}
+          <p className="text-xs text-white/50 font-medium tracking-tight">
+            @{username}
+          </p>
 
           <p className="text-xs text-white/50 font-medium">
             {globalUser
@@ -246,6 +369,17 @@ export const AccountView: React.FC = () => {
                 <span>{isSyncingToServer ? t('settings.syncing', 'Syncing...') : t('account.syncCloudflare', 'Sync to Cloudflare')}</span>
               </button>
             )}
+
+            {/* Account Settings button */}
+            <button
+              type="button"
+              onClick={() => setIsAccountSettingsModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors border border-white/10 cursor-pointer"
+              title="Manage Account Email & Security Credentials"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Account Settings</span>
+            </button>
 
             {globalUser ? (
               <button
@@ -1027,6 +1161,86 @@ export const AccountView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Photo Options Action Sheet Modal */}
+      {isPhotoOptionsOpen && (
+        <div
+          onClick={() => setIsPhotoOptionsOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-3xl bg-[#16161a] border border-white/10 p-6 flex flex-col gap-4 shadow-2xl relative animate-in zoom-in-95 duration-200"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-[var(--accent)]" />
+                <h4 className="text-base font-black text-white">Profile Photo</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPhotoOptionsOpen(false)}
+                className="p-1 rounded-full text-white/50 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-white/60 -mt-1">
+              Choose how you want to update your profile photo:
+            </p>
+
+            <div className="flex flex-col gap-2 pt-1">
+              {/* Option 1: Upload New Photo */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-white/10 hover:scale-[1.01]"
+              >
+                <Upload className="w-4 h-4 text-[var(--accent)]" />
+                <span>Upload New Photo</span>
+              </button>
+
+              {/* Option 2: Clear / Remove Photo */}
+              {userProfile.avatarUrl && (
+                <button
+                  type="button"
+                  onClick={handleRemovePhoto}
+                  className="w-full py-3 px-4 rounded-2xl bg-red-500/15 hover:bg-red-500/25 text-red-400 font-bold text-xs flex items-center justify-center gap-2.5 transition-all cursor-pointer border border-red-500/20 hover:scale-[1.01]"
+                >
+                  <Trash2 className="w-4 h-4 text-red-400" />
+                  <span>Remove Profile Picture</span>
+                </button>
+              )}
+
+              {/* Cancel */}
+              <button
+                type="button"
+                onClick={() => setIsPhotoOptionsOpen(false)}
+                className="w-full py-2.5 rounded-xl text-white/50 hover:text-white font-semibold text-xs transition-colors cursor-pointer mt-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* High-Quality Avatar Cropper Modal */}
+      <AvatarCropperModal
+        isOpen={isCropperOpen}
+        onClose={() => {
+          setIsCropperOpen(false);
+          setCropperFile(null);
+        }}
+        onApply={handleApplyAvatarCrop}
+        imageFile={cropperFile}
+      />
+
+      {/* Account Settings Modal */}
+      <AccountSettingsModal
+        isOpen={isAccountSettingsModalOpen}
+        onClose={() => setIsAccountSettingsModalOpen(false)}
+      />
     </div>
   );
 };

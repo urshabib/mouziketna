@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { useMusic } from '../context/MusicContext';
 import {
   Home,
@@ -238,17 +239,20 @@ export const MobileNav: React.FC = () => {
   const { activePane, setActivePane, userProfile, t } = useMusic();
   const isLiquidGlass = userProfile.liquidGlass !== false && userProfile.liquidGlassLevel !== 'off';
 
+  // Home, Library, and Settings are grouped together in the pill
   const pillItems: { id: NavigationPane; label: string; icon: React.ReactNode }[] = [
     { id: 'home', label: t('nav.home', 'Home'), icon: <Home className="w-5 h-5" /> },
     { id: 'library', label: t('nav.library', 'Library'), icon: <Library className="w-5 h-5" /> },
     { id: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="w-5 h-5" /> },
   ];
 
+  const isSearchActive = activePane === 'search';
+
   if (isLiquidGlass) {
     return (
-      <nav className="md:hidden fixed left-3 right-3 bottom-[calc(0.65rem+env(safe-area-inset-bottom))] z-40 flex items-center justify-between gap-2.5 pointer-events-none select-none">
-        {/* Left/Center Pill Capsule Container */}
-        <div className="flex-1 h-14 bg-[#141418]/80 glass-panel rounded-full px-2 py-1.5 flex items-center justify-around border border-white/10 shadow-2xl backdrop-blur-2xl pointer-events-auto">
+      <nav className="md:hidden fixed left-3 right-3 bottom-[calc(0.65rem+env(safe-area-inset-bottom))] z-40 flex items-center justify-between gap-3 max-w-sm mx-auto pointer-events-none select-none">
+        {/* iOS-Style Liquid Glass Unified Capsule Pill for Home, Library, Settings */}
+        <div className="flex-1 h-14 bg-[#141418]/85 glass-panel rounded-full px-1.5 py-1 flex items-center justify-around border border-white/10 shadow-2xl backdrop-blur-2xl pointer-events-auto relative min-w-0">
           {pillItems.map((item) => {
             const isActive = activePane === item.id;
             return (
@@ -256,63 +260,118 @@ export const MobileNav: React.FC = () => {
                 key={item.id}
                 type="button"
                 onClick={() => setActivePane(item.id)}
-                className={`flex flex-col items-center justify-center transition-all duration-200 cursor-pointer ${
+                className={`relative flex flex-col items-center justify-center flex-1 h-full py-0.5 rounded-full transition-colors duration-200 cursor-pointer z-10 ${
                   isActive
-                    ? 'bg-white/15 text-[var(--accent)] px-4 py-1 rounded-full shadow-sm scale-102 font-bold'
-                    : 'text-white/50 hover:text-white/80 px-3 py-1 font-medium'
+                    ? 'text-[var(--accent)] font-bold'
+                    : 'text-white/50 hover:text-white/80 font-medium'
                 }`}
+                title={item.label}
+                aria-label={item.label}
               >
-                {item.icon}
-                <span className="text-[10px] leading-tight tracking-tight mt-0.5">{item.label}</span>
+                {/* Clean, smooth glass bubble transfer with zero stretching distortion */}
+                {isActive && (
+                  <motion.div
+                    layoutId="liquid-nav-bubble"
+                    className="absolute inset-0.5 rounded-full bg-[var(--accent)]/15 border border-[var(--accent)]/35 shadow-[0_0_20px_var(--accent-soft),inset_0_0_12px_var(--accent-soft)] backdrop-blur-xl -z-10"
+                    transition={{
+                      type: 'spring',
+                      stiffness: 400,
+                      damping: 32,
+                    }}
+                  >
+                    <div className="absolute -inset-1 rounded-full bg-[var(--accent-soft)] blur-md -z-10 opacity-60" />
+                  </motion.div>
+                )}
+
+                <div
+                  className={`relative transition-transform duration-200 ${
+                    isActive ? 'scale-110 drop-shadow-[0_0_10px_var(--accent-soft)] text-[var(--accent)]' : 'scale-100'
+                  }`}
+                >
+                  {item.icon}
+                </div>
+                <span
+                  className={`text-[9.5px] leading-tight tracking-tight mt-0.5 transition-colors ${
+                    isActive ? 'text-[var(--accent)] font-black' : 'text-white/50'
+                  }`}
+                >
+                  {item.label}
+                </span>
               </button>
             );
           })}
         </div>
 
-        {/* Standalone Circular Search Floating Button on Right */}
+        {/* Standalone Circular Search Icon Alone on the Right with Matching Accent Glow */}
         <button
           type="button"
           onClick={() => setActivePane('search')}
-          className={`w-14 h-14 rounded-full glass-panel border border-white/10 shadow-2xl backdrop-blur-2xl flex items-center justify-center cursor-pointer transition-all active:scale-95 pointer-events-auto flex-shrink-0 ${
-            activePane === 'search'
-              ? 'bg-[var(--accent)] text-black ring-2 ring-white/40 shadow-[0_0_20px_var(--accent-soft)]'
-              : 'bg-[#141418]/80 text-white/80 hover:text-white'
+          className={`w-14 h-14 rounded-full flex flex-col items-center justify-center transition-all duration-300 pointer-events-auto cursor-pointer flex-shrink-0 relative ${
+            isSearchActive
+              ? 'bg-[var(--accent)]/20 border border-[var(--accent)]/60 text-[var(--accent)] shadow-[0_0_20px_var(--accent-soft),inset_0_1.5px_2px_rgba(255,255,255,0.45)] backdrop-blur-2xl scale-105'
+              : 'bg-[#141418]/85 glass-panel border border-white/10 text-white/50 hover:text-white/80 shadow-2xl backdrop-blur-2xl hover:scale-105'
           }`}
           title={t('nav.search', 'Search')}
           aria-label={t('nav.search', 'Search')}
         >
-          <Search className="w-5 h-5 stroke-[2.5]" />
+          {isSearchActive && (
+            <div className="absolute -inset-1 rounded-full bg-[var(--accent-soft)] blur-md -z-10 opacity-75" />
+          )}
+          <div
+            className={`relative transition-transform duration-200 ${
+              isSearchActive ? 'scale-110 drop-shadow-[0_0_10px_var(--accent-soft)] text-[var(--accent)]' : 'scale-100'
+            }`}
+          >
+            <Search className="w-5 h-5" />
+          </div>
+          <span
+            className={`text-[9px] leading-tight tracking-tight mt-0.5 transition-colors ${
+              isSearchActive ? 'text-[var(--accent)] font-black' : 'text-white/50'
+            }`}
+          >
+            {t('nav.search', 'Search')}
+          </span>
         </button>
       </nav>
     );
   }
 
-  // Classic Standard Full-Width Bottom Bar when Liquid Glass is OFF
-  const classicNavItems: { id: NavigationPane; label: string; icon: React.ReactNode }[] = [
-    { id: 'home', label: t('nav.home', 'Home'), icon: <Home className="w-5 h-5" /> },
-    { id: 'search', label: t('nav.search', 'Search'), icon: <Search className="w-5 h-5" /> },
-    { id: 'library', label: t('nav.library', 'Library'), icon: <Library className="w-5 h-5" /> },
-    { id: 'settings', label: t('nav.settings', 'Settings'), icon: <Settings className="w-5 h-5" /> },
-  ];
-
+  // Classic Standard Bottom Bar when Liquid Glass is OFF
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/90 border-t border-white/10 px-6 py-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] flex justify-between items-center select-none">
-      {classicNavItems.map((item) => {
-        const isActive = activePane === item.id;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setActivePane(item.id)}
-            className={`flex flex-col items-center gap-1 transition-all cursor-pointer ${
-              isActive ? 'text-[var(--accent)] scale-105 font-bold' : 'text-white/50 hover:text-white/80'
-            }`}
-          >
-            {item.icon}
-            <span className="text-[10px] font-bold tracking-tight">{item.label}</span>
-          </button>
-        );
-      })}
+      <div className="flex items-center gap-8">
+        {pillItems.map((item) => {
+          const isActive = activePane === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActivePane(item.id)}
+              className={`flex flex-col items-center gap-1 transition-all cursor-pointer ${
+                isActive ? 'text-[var(--accent)] scale-105 font-bold drop-shadow-[0_0_8px_var(--accent-soft)]' : 'text-white/50 hover:text-white/80'
+              }`}
+            >
+              {item.icon}
+              <span className="text-[10px] font-bold tracking-tight">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Standalone Circular Search button */}
+      <button
+        type="button"
+        onClick={() => setActivePane('search')}
+        className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+          isSearchActive
+            ? 'bg-[var(--accent)]/25 border border-[var(--accent)] text-[var(--accent)] shadow-[0_0_12px_var(--accent-soft)]'
+            : 'bg-white/10 text-white/50 hover:text-white'
+        }`}
+        title={t('nav.search', 'Search')}
+        aria-label={t('nav.search', 'Search')}
+      >
+        <Search className="w-5 h-5" />
+      </button>
     </nav>
   );
 };
@@ -346,6 +405,8 @@ export const TopBar: React.FC = () => {
     return t('home.goodEvening', 'Good evening');
   };
 
+  const effectiveDisplayName = userProfile.displayName || userProfile.username || '';
+
   return (
     <header
       className={`sticky top-0 z-30 flex items-center justify-between transition-all select-none ${
@@ -369,7 +430,7 @@ export const TopBar: React.FC = () => {
         <span className="hidden sm:inline text-white/20">|</span>
 
         <h2 className="hidden md:block font-semibold text-sm text-white/70 max-w-[180px] lg:max-w-[280px] truncate overflow-hidden whitespace-nowrap text-ellipsis">
-          {getGreeting()}{userProfile.username ? `, ${userProfile.username}` : ''}
+          {getGreeting()}{effectiveDisplayName ? `, ${effectiveDisplayName}` : ''}
         </h2>
       </div>
 
@@ -411,7 +472,7 @@ export const TopBar: React.FC = () => {
           </button>
         )}
 
-        {/* Profile Chip */}
+        {/* Profile Chip with Display Name */}
         <button
           onClick={() => setActivePane('account')}
           className="flex items-center gap-2 bg-white/10 hover:bg-white/15 px-2.5 sm:px-3 py-1.5 rounded-full border border-white/10 transition-colors max-w-[120px] sm:max-w-[170px] cursor-pointer"
@@ -420,16 +481,16 @@ export const TopBar: React.FC = () => {
           {userProfile.avatarUrl ? (
             <img
               src={userProfile.avatarUrl}
-              alt="Avatar"
+              alt={effectiveDisplayName || 'Avatar'}
               className="w-6 h-6 rounded-full object-cover flex-shrink-0"
             />
           ) : (
             <div className="w-6 h-6 rounded-full bg-[var(--accent)] text-black font-bold text-xs flex items-center justify-center flex-shrink-0">
-              {userProfile.username ? userProfile.username.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
+              {effectiveDisplayName ? effectiveDisplayName.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
             </div>
           )}
           <span className="text-xs font-bold text-white truncate overflow-hidden whitespace-nowrap text-ellipsis">
-            {userProfile.username || t('nav.account', 'Profile')}
+            {effectiveDisplayName || t('nav.account', 'Profile')}
           </span>
         </button>
       </div>

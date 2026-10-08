@@ -33,7 +33,14 @@ import {
   Type,
   Radio,
   ExternalLink,
+  KeyRound,
+  ShieldCheck,
+  Lock,
+  Mail,
+  ShieldAlert,
+  AlertCircle,
 } from 'lucide-react';
+import { AccountSettingsModal } from '../components/AccountSettingsModal';
 import {
   getTotalDownloadedSize,
   formatBytes,
@@ -276,14 +283,14 @@ const PRESETS = [
 ];
 
 const LYRICS_FONTS_ALL = [
+  { id: 'poppins', label: 'Default Modern', preview: 'Modern', font: "'Poppins', sans-serif", desc: 'Balanced geometric studio typeface (Default)' },
+  { id: 'inter', label: 'Clean System', preview: 'Clean', font: "'Inter', sans-serif", desc: 'Neutral modern standard interface font' },
   { id: 'bebas', label: 'Bold Impact', preview: 'LYRICS', font: "'Bebas Neue', sans-serif", desc: 'Tall punchy condensed uppercase' },
   { id: 'caveat', label: 'Handwritten', preview: 'Singing', font: "'Caveat', cursive", desc: 'Artistic smooth cursive handwriting' },
   { id: 'righteous', label: 'Retro Neon', preview: 'Groove', font: "'Righteous', cursive", desc: '1980s retro sci-fi rounded display' },
   { id: 'playfair', label: 'Classic Serif', preview: 'Harmony', font: "'Playfair Display', serif", desc: 'Editorial high-contrast luxury serif' },
   { id: 'jetbrains', label: 'Code Mono', preview: '01:23', font: "'JetBrains Mono', monospace", desc: 'Developer monospace with clean alignment' },
   { id: 'nunito', label: 'Soft Rounded', preview: 'Vibes', font: "'Nunito', sans-serif", desc: 'Friendly ultra-smooth rounded curves' },
-  { id: 'poppins', label: 'Modern Sans', preview: 'Modern', font: "'Poppins', sans-serif", desc: 'Balanced geometric studio typeface' },
-  { id: 'inter', label: 'Clean System', preview: 'Clean', font: "'Inter', sans-serif", desc: 'Neutral modern standard interface font' },
 ];
 
 const COLOR_SWATCH_PRESETS = [
@@ -303,6 +310,8 @@ type SettingsTab = 'all' | 'audio' | 'appearance' | 'app' | 'system';
 
 export const SettingsView: React.FC = () => {
   const {
+    globalUser,
+    setActivePane,
     userProfile,
     syncProfile,
     openCollection,
@@ -322,6 +331,12 @@ export const SettingsView: React.FC = () => {
   const [serverStats, setServerStats] = useState<Array<{ name: string; status: string; latency?: number }>>([]);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isCropperOpen, setIsCropperOpen] = useState(false);
+  const [isAccountSettingsModalOpen, setIsAccountSettingsModalOpen] = useState(false);
+  const [contactAdminModal, setContactAdminModal] = useState<{
+    type: 'password' | 'email';
+    title: string;
+    description: string;
+  } | null>(null);
   const [showFileGuide, setShowFileGuide] = useState(false);
   const [appNameInput, setAppNameInput] = useState<string>(
     userProfile.customAppName || getStoredAppName() || DEFAULT_APP_NAME
@@ -1363,6 +1378,100 @@ export const SettingsView: React.FC = () => {
         </section>
       )}
 
+      {/* Account Settings Section (At the bottom of settings as requested) */}
+      {(activeTab === 'all' || activeTab === 'app' || activeTab === 'system') && (
+        <section className="flex flex-col gap-4 p-5 rounded-3xl bg-white/[0.03] border border-white/10 shadow-2xl relative overflow-hidden">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <KeyRound className="w-5 h-5 text-[var(--accent)]" />
+              <div>
+                <h3 className="font-extrabold text-sm text-white">Account Settings & Credentials</h3>
+                <p className="text-[11px] text-white/50">
+                  Manage your linked email address, security credentials, and cloud synchronization.
+                </p>
+              </div>
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-white/10 text-white/80">
+              {globalUser ? `@${globalUser}` : 'Guest'}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-3.5 p-4 rounded-2xl bg-black/40 border border-white/5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] flex-shrink-0">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="font-bold text-xs text-white">Email & Authentication Security</p>
+                  <p className="text-[11px] text-white/40 mt-0.5">
+                    {userProfile.email ? `Linked: ${userProfile.email}` : 'No email address linked yet'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAccountSettingsModalOpen(true)}
+                className="w-full sm:w-auto px-4 py-2 rounded-xl bg-[var(--accent)] text-black font-extrabold text-xs transition-all hover:brightness-110 active:scale-95 shadow-md shadow-[var(--accent)]/20 cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>Open Account Settings</span>
+              </button>
+            </div>
+
+            {/* Quick Actions: Reset Password & Change Email */}
+            <div className="pt-2.5 border-t border-white/5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  setContactAdminModal({
+                    type: 'password',
+                    title: 'Reset Password Unavailable',
+                    description:
+                      'Self-service password reset is currently unavailable. Please contact the administrator to reset or recover your account password.',
+                  })
+                }
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Reset account password"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-400" />
+                <span>Reset Password</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setContactAdminModal({
+                    type: 'email',
+                    title: 'Changing Email Unavailable',
+                    description:
+                      'Direct email address changing is currently unavailable. Please contact the administrator to update or change your registered email address.',
+                  })
+                }
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Change registered email address"
+              >
+                <Mail className="w-3.5 h-3.5 text-sky-400" />
+                <span>Change Email</span>
+              </button>
+
+              {(globalUser === 'admin' || userProfile.isAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => setActivePane('admin')}
+                  className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer sm:ml-auto"
+                  title="Open Administrator Console"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>Admin Console</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Generous Bottom Clearance Spacer so all buttons scroll far above the floating mini player and nav bar */}
       <div className="w-full h-40 md:h-24 flex-shrink-0" />
 
@@ -1673,7 +1782,7 @@ export const SettingsView: React.FC = () => {
 
                     <div
                       style={{ fontFamily: f.font, color: currentLyricsColor }}
-                      className="text-3xl font-black leading-none my-1 tracking-wide text-center"
+                      className="text-xl sm:text-2xl font-bold leading-normal my-1 tracking-wide text-center truncate w-full px-1"
                     >
                       {f.preview}
                     </div>
@@ -1718,6 +1827,78 @@ export const SettingsView: React.FC = () => {
           }
         }}
         currentLogoSrc={getAppLogoSrc(userProfile.appLogo)}
+      />
+
+      {/* Contact Admin Modal for Unavailable Reset Password & Change Email */}
+      {contactAdminModal && (
+        <div
+          onClick={() => setContactAdminModal(null)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-[#16161a] border border-white/20 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center gap-4 animate-in zoom-in-95 duration-200"
+          >
+            <div
+              className={`w-12 h-12 rounded-full flex items-center justify-center shadow-lg ${
+                contactAdminModal.type === 'password'
+                  ? 'bg-amber-500/15 border border-amber-500/30 text-amber-400 shadow-amber-500/10'
+                  : 'bg-sky-500/15 border border-sky-500/30 text-sky-400 shadow-sky-500/10'
+              }`}
+            >
+              {contactAdminModal.type === 'password' ? (
+                <Lock className="w-6 h-6" />
+              ) : (
+                <Mail className="w-6 h-6" />
+              )}
+            </div>
+
+            <div>
+              <h4 className="font-black text-base text-white">{contactAdminModal.title}</h4>
+              <p className="text-xs text-white/60 mt-1.5 leading-relaxed">
+                {contactAdminModal.description}
+              </p>
+            </div>
+
+            {(globalUser === 'admin' || userProfile.isAdmin) && (
+              <div className="p-3 rounded-2xl bg-[var(--accent-soft)] border border-[var(--accent)]/30 text-[11px] text-[var(--accent)] font-semibold w-full text-left flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  As an administrator, you have access to modify all passwords and user credentials in the Admin Console.
+                </span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 w-full pt-1">
+              {(globalUser === 'admin' || userProfile.isAdmin) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setContactAdminModal(null);
+                    setActivePane('admin');
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-[var(--accent)] text-black font-extrabold text-xs transition-transform hover:scale-[1.02] active:scale-95 cursor-pointer shadow-md"
+                >
+                  Open Admin Console
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setContactAdminModal(null)}
+                className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors cursor-pointer"
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Account Settings Modal */}
+      <AccountSettingsModal
+        isOpen={isAccountSettingsModalOpen}
+        onClose={() => setIsAccountSettingsModalOpen(false)}
       />
     </div>
   );
