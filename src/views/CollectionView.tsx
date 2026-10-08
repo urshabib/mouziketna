@@ -103,6 +103,10 @@ export const CollectionView: React.FC = () => {
   if (!target) return null;
 
   useEffect(() => {
+    const mainEl = document.getElementById('main-scroll-container');
+    if (mainEl) {
+      mainEl.scrollTo({ top: 0, behavior: 'instant' });
+    }
     loadCollectionTracks();
   }, [target.type, target.id]);
 
@@ -126,10 +130,13 @@ export const CollectionView: React.FC = () => {
       setDownloadSize(formatBytes(totalBytes));
       setLoading(false);
     } else if (target.type === 'custom-playlist') {
-      const pl = userProfile.customPlaylists.find((p) => p.id === target.id);
-      setTracks(pl?.tracks || []);
+      const pl = (userProfile.customPlaylists || []).find((p) => String(p.id) === String(target.id));
+      const plTracks = pl?.tracks || target.initialTracks || [];
+      setTracks(plTracks);
       setLoading(false);
-      loadPlaylistSuggestions(pl?.tracks || []);
+      if (typeof navigator === 'undefined' || navigator.onLine) {
+        loadPlaylistSuggestions(plTracks);
+      }
     } else if (target.type === 'artist') {
       try {
         const res = await fetchJsonRetry<any>(
@@ -547,8 +554,8 @@ export const CollectionView: React.FC = () => {
       );
     }
     if (target.type === 'custom-playlist') {
-      const pl = userProfile.customPlaylists.find((p) => p.id === target.id);
-      const customCover = (target.id ? getPersistentPlaylistCover(target.id) : null) || pl?.customCover;
+      const pl = (userProfile.customPlaylists || []).find((p) => String(p.id) === String(target.id));
+      const customCover = (target.id ? getPersistentPlaylistCover(target.id) : null) || pl?.customCover || target.thumb;
       return (
         <div className="relative group w-40 h-40 sm:w-52 sm:h-52 rounded-2xl overflow-hidden shadow-2xl flex-shrink-0">
           <PlaylistCover
@@ -910,11 +917,11 @@ export const CollectionView: React.FC = () => {
       )}
 
       {/* Track List */}
-      <div className="flex flex-col gap-1 mt-4">
+      <div className="playlist-tracks-container flex flex-col p-1 sm:p-2 mt-4 divide-y divide-white/[0.04]">
         {loading ? (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 p-2">
             {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-14 rounded-xl bg-white/[0.03] animate-pulse" />
+              <div key={i} className="h-14 rounded-lg bg-white/[0.03] animate-pulse" />
             ))}
           </div>
         ) : tracks.length === 0 ? (
@@ -929,7 +936,7 @@ export const CollectionView: React.FC = () => {
               data-track-index={idx}
               onDragOver={(e) => handleDragOver(e, idx)}
               onDrop={(e) => handleDrop(e, idx)}
-              className={`transition-all rounded-xl ${
+              className={`transition-all rounded-lg ${
                 dragOverIndex === idx ? 'border-t-2 border-[var(--accent)] bg-[var(--accent-soft)]' : ''
               } ${
                 reorderingTrackIndex === idx

@@ -39,6 +39,8 @@ import {
   isDownloaded,
   listDownloads,
   loadDeviceSettings,
+  loadProgressBarStyle,
+  saveProgressBarStyle,
   loadTasteProfile,
   rememberListen,
   restoreProfileFromCache,
@@ -70,8 +72,8 @@ interface MusicContextType {
   // Navigation
   activePane: NavigationPane;
   setActivePane: (pane: NavigationPane) => void;
-  collectionTarget: { type: 'liked' | 'downloads' | 'custom-playlist' | 'artist' | 'playlist'; id?: string | null; title?: string; thumb?: string | null } | null;
-  openCollection: (type: 'liked' | 'downloads' | 'custom-playlist' | 'artist' | 'playlist', id?: string | null, title?: string, thumb?: string | null) => void;
+  collectionTarget: { type: 'liked' | 'downloads' | 'custom-playlist' | 'artist' | 'playlist'; id?: string | null; title?: string; thumb?: string | null; initialTracks?: Track[] } | null;
+  openCollection: (type: 'liked' | 'downloads' | 'custom-playlist' | 'artist' | 'playlist', id?: string | null, title?: string, thumb?: string | null, initialTracks?: Track[]) => void;
   goBack: () => void;
 
   // Profile & Auth
@@ -338,6 +340,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const playPreviousRef = useRef<() => void>(() => {});
   const seekDebounceTimerRef = useRef<number | null>(null);
   const isSeekingRef = useRef(false);
+  const lastSeekTimestampRef = useRef<number>(0);
 
   // Overlays
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
@@ -568,18 +571,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
     const onWaiting = () => {
-      // Do not flash the loading spinner on instantaneous seeks
-      if (!isSeekingRef.current) {
+      // Do not flash the loading spinner on instantaneous seeks or right after user seeks
+      if (!isSeekingRef.current && !audio.seeking && Date.now() - lastSeekTimestampRef.current > 3000) {
         setIsBuffering(true);
       }
     };
     const onSeeking = () => {
-      // Keep isBuffering false so play button doesn't flash rotating spinner on user seeks
+      isSeekingRef.current = true;
       setIsBuffering(false);
     };
     const onSeeked = () => {
-      isSeekingRef.current = false;
       setIsBuffering(false);
+      setTimeout(() => {
+        isSeekingRef.current = false;
+      }, 600);
     };
     const onPlaying = () => {
       isSeekingRef.current = false;
@@ -655,10 +660,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Auto-reconnect & self-heal if audio stream encounters an unexpected network stall or disconnect
     const onAudioError = () => {
-      // NEVER reconnect or reload track if user was actively seeking!
+      // NEVER reconnect or reload track if user was actively seeking or sought recently!
       // When seeking, browser cancels previous stream range requests which dispatches transient error codes.
       // Reconnecting here would restart the track and make audio play twice!
-      if (isSeekingRef.current) {
+      const timeSinceSeek = Date.now() - lastSeekTimestampRef.current;
+      if (isSeekingRef.current || (audio && audio.seeking) || timeSinceSeek < 6000) {
+        console.warn('Ignoring transient audio range abort during/after seek');
+        return;
+      }
+      // If error is code 1 (MEDIA_ERR_ABORTED), it was intentionally aborted by the browser
+      if (audio?.error?.code === 1) {
+        console.warn('Ignoring MEDIA_ERR_ABORTED on audio element');
         return;
       }
       const active = activeTrackRef.current;
@@ -830,6 +842,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const prof = updated || userProfile;
     setUserProfile(prof);
     saveDeviceSettings(prof);
+    if (prof.progressBarStyle) {
+      saveProgressBarStyle(prof.progressBarStyle);
+    }
     applyTheme(
       prof.theme,
       prof.accentColor,
@@ -958,11 +973,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           presetTint: devSettings.presetTint || p.presetTint || 'none',
           uiScale: devSettings.uiScale || p.uiScale || 'default',
           activePreset: devSettings.activePreset || p.activePreset || 'glass',
+          progressBarStyle: devSettings.progressBarStyle || loadProgressBarStyle() || p.progressBarStyle || userProfile.progressBarStyle || 'default',
+          progressBarColor: devSettings.progressBarColor || p.progressBarColor || userProfile.progressBarColor || '#ffffff',
+          customProgressBarHex: devSettings.customProgressBarHex || p.customProgressBarHex || userProfile.customProgressBarHex,
+          keyPartsDisplay: devSettings.keyPartsDisplay || p.keyPartsDisplay || userProfile.keyPartsDisplay || 'dots',
           avatarUrl: p.avatarUrl || null,
           stats: mergedStats,
         };
         setUserProfile(merged);
         saveDeviceSettings(merged);
+        if (merged.progressBarStyle) {
+          saveProgressBarStyle(merged.progressBarStyle);
+        }
         applyTheme(
           merged.theme,
           merged.accentColor,
@@ -1961,38 +1983,38 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       seekDebounceTimerRef.current = null;
     }
 
+    isSeekingRef.current = true;
+    lastSeekTimestampRef.current = Date.now();
+
     // Immediately synchronize UI scrub position for zero perceived latency
     setCurrentTime(targetTime);
     setIsBuffering(false);
 
-    if (Math.abs(audio.currentTime - targetTime) < 0.05) return;
-
-    const wasPlaying = !audio.paused;
-    const prevMuted = audio.muted;
-
-    // Eliminate dual-audio / overlapping sound glitch on seek:
-    // Temporarily mute for a split moment while resetting currentTime
-    // so older buffered decoder frames are purged without playing concurrently
-    if (wasPlaying) {
-      audio.muted = true;
+    if (Math.abs(audio.currentTime - targetTime) < 0.05) {
+      isSeekingRef.current = false;
+      return;
     }
 
     // Set currentTime directly for exact target point precision
     try {
-      audio.currentTime = targetTime;
-    } catch {
-      // Fallback
+      if ('fastSeek' in audio && typeof (audio as any).fastSeek === 'function') {
+        (audio as any).fastSeek(targetTime);
+      } else {
+        audio.currentTime = targetTime;
+      }
+    } catch (err) {
+      try {
+        audio.currentTime = targetTime;
+      } catch (e) {
+        console.warn('Direct currentTime seek error:', e);
+      }
     }
 
-    // Restore unmuted audio immediately once the exact point is latched
+    // Keep isSeekingRef true for a safety window so transient aborted socket errors from previous range requests are suppressed
     seekDebounceTimerRef.current = window.setTimeout(() => {
-      if (audioRef.current) {
-        audioRef.current.muted = prevMuted;
-        if (wasPlaying && audioRef.current.paused) {
-          audioRef.current.play().catch(() => {});
-        }
-      }
-    }, 45);
+      isSeekingRef.current = false;
+      setIsBuffering(false);
+    }, 1200);
   };
 
   const seekBy = (delta: number) => {
@@ -2665,9 +2687,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     type: 'liked' | 'downloads' | 'custom-playlist' | 'artist' | 'playlist',
     id?: string | null,
     title?: string,
-    thumb?: string | null
+    thumb?: string | null,
+    initialTracks?: Track[]
   ) => {
-    setCollectionTarget({ type, id, title, thumb });
+    setCollectionTarget({ type, id, title, thumb, initialTracks });
     setNavHistory((prev) => [...prev, activePane]);
     setActivePane('collection');
   };

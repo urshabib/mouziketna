@@ -222,9 +222,29 @@ export function formatBytes(bytes: number): string {
 
 // Device settings storage
 const DEVICE_SETTINGS_KEY = 'mouzika_device_settings';
+const PROGRESS_BAR_STYLE_KEY = 'mouzika_progress_bar_style';
+
+export function saveProgressBarStyle(style: string) {
+  if (!style) return;
+  try {
+    localStorage.setItem(PROGRESS_BAR_STYLE_KEY, style);
+  } catch {}
+}
+
+export function loadProgressBarStyle(): string | null {
+  try {
+    return localStorage.getItem(PROGRESS_BAR_STYLE_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export function saveDeviceSettings(profile: Partial<UserProfile>) {
   try {
+    const style = profile.progressBarStyle || loadProgressBarStyle() || 'default';
+    if (profile.progressBarStyle) {
+      saveProgressBarStyle(profile.progressBarStyle);
+    }
     localStorage.setItem(DEVICE_SETTINGS_KEY, JSON.stringify({
       dataSaver: !!profile.dataSaver,
       dataSaverLevel: profile.dataSaverLevel || 'off',
@@ -237,13 +257,22 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       autoCachePlayed: !!profile.autoCachePlayed,
       autoCacheQuality: profile.autoCacheQuality || 'stable',
       liquidGlass: profile.liquidGlass !== undefined ? !!profile.liquidGlass : true,
+      liquidGlassLevel: profile.liquidGlassLevel || 'medium',
       language: profile.language || 'en',
       theme: profile.theme === 'light' ? 'light' : 'dark',
       accentColor: profile.accentColor || 'orange',
+      customAccentHex: profile.customAccentHex || undefined,
       lyricsColor: profile.lyricsColor || 'white',
+      customLyricsHex: profile.customLyricsHex || undefined,
+      lyricsFont: profile.lyricsFont || undefined,
+      lyricsGlow: profile.lyricsGlow || 'default',
       presetTint: profile.presetTint || 'none',
       uiScale: profile.uiScale || 'default',
       activePreset: profile.activePreset || null,
+      progressBarStyle: style,
+      progressBarColor: profile.progressBarColor || '#ffffff',
+      customProgressBarHex: profile.customProgressBarHex || undefined,
+      keyPartsDisplay: profile.keyPartsDisplay || 'dots',
     }));
   } catch {}
 }
@@ -251,10 +280,18 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
 export function loadDeviceSettings(): Partial<UserProfile> | null {
   try {
     const raw = localStorage.getItem(DEVICE_SETTINGS_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
+    const dedicatedStyle = loadProgressBarStyle();
+    if (!raw) {
+      return dedicatedStyle ? { progressBarStyle: dedicatedStyle as any } : null;
+    }
+    const parsed = JSON.parse(raw);
+    if (dedicatedStyle && (!parsed.progressBarStyle || parsed.progressBarStyle === 'default')) {
+      parsed.progressBarStyle = dedicatedStyle;
+    }
+    return parsed;
   } catch {
-    return null;
+    const dedicatedStyle = loadProgressBarStyle();
+    return dedicatedStyle ? { progressBarStyle: dedicatedStyle as any } : null;
   }
 }
 

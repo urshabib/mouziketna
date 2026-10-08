@@ -38,6 +38,7 @@ import {
   getTotalDownloadedSize,
   formatBytes,
   deleteAllDownloads,
+  saveProgressBarStyle,
 } from '../services/storage';
 import { NEW_HUB_BACKEND, fetchWithTimeout } from '../services/api';
 import {
@@ -969,6 +970,7 @@ export const SettingsView: React.FC = () => {
                     key={opt.id}
                     type="button"
                     onClick={() => {
+                      saveProgressBarStyle(opt.id);
                       syncProfile({ ...userProfile, progressBarStyle: opt.id as any });
                     }}
                     className={`p-3 rounded-xl border text-center flex flex-col items-center justify-between gap-1.5 transition-all cursor-pointer ${

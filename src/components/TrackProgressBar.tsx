@@ -40,41 +40,51 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
   const [dragValue, setDragValue] = useState<number | null>(null);
   const lastCommitTimeRef = useRef(0);
   const lastCommittedValueRef = useRef<number | null>(null);
+  const isPointerDownRef = useRef(false);
 
   const displayTime = isDragging && dragValue !== null ? dragValue : currentTime;
   const progressPct = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
 
   const commitSeek = (targetSec: number) => {
     const now = Date.now();
-    // Strictly deduplicate identical seek invocations within 500ms
+    setIsDragging(false);
+    setDragValue(null);
+    isPointerDownRef.current = false;
+    // Strictly deduplicate seek invocations within 350ms
     if (
       lastCommittedValueRef.current !== null &&
-      Math.abs(lastCommittedValueRef.current - targetSec) < 0.25 &&
-      now - lastCommitTimeRef.current < 500
+      Math.abs(lastCommittedValueRef.current - targetSec) < 0.35 &&
+      now - lastCommitTimeRef.current < 350
     ) {
-      setIsDragging(false);
-      setDragValue(null);
       return;
     }
     lastCommitTimeRef.current = now;
     lastCommittedValueRef.current = targetSec;
-    setIsDragging(false);
-    setDragValue(null);
     seekTo(targetSec);
   };
 
+  const handlePointerDown = () => {
+    isPointerDownRef.current = true;
+    setIsDragging(true);
+  };
+
   const handleSliderInput = (e: React.FormEvent<HTMLInputElement>) => {
+    isPointerDownRef.current = true;
     setIsDragging(true);
     setDragValue(Number((e.target as HTMLInputElement).value));
   };
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value);
-    commitSeek(val);
+    // If pointer is already up or this was keyboard/discrete change, commit
+    if (!isPointerDownRef.current) {
+      commitSeek(val);
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLInputElement>) => {
     const val = Number((e.target as HTMLInputElement).value);
+    isPointerDownRef.current = false;
     commitSeek(val);
   };
 
@@ -149,6 +159,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
           max={duration || 100}
           value={displayTime}
           step={0.1}
+          onPointerDown={handlePointerDown}
           onInput={handleSliderInput}
           onChange={handleSliderChange}
           onPointerUp={handlePointerUp}
@@ -179,6 +190,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             max={duration || 100}
             value={displayTime}
             step={0.1}
+            onPointerDown={handlePointerDown}
             onInput={handleSliderInput}
             onChange={handleSliderChange}
             onPointerUp={handlePointerUp}
@@ -222,6 +234,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             max={duration || 100}
             value={displayTime}
             step={0.1}
+            onPointerDown={handlePointerDown}
             onInput={handleSliderInput}
             onChange={handleSliderChange}
             onPointerUp={handlePointerUp}
@@ -260,6 +273,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             max={duration || 100}
             value={displayTime}
             step={0.1}
+            onPointerDown={handlePointerDown}
             onInput={handleSliderInput}
             onChange={handleSliderChange}
             onPointerUp={handlePointerUp}

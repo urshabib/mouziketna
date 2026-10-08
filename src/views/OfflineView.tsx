@@ -235,19 +235,20 @@ export const OfflineView: React.FC = () => {
       {activeTab === 'songs' && (
         <section className="flex flex-col gap-2">
           {filteredTracks.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-2.5">
+            <div className="playlist-tracks-container flex flex-col divide-y divide-white/[0.04] p-1 sm:p-2 rounded-2xl bg-white/[0.02] border border-white/5 backdrop-blur-xl">
               {filteredTracks.map((track, idx) => (
                 <div
                   key={track.id}
                   onClick={() => playCollectionFromIndex(filteredTracks, idx)}
-                  className="card-surface group flex items-center justify-between p-2.5 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all duration-200 cursor-pointer shadow-sm select-none"
+                  data-track-row="true"
+                  className="track-row group flex items-center justify-between p-2 sm:p-2.5 rounded-lg hover:bg-white/[0.06] transition-all duration-150 cursor-pointer select-none"
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
                     <span className="w-5 text-center text-xs font-bold text-white/30 group-hover:text-[var(--accent)]">
                       {idx + 1}
                     </span>
 
-                    <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-white/5 border border-white/5 flex-shrink-0">
+                    <div className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-white/5 border border-white/5 flex-shrink-0">
                       <TrackThumbImage
                         track={track}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
@@ -305,7 +306,7 @@ export const OfflineView: React.FC = () => {
             return (
               <div
                 key={pl.id}
-                onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover)}
+                onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover, pl.tracks)}
                 className="card-surface group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all cursor-pointer shadow-sm"
               >
                 <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md group-hover:scale-105 transition-transform duration-300">

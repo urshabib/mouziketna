@@ -90,11 +90,12 @@ export const TrackRow: React.FC<TrackRowProps> = ({
   return (
     <div
       onClick={(e) => handleLongPressClick(e)}
-      className={`group flex items-center gap-2.5 px-2.5 py-1.5 rounded-xl transition-all cursor-pointer select-none gpu-layer ${
+      data-track-row="true"
+      className={`track-row group flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer select-none gpu-layer ${
         isSelected
           ? 'bg-white/15 border border-[var(--accent)]/40 shadow-sm'
           : isCurrent
-          ? 'bg-[var(--accent-soft)] hover:brightness-125'
+          ? 'is-current-track bg-[var(--accent-soft)] hover:brightness-125'
           : 'hover:bg-white/[0.06]'
       }`}
     >

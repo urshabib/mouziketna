@@ -362,9 +362,9 @@ export const FullScreenPlayer: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleToggleBooster}
-                  className={`p-1.5 sm:p-2 transition-all relative rounded-full active:scale-95 cursor-pointer ${
+                  className={`p-1.5 sm:p-2 transition-colors relative active:scale-95 cursor-pointer ${
                     boosterSettings.bassMode !== 'off' || boosterSettings.volumeBoost > 100
-                      ? 'text-[var(--accent)] bg-[var(--accent-soft)] shadow-[0_0_12px_rgba(255,107,26,0.4)]'
+                      ? 'text-[var(--accent)]'
                       : 'text-white/70 hover:text-white'
                   }`}
                   title="Bass & Volume Booster"

@@ -250,12 +250,26 @@ const AppShell: React.FC = () => {
     if (activePane !== 'offline') {
       lastOnlinePaneRef.current = activePane;
     }
+    const mainEl = document.getElementById('main-scroll-container');
+    if (mainEl) {
+      mainEl.scrollTo({ top: 0, behavior: 'instant' });
+    }
   }, [activePane]);
+
+  // Initial check on app launch if started without network connection
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (activePaneRef.current !== 'offline' && activePaneRef.current !== 'collection') {
+        lastOnlinePaneRef.current = activePaneRef.current || 'home';
+        setActivePane('offline');
+      }
+    }
+  }, []);
 
   useEffect(() => {
     const handleOnline = () => {
       showToast('Back Online • Restoring cloud connection', true);
-      // Auto-restore previous online pane
+      // Auto-restore previous online pane if currently stuck on offline landing view
       if (activePaneRef.current === 'offline') {
         const restorePane =
           lastOnlinePaneRef.current && lastOnlinePaneRef.current !== 'offline'
@@ -270,19 +284,15 @@ const AppShell: React.FC = () => {
         lastOnlinePaneRef.current = activePaneRef.current;
       }
       showToast('Offline Mode Active • Playing downloaded music', true);
-      setActivePane('offline');
+      // Only redirect to offline hub if on online-only tabs (home, search, admin)
+      // Allow user to remain in collection view (playlists/downloads/liked) or settings
+      if (activePaneRef.current === 'home' || activePaneRef.current === 'search' || activePaneRef.current === 'admin') {
+        setActivePane('offline');
+      }
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
-    // Initial check on app startup: if launching without wifi, automatically open into offline view
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      if (activePaneRef.current !== 'offline') {
-        lastOnlinePaneRef.current = activePaneRef.current || 'home';
-        setActivePane('offline');
-      }
-    }
 
     return () => {
       window.removeEventListener('online', handleOnline);
