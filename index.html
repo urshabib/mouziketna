@@ -126,21 +126,18 @@
         window.dispatchEvent(new CustomEvent('pwa-installed'));
       });
 
-      // Register Service Worker in production; unregister in dev/preview to prevent caching issues
+      // Register Service Worker for offline PWA functionality
       if ('serviceWorker' in navigator) {
-        if (location.port !== '3000' && !location.hostname.includes('run.app')) {
+        if (location.port !== '3000') {
           window.addEventListener('load', function() {
             navigator.serviceWorker.register('./sw.js')
               .then(function(reg) {
                 console.log('[MOUZIKETNA] PWA Service Worker active with scope:', reg.scope);
+                reg.update().catch(function() {});
               })
               .catch(function(err) {
                 console.warn('[MOUZIKETNA] Service Worker registration notice:', err);
               });
-          });
-        } else {
-          navigator.serviceWorker.getRegistrations().then(function(regs) {
-            regs.forEach(function(r) { r.unregister(); });
           });
         }
       }

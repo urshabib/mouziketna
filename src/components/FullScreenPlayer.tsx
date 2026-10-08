@@ -137,29 +137,56 @@ export const FullScreenPlayer: React.FC = () => {
   const [swipeHint, setSwipeHint] = useState<'next' | 'prev' | 'lyrics' | 'dismiss' | null>(null);
 
   const startCoords = useRef<{ x: number; y: number } | null>(null);
+  const startTime = useRef<number>(0);
   const activeDirection = useRef<'horizontal' | 'vertical-down' | 'vertical-up' | null>(null);
+  const lastTouchTimeRef = useRef<number>(0);
+  const isDismissingRef = useRef<boolean>(false);
 
-  if (!isFullScreenOpen || !activeTrack) return null;
+  useEffect(() => {
+    if (isFullScreenOpen) {
+      isDismissingRef.current = false;
+      setDragY(0);
+      setDragX(0);
+    }
+  }, [isFullScreenOpen]);
+
+  if (!activeTrack) return null;
 
   const isLiked = userProfile.likedSongs?.some((s) => s.id === activeTrack.id);
 
   // Touch & Pointer Gesture Handlers for Swipe-to-Skip, Swipe-Down-to-Dismiss, and Swipe-Up-for-Lyrics
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+    if (isDismissingRef.current) return;
+    const isTouch = 'touches' in e;
+    if (isTouch) {
+      lastTouchTimeRef.current = Date.now();
+    } else if (Date.now() - lastTouchTimeRef.current < 700) {
+      // Discard synthetic mouse event generated right after touch
+      return;
+    }
+
     const target = e.target as HTMLElement;
     if (target.closest('input, button, a, .no-swipe, .popover-menu')) return;
 
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const clientX = isTouch ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = isTouch ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
 
     startCoords.current = { x: clientX, y: clientY };
+    startTime.current = Date.now();
     activeDirection.current = null;
   };
 
   const handleTouchMove = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!startCoords.current) return;
+    if (isDismissingRef.current || !startCoords.current) return;
+    const isTouch = 'touches' in e;
+    if (isTouch) {
+      lastTouchTimeRef.current = Date.now();
+    } else if (Date.now() - lastTouchTimeRef.current < 700) {
+      return;
+    }
 
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+    const clientX = isTouch ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = isTouch ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
 
     const diffX = clientX - startCoords.current.x;
     const diffY = clientY - startCoords.current.y;
@@ -192,26 +219,46 @@ export const FullScreenPlayer: React.FC = () => {
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e?: React.TouchEvent | React.MouseEvent) => {
+    if (isDismissingRef.current) return;
+    if (e) {
+      const isTouch = 'changedTouches' in e;
+      if (isTouch) {
+        lastTouchTimeRef.current = Date.now();
+      } else if (Date.now() - lastTouchTimeRef.current < 700) {
+        return;
+      }
+    }
+
+    const durationMs = Math.max(1, Date.now() - startTime.current);
+    const velocityY = dragY / durationMs;
+    const isFlickDismiss = activeDirection.current === 'vertical-down' && (dragY > 70 || (dragY > 25 && velocityY > 0.28));
+
     if (activeDirection.current === 'horizontal') {
       if (dragX < -55) {
         playNext();
       } else if (dragX > 55) {
         playPrevious();
       }
-    } else if (activeDirection.current === 'vertical-down') {
-      if (dragY > 110) {
-        setIsFullScreenOpen(false);
-      }
+      setDragX(0);
+    } else if (isFlickDismiss) {
+      // Mark dismissing and trigger smooth exit animation without snapping back to top
+      isDismissingRef.current = true;
+      setIsFullScreenOpen(false);
+      setTimeout(() => {
+        setDragY(0);
+        isDismissingRef.current = false;
+      }, 400);
     } else if (activeDirection.current === 'vertical-up' || dragY < -45) {
       setIsLyricsOpen(true);
+      setDragY(0);
+    } else {
+      setDragY(0);
     }
 
-    // Reset gesture states
+    // Reset gesture trackers
     startCoords.current = null;
     activeDirection.current = null;
-    setDragX(0);
-    setDragY(0);
     setSwipeHint(null);
   };
 

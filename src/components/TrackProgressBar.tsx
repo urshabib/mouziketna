@@ -38,20 +38,44 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragValue, setDragValue] = useState<number | null>(null);
+  const lastCommitTimeRef = useRef(0);
+  const lastCommittedValueRef = useRef<number | null>(null);
 
   const displayTime = isDragging && dragValue !== null ? dragValue : currentTime;
   const progressPct = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
+
+  const commitSeek = (targetSec: number) => {
+    const now = Date.now();
+    // Strictly deduplicate identical seek invocations within 500ms
+    if (
+      lastCommittedValueRef.current !== null &&
+      Math.abs(lastCommittedValueRef.current - targetSec) < 0.25 &&
+      now - lastCommitTimeRef.current < 500
+    ) {
+      setIsDragging(false);
+      setDragValue(null);
+      return;
+    }
+    lastCommitTimeRef.current = now;
+    lastCommittedValueRef.current = targetSec;
+    setIsDragging(false);
+    setDragValue(null);
+    seekTo(targetSec);
+  };
 
   const handleSliderInput = (e: React.FormEvent<HTMLInputElement>) => {
     setIsDragging(true);
     setDragValue(Number((e.target as HTMLInputElement).value));
   };
 
-  const handleSliderCommit = (e: React.ChangeEvent<HTMLInputElement> | React.PointerEvent<HTMLInputElement>) => {
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Number(e.target.value);
+    commitSeek(val);
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLInputElement>) => {
     const val = Number((e.target as HTMLInputElement).value);
-    seekTo(val);
-    setIsDragging(false);
-    setDragValue(null);
+    commitSeek(val);
   };
 
   // Smooth Wavy Slider animation using direct SVG DOM ref updates (zero React re-render lag)
@@ -126,8 +150,8 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
           value={displayTime}
           step={0.1}
           onInput={handleSliderInput}
-          onChange={handleSliderCommit}
-          onPointerUp={handleSliderCommit}
+          onChange={handleSliderChange}
+          onPointerUp={handlePointerUp}
           className="custom-slider w-full show-thumb cursor-pointer"
           style={{
             height: '3.5px',
@@ -156,8 +180,8 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             value={displayTime}
             step={0.1}
             onInput={handleSliderInput}
-            onChange={handleSliderCommit}
-            onPointerUp={handleSliderCommit}
+            onChange={handleSliderChange}
+            onPointerUp={handlePointerUp}
             className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
           />
         </div>
@@ -199,8 +223,8 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             value={displayTime}
             step={0.1}
             onInput={handleSliderInput}
-            onChange={handleSliderCommit}
-            onPointerUp={handleSliderCommit}
+            onChange={handleSliderChange}
+            onPointerUp={handlePointerUp}
             className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
           />
         </div>
@@ -237,8 +261,8 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             value={displayTime}
             step={0.1}
             onInput={handleSliderInput}
-            onChange={handleSliderCommit}
-            onPointerUp={handleSliderCommit}
+            onChange={handleSliderChange}
+            onPointerUp={handlePointerUp}
             className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
           />
         </div>

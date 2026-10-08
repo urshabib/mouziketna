@@ -13,6 +13,7 @@ import {
   User,
   Loader2,
   Smartphone,
+  WifiOff,
 } from 'lucide-react';
 import { NavigationPane } from '../types';
 import { getAppLogoSrc } from '../services/pwa';
@@ -89,6 +90,19 @@ export const Sidebar: React.FC = () => {
           >
             <Settings className="w-5 h-5" /> {t('nav.settings', 'Settings')}
           </button>
+
+          {(typeof navigator !== 'undefined' && !navigator.onLine) && (
+            <button
+              onClick={() => setActivePane('offline')}
+              className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+                activePane === 'offline'
+                  ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm'
+                  : 'text-amber-400/80 hover:text-amber-400 hover:bg-amber-500/10'
+              }`}
+            >
+              <WifiOff className="w-5 h-5 text-amber-400" /> Offline Hub
+            </button>
+          )}
 
           <button
             id="sidebar-install-app-btn"
@@ -360,6 +374,18 @@ export const TopBar: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Offline Mode Indicator Badge */}
+        {(typeof navigator !== 'undefined' && !navigator.onLine) && (
+          <button
+            onClick={() => setActivePane('offline')}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-400 font-extrabold text-xs shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer"
+            title="Offline Mode Active"
+          >
+            <WifiOff className="w-3.5 h-3.5" />
+            <span>Offline</span>
+          </button>
+        )}
+
         {/* Install App Button */}
         {!isStandalone && (
           <button

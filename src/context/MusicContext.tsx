@@ -336,6 +336,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const playTrackRef = useRef<((t: Track, isRetry?: boolean) => Promise<boolean>) | null>(null);
   const playNextRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const playPreviousRef = useRef<() => void>(() => {});
+  const seekDebounceTimerRef = useRef<number | null>(null);
+  const isSeekingRef = useRef(false);
 
   // Overlays
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
@@ -538,6 +540,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const audio = new Audio();
     audio.preload = 'auto';
     audio.crossOrigin = 'anonymous';
+    (audio as any).playsInline = true;
+    (audio as any).webkitPlaysInline = true;
     audio.volume = volume / 100;
     audioRef.current = audio;
     ensureAudioGraph(audio);
@@ -546,6 +550,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const prefetchAudio = new Audio();
     prefetchAudio.preload = 'auto';
     prefetchAudio.muted = true;
+    (prefetchAudio as any).playsInline = true;
+    (prefetchAudio as any).webkitPlaysInline = true;
     prefetchAudioRef.current = prefetchAudio;
 
     const onPlay = () => {
@@ -561,8 +567,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         navigator.mediaSession.playbackState = 'paused';
       }
     };
-    const onWaiting = () => setIsBuffering(true);
+    const onWaiting = () => {
+      // Do not flash the loading spinner on instantaneous seeks
+      if (!isSeekingRef.current) {
+        setIsBuffering(true);
+      }
+    };
+    const onSeeking = () => {
+      // Keep isBuffering false so play button doesn't flash rotating spinner on user seeks
+      setIsBuffering(false);
+    };
+    const onSeeked = () => {
+      isSeekingRef.current = false;
+      setIsBuffering(false);
+    };
     const onPlaying = () => {
+      isSeekingRef.current = false;
       setIsBuffering(false);
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
@@ -606,11 +626,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Auto prefetch check: trigger at 18s left in song
+      // Auto prefetch check: trigger at 25s left in song, or once track has played for 12s
       if (
         !hasPrefetchedNextRef.current &&
-        audio.duration > 25 &&
-        audio.duration - audio.currentTime <= 18
+        ((audio.duration > 20 && audio.duration - audio.currentTime <= 25) || audio.currentTime >= 12)
       ) {
         hasPrefetchedNextRef.current = true;
         prefetchNextSong();
@@ -636,6 +655,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Auto-reconnect & self-heal if audio stream encounters an unexpected network stall or disconnect
     const onAudioError = () => {
+      // NEVER reconnect or reload track if user was actively seeking!
+      // When seeking, browser cancels previous stream range requests which dispatches transient error codes.
+      // Reconnecting here would restart the track and make audio play twice!
+      if (isSeekingRef.current) {
+        return;
+      }
       const active = activeTrackRef.current;
       if (active && audio && !audio.ended && audio.currentTime > 0) {
         const resumePos = audio.currentTime;
@@ -653,11 +678,26 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('waiting', onWaiting);
+    audio.addEventListener('seeking', onSeeking);
+    audio.addEventListener('seeked', onSeeked);
     audio.addEventListener('playing', onPlaying);
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onAudioError);
+
+    // Keep background audio active when screen turns off or locks on iPhone / iOS
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && audioRef.current) {
+        // If track was playing and screen is turned off, ensure playback stays active
+        if (!audioRef.current.paused && audioRef.current.currentTime > 0) {
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = 'playing';
+          }
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     // Init downloads registry
     initDownloadsRegistry().then(() => {
@@ -1912,12 +1952,47 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const seekTo = (time: number) => {
     const audio = audioRef.current;
-    if (audio && isFinite(audio.duration) && audio.duration > 0) {
-      const targetTime = Math.max(0, Math.min(audio.duration, time));
-      audio.currentTime = targetTime;
-      setCurrentTime(targetTime);
-      setIsBuffering(false);
+    if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
+    const targetTime = Math.max(0, Math.min(audio.duration, time));
+
+    // Cancel any previous seek timer
+    if (seekDebounceTimerRef.current) {
+      clearTimeout(seekDebounceTimerRef.current);
+      seekDebounceTimerRef.current = null;
     }
+
+    // Immediately synchronize UI scrub position for zero perceived latency
+    setCurrentTime(targetTime);
+    setIsBuffering(false);
+
+    if (Math.abs(audio.currentTime - targetTime) < 0.05) return;
+
+    const wasPlaying = !audio.paused;
+    const prevMuted = audio.muted;
+
+    // Eliminate dual-audio / overlapping sound glitch on seek:
+    // Temporarily mute for a split moment while resetting currentTime
+    // so older buffered decoder frames are purged without playing concurrently
+    if (wasPlaying) {
+      audio.muted = true;
+    }
+
+    // Set currentTime directly for exact target point precision
+    try {
+      audio.currentTime = targetTime;
+    } catch {
+      // Fallback
+    }
+
+    // Restore unmuted audio immediately once the exact point is latched
+    seekDebounceTimerRef.current = window.setTimeout(() => {
+      if (audioRef.current) {
+        audioRef.current.muted = prevMuted;
+        if (wasPlaying && audioRef.current.paused) {
+          audioRef.current.play().catch(() => {});
+        }
+      }
+    }, 45);
   };
 
   const seekBy = (delta: number) => {

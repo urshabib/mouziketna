@@ -1,9 +1,11 @@
 // Service Worker for MOUZIKETNA PWA
-const CACHE_NAME = 'mouzika-pwa-v9';
+const CACHE_NAME = 'mouzika-pwa-v11';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
 // Precache static shell assets (including predictable production bundles)
 const PRECACHE_ASSETS = [
+  './',
+  './index.html',
   './manifest.json',
   './favicon.png',
   './favicon.ico',
@@ -18,9 +20,13 @@ const PRECACHE_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('[MOUZIKETNA SW] Precache partial notice:', err);
-      });
+      return Promise.all(
+        PRECACHE_ASSETS.map((asset) =>
+          cache.add(asset).catch((err) => {
+            console.warn('[MOUZIKETNA SW] Precache partial asset warning:', asset, err);
+          })
+        )
+      );
     }).then(() => self.skipWaiting())
   );
 });
@@ -120,9 +126,10 @@ self.addEventListener('fetch', (event) => {
         .catch(async () => {
           // If offline, use cached index.html
           const cached =
-            (await caches.match(event.request)) ||
+            (await caches.match(event.request, { ignoreSearch: true })) ||
             (await caches.match('./index.html')) ||
             (await caches.match('./')) ||
+            (await caches.match('index.html')) ||
             (await caches.match('/index.html')) ||
             (await caches.match('/'));
           if (cached) return cached;

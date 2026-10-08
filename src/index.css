@@ -151,13 +151,13 @@ body.liquid-glass {
 }
 
 body.liquid-glass .glass-panel,
-body.liquid-glass [class*="bg-white/"],
-body.liquid-glass [class*="bg-black/"] {
-  background: rgba(20, 20, 26, 0.72) !important;
-  backdrop-filter: blur(28px) saturate(180%) brightness(1.02);
-  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.02);
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.52), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+body.liquid-glass [class*="bg-white/"]:not([class*="w-10"]):not([class*="w-11"]):not([class*="aspect-square"]):not([class*="rounded-full"]):not([class*="rounded-lg"]):not([data-preset-swatch]):not(button),
+body.liquid-glass .card-surface {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(28px) saturate(180%) brightness(1.04);
+  -webkit-backdrop-filter: blur(28px) saturate(180%) brightness(1.04);
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.15);
 }
 
 /* Liquid Glass Ultra mode (Max Hyper-Blur Dynamic Island Glass with iOS Refraction) */
@@ -168,14 +168,33 @@ body.liquid-glass-ultra {
 }
 
 body.liquid-glass-ultra .glass-panel,
-body.liquid-glass-ultra [class*="bg-white/"],
-body.liquid-glass-ultra [class*="bg-black/"],
-body.liquid-glass-ultra .popover-menu {
-  background: rgba(16, 16, 22, 0.44) !important;
-  backdrop-filter: blur(80px) saturate(280%) brightness(1.18) contrast(1.05);
-  -webkit-backdrop-filter: blur(80px) saturate(280%) brightness(1.18) contrast(1.05);
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.82), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 2px 0 rgba(0, 0, 0, 0.5) !important;
+body.liquid-glass-ultra .card-surface,
+body.liquid-glass-ultra .popover-menu,
+body.liquid-glass-ultra div[class*="rounded-2xl"][class*="bg-white/"]:not([data-preset-swatch]),
+body.liquid-glass-ultra div[class*="rounded-xl"][class*="bg-white/"]:not([data-preset-swatch]):not(button):not([class*="aspect-square"]) {
+  background: rgba(255, 255, 255, 0.07) !important;
+  backdrop-filter: blur(50px) saturate(220%) brightness(1.1) contrast(1.02);
+  -webkit-backdrop-filter: blur(50px) saturate(220%) brightness(1.1) contrast(1.02);
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), inset 0 1px 1.5px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+/* Preserve Preset color swatches and buttons from glass transparency overrides */
+[data-preset-swatch],
+button[data-preset-swatch],
+body.liquid-glass-ultra button[data-preset-swatch],
+body.liquid-glass button[data-preset-swatch] {
+  opacity: 1 !important;
+}
+
+/* Clean transparent artwork wrappers & thumbnails in Ultra and Medium Glass (zero black patches) */
+body.liquid-glass-ultra div[class*="aspect-square"]:not(button):not([data-preset-swatch]),
+body.liquid-glass-ultra div:has(> img.object-cover):not(button):not([data-preset-swatch]),
+body.liquid-glass div[class*="aspect-square"]:not(button):not([data-preset-swatch]),
+body.liquid-glass div:has(> img.object-cover):not(button):not([data-preset-swatch]) {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: none !important;
 }
 
 /* Brand Logo & Habib Signature */

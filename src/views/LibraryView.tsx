@@ -72,7 +72,7 @@ export const LibraryView: React.FC = () => {
                 onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover)}
                 className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
               >
-                <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-[#18181b] shadow-md group-hover:scale-105 transition-transform duration-300">
+                <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md group-hover:scale-105 transition-transform duration-300">
                   <PlaylistCover
                     cover={customCover}
                     tracks={pl.tracks}
@@ -126,7 +126,7 @@ export const LibraryView: React.FC = () => {
             onClick={() => openCollection('downloads')}
             className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
           >
-            <div className="relative w-full aspect-square rounded-xl bg-[#1c1c1e] border border-white/10 flex items-center justify-center text-[var(--accent)] mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
+            <div className="relative w-full aspect-square rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[var(--accent)] mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
               <Download className="w-12 h-12" />
             </div>
             <h4 className="font-bold text-sm text-white truncate">{t('library.downloads', 'Downloaded')}</h4>

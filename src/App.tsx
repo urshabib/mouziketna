@@ -16,6 +16,7 @@ import { CollectionView } from './views/CollectionView';
 import { SettingsView } from './views/SettingsView';
 import { AccountView } from './views/AccountView';
 import { AdminView } from './views/AdminView';
+import { OfflineView } from './views/OfflineView';
 import { motion, AnimatePresence } from 'motion/react';
 import { checkGitHubRepoForUpdates, forceAppUpdateAndRefresh } from './services/pwa';
 
@@ -240,12 +241,61 @@ const AppShell: React.FC = () => {
     };
   }, [showToast]);
 
+  // Auto-switch to Offline View when connection drops & auto-restore when Wi-Fi returns
+  const lastOnlinePaneRef = React.useRef<any>('home');
+  const activePaneRef = React.useRef<any>(activePane);
+
+  useEffect(() => {
+    activePaneRef.current = activePane;
+    if (activePane !== 'offline') {
+      lastOnlinePaneRef.current = activePane;
+    }
+  }, [activePane]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      showToast('Back Online • Restoring cloud connection', true);
+      // Auto-restore previous online pane
+      if (activePaneRef.current === 'offline') {
+        const restorePane =
+          lastOnlinePaneRef.current && lastOnlinePaneRef.current !== 'offline'
+            ? lastOnlinePaneRef.current
+            : 'home';
+        setActivePane(restorePane);
+      }
+    };
+
+    const handleOffline = () => {
+      if (activePaneRef.current !== 'offline') {
+        lastOnlinePaneRef.current = activePaneRef.current;
+      }
+      showToast('Offline Mode Active • Playing downloaded music', true);
+      setActivePane('offline');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Initial check on app startup: if launching without wifi, automatically open into offline view
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (activePaneRef.current !== 'offline') {
+        lastOnlinePaneRef.current = activePaneRef.current || 'home';
+        setActivePane('offline');
+      }
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [setActivePane, showToast]);
+
   // Handle widget launcher query parameter (?widget=nowplaying or ?widget=topsongs)
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const pane = params.get('pane');
-      if (pane && ['home', 'search', 'library', 'account', 'settings', 'admin'].includes(pane)) {
+      if (pane && ['home', 'search', 'library', 'account', 'settings', 'admin', 'offline'].includes(pane)) {
         setActivePane(pane as any);
       }
     } catch {}
@@ -288,6 +338,7 @@ const AppShell: React.FC = () => {
               {activePane === 'settings' && <SettingsView />}
               {activePane === 'account' && <AccountView />}
               {activePane === 'admin' && <AdminView />}
+              {activePane === 'offline' && <OfflineView />}
             </motion.div>
           </AnimatePresence>
         </main>

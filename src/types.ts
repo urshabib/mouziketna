@@ -113,7 +113,7 @@ export interface DownloadRecord {
   downloadedAt: number;
 }
 
-export type NavigationPane = 'home' | 'search' | 'library' | 'collection' | 'settings' | 'account' | 'admin';
+export type NavigationPane = 'home' | 'search' | 'library' | 'collection' | 'settings' | 'account' | 'admin' | 'offline';
 
 export interface CollectionTarget {
   type: 'liked' | 'downloads' | 'custom-playlist' | 'artist' | 'playlist';

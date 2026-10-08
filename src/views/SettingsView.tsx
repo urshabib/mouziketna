@@ -905,6 +905,7 @@ export const SettingsView: React.FC = () => {
                   <button
                     key={p.id}
                     type="button"
+                    data-preset-swatch="true"
                     onClick={() => applyPreset(p)}
                     title={p.name}
                     className={`relative aspect-square rounded-xl flex items-center justify-center transition-all cursor-pointer group overflow-hidden border ${
@@ -913,7 +914,8 @@ export const SettingsView: React.FC = () => {
                         : 'border-white/10 hover:border-white/30 hover:scale-102 opacity-85 hover:opacity-100'
                     }`}
                     style={{
-                      background: `linear-gradient(135deg, ${p.accentHex} 0%, ${p.accentHex}bb 45%, #0f0f13 100%)`,
+                      background: `linear-gradient(135deg, ${p.accentHex} 0%, ${p.accentHex}bb 45%, #0f0f13 100%) !important`,
+                      backgroundColor: p.accentHex,
                       boxShadow: isSelected ? `0 0 16px ${p.accentHex}66` : undefined,
                     }}
                   >

@@ -49,15 +49,15 @@ const HomeRecentItem: React.FC<HomeRecentItemProps> = ({
     <div
       onClick={handleClick}
       {...handlers}
-      className="flex items-center gap-2 sm:gap-2.5 p-1.5 sm:p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 cursor-pointer transition-colors duration-150 group select-none overflow-hidden touch-pan-x"
+      className="card-surface flex items-center gap-2 sm:gap-2.5 p-1.5 sm:p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 cursor-pointer transition-colors duration-150 group select-none overflow-hidden touch-pan-x"
     >
-      <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 shadow-sm pointer-events-none">
+      <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-lg overflow-hidden flex-shrink-0 bg-transparent shadow-sm pointer-events-none">
         <TrackThumbImage
           track={track}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+        <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
           <Play className="w-4 h-4 text-white fill-white ml-0.5" />
         </div>
       </div>
@@ -98,18 +98,18 @@ const HomeTrendingItem: React.FC<HomeTrendingItemProps> = ({
     <div
       onClick={handleClick}
       {...handlers}
-      className="snap-start flex items-center gap-3 p-2 sm:p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] active:scale-[0.99] border border-white/5 hover:border-white/15 cursor-pointer transition-all duration-200 group select-none"
+      className="card-surface snap-start flex items-center gap-3 p-2 sm:p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] active:scale-[0.99] border border-white/5 hover:border-white/15 cursor-pointer transition-all duration-200 group select-none"
     >
       <span className="w-5 text-center text-xs font-black text-white/40 group-hover:text-[var(--accent)]">
         {index + 1}
       </span>
-      <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 shadow-sm">
+      <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-transparent shadow-sm">
         <TrackThumbImage
           track={track}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+        <div className="absolute inset-0 bg-black/25 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
           <Play className="w-4 h-4 text-white fill-white ml-0.5" />
         </div>
       </div>

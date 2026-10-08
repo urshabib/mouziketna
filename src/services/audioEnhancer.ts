@@ -179,7 +179,29 @@ function applyFilters() {
   }
 }
 
+export const isIOSDevice = () => {
+  if (typeof navigator === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+};
+
+export function isAudioGraphNeeded(): boolean {
+  // On iPhone / iOS devices, Web Audio AudioContext is forcefully suspended by iOS Safari
+  // whenever the screen is locked, turned off, or the app goes to the background.
+  // Bypassing Web Audio on iOS guarantees pure direct hardware audio that NEVER stops!
+  if (isIOSDevice()) {
+    return false;
+  }
+  return currentBassMode !== 'off' || currentVolumeBoost > 100;
+}
+
 export function ensureAudioGraph(audio: HTMLAudioElement) {
+  // If no DSP enhancer is active or if on iOS, keep audio in pure direct hardware playback
+  // to guarantee unbroken background playback on iOS/Safari and zero seek glitches!
+  if (!isAudioGraphNeeded()) {
+    return;
+  }
+
   if (isConnected && audioCtx) {
     resumeAudioContext();
     return;

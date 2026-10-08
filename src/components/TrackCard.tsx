@@ -72,10 +72,10 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
     <div
       onClick={(e) => handleLongPressClick(e)}
       {...longPressHandlers}
-      className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1 gpu-layer"
+      className="card-surface group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1 gpu-layer"
     >
       {/* Artwork container */}
-      <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-[#18181b] shadow-md">
+      <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md">
         <img
           src={displayThumb}
           alt={track.title}
@@ -103,7 +103,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
 
         {/* Live EQ Indicator */}
         {isCurrent && (
-          <div className="absolute left-2.5 bottom-2.5 flex items-end gap-0.5 h-4 bg-black/70 backdrop-blur-md px-2 py-1 rounded-md shadow-md">
+          <div className="absolute left-2.5 bottom-2.5 flex items-end gap-0.5 h-4 bg-black/40 backdrop-blur-md border border-white/10 px-2 py-1 rounded-md shadow-md">
             <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-1" />
             <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-2" />
             <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-3" />
