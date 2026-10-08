@@ -1,12 +1,13 @@
 // Service Worker for MOUZIKETNA PWA
-const CACHE_NAME = 'mouzika-pwa-v11';
+const CACHE_NAME = 'mouzika-pwa-v12';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
-// Precache static shell assets (including predictable production bundles)
+// Precache static shell assets
 const PRECACHE_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './version.json',
   './favicon.png',
   './favicon.ico',
   './icon-192.png',
@@ -31,10 +32,19 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Skip waiting message listener from force refresh
+// Skip waiting & cache purge message listeners
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    self.skipWaiting();
+  if (event.data) {
+    if (event.data.type === 'SKIP_WAITING') {
+      self.skipWaiting();
+    }
+    if (event.data.type === 'PURGE_CACHE') {
+      caches.keys().then((keys) =>
+        Promise.all(
+          keys.filter((key) => key !== BRANDING_CACHE).map((key) => caches.delete(key))
+        )
+      );
+    }
   }
 });
 
@@ -62,7 +72,13 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   const pathname = url.pathname;
 
-  // Intercept PWA manifest and icon requests so Chrome/Android and iOS get the custom selected/uploaded logo
+  // version.json is ALWAYS fresh from network - never cached
+  if (pathname.endsWith('version.json') || url.searchParams.has('_t') || url.searchParams.has('_bust')) {
+    event.respondWith(fetch(event.request, { cache: 'no-store' }).catch(() => caches.match(event.request)));
+    return;
+  }
+
+  // Intercept PWA manifest and icon requests so Chrome/Android and iOS get custom selected/uploaded logo
   const isBrandingRequest =
     pathname.endsWith('icon-192.png') ||
     pathname.endsWith('icon-512.png') ||
@@ -102,13 +118,12 @@ self.addEventListener('fetch', (event) => {
                           pathname.includes('/api/');
 
   if (isAudioOrStream) {
-    // Pass audio and API requests straight through to network
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;
   }
 
   // HTML / Navigation requests: ALWAYS Network-First with cache: 'no-cache'
-  // This guarantees newly deployed GitHub Pages builds never show a white screen from stale HTML hashes
+  // Prevents white screen and guarantees fresh index.html
   const isNav = event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html');
 
   if (isNav) {
@@ -139,11 +154,34 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static Assets (JS, CSS, images, fonts): Network first with cache fallback
+  // Static JavaScript and CSS code assets: Network-First with cache: 'no-cache'
+  // Revalidates with server, preventing mobile browsers from keeping stale disk cache
+  const isCodeAsset = pathname.endsWith('.js') || pathname.endsWith('.css');
+  if (isCodeAsset) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' })
+        .then((response) => {
+          if (response && response.status === 200 && response.type !== 'opaque') {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache).catch(() => {});
+            }).catch(() => {});
+          }
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          return new Response('Offline Asset Unavailable', { status: 404, statusText: 'Not Found' });
+        })
+    );
+    return;
+  }
+
+  // Static Assets (images, fonts): Network first with cache fallback
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Cache successful GET responses safely
         if (response && response.status === 200 && response.type !== 'opaque') {
           const responseToCache = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -153,7 +191,6 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(async () => {
-        // Offline fallback from cache
         const cached = await caches.match(event.request);
         if (cached) return cached;
         return new Response('Offline Asset Unavailable', { status: 404, statusText: 'Not Found' });

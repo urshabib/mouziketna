@@ -18,7 +18,7 @@ import { AccountView } from './views/AccountView';
 import { AdminView } from './views/AdminView';
 import { OfflineView } from './views/OfflineView';
 import { motion, AnimatePresence } from 'motion/react';
-import { checkGitHubRepoForUpdates, forceAppUpdateAndRefresh } from './services/pwa';
+import { checkForAppUpdates, forceAppUpdateAndRefresh } from './services/pwa';
 
 const AppShell: React.FC = () => {
   const {
@@ -207,29 +207,49 @@ const AppShell: React.FC = () => {
     setIsInstallModalOpen,
   ]);
 
-  // Automatic GitHub Repository Update Check & Auto-Restart
+  // Automatic Multi-Tier Update Detector & Auto-Restart
   useEffect(() => {
-    const handleUpdateFound = async () => {
-      showToast('New update released on GitHub! Refreshing app...', true);
+    let isUpdating = false;
+
+    const triggerRefresh = async (msg = '⚡ New update found! Refreshing app...') => {
+      if (isUpdating) return;
+      isUpdating = true;
+      showToast(msg, true);
       setTimeout(async () => {
         await forceAppUpdateAndRefresh();
-      }, 1200);
+      }, 1000);
     };
 
-    // 1. Check on app mount (after initial 3s grace period)
+    const runUpdateCheck = async () => {
+      if (isUpdating) return;
+      await checkForAppUpdates({
+        onUpdateFound: (result) => {
+          const detail = result.latestVersion ? ` (v${result.latestVersion})` : '';
+          triggerRefresh(`⚡ Update detected${detail}! Applying latest version...`);
+        },
+      });
+    };
+
+    // 1. Listen for background service worker update event
+    const handleSwUpdate = () => {
+      triggerRefresh('⚡ New version ready! Updating app...');
+    };
+    window.addEventListener('app-update-available', handleSwUpdate);
+
+    // 2. Check on app mount (after initial 2s grace period)
     const initialTimer = setTimeout(() => {
-      checkGitHubRepoForUpdates(handleUpdateFound);
-    }, 3000);
+      runUpdateCheck();
+    }, 2000);
 
-    // 2. Check periodically every 5 minutes
+    // 3. Check periodically every 2 minutes
     const interval = setInterval(() => {
-      checkGitHubRepoForUpdates(handleUpdateFound);
-    }, 5 * 60 * 1000);
+      runUpdateCheck();
+    }, 2 * 60 * 1000);
 
-    // 3. Check when returning to the tab / window focus
+    // 4. Check whenever returning to the tab / phone screen unlocks
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        checkGitHubRepoForUpdates(handleUpdateFound);
+        runUpdateCheck();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -237,6 +257,7 @@ const AppShell: React.FC = () => {
     return () => {
       clearTimeout(initialTimer);
       clearInterval(interval);
+      window.removeEventListener('app-update-available', handleSwUpdate);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [showToast]);

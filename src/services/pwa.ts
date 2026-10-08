@@ -502,6 +502,17 @@ export async function applyCustomAppLogo(logoKeyOrDataUrl: string): Promise<stri
   return raster192.dataUrl;
 }
 
+import { APP_VERSION, APP_BUILD_TIME, VersionInfo, getAppBuildInfo } from '../version';
+
+export interface UpdateCheckResult {
+  hasUpdate: boolean;
+  currentVersion: string;
+  latestVersion?: string;
+  remoteBuildTime?: number;
+  reason?: 'new_build_on_server' | 'service_worker_waiting' | 'github_release' | 'manual_override' | 'none';
+  message?: string;
+}
+
 /**
  * Force Refresh & Update website from network without affecting user data:
  * - Unregisters/updates active service workers
@@ -511,16 +522,20 @@ export async function applyCustomAppLogo(logoKeyOrDataUrl: string): Promise<stri
  */
 export async function forceAppUpdateAndRefresh(): Promise<void> {
   try {
-    // 1. Trigger Service Worker update checks
+    // 1. Trigger Service Worker update checks & message them to purge HTTP caches
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       try {
         const registrations = await navigator.serviceWorker.getRegistrations();
         for (const reg of registrations) {
           try {
-            await reg.update();
             if (reg.waiting) {
               reg.waiting.postMessage({ type: 'SKIP_WAITING' });
             }
+            if (reg.active) {
+              reg.active.postMessage({ type: 'PURGE_CACHE' });
+              reg.active.postMessage({ type: 'SKIP_WAITING' });
+            }
+            await reg.update().catch(() => {});
           } catch {}
         }
       } catch {}
@@ -533,19 +548,26 @@ export async function forceAppUpdateAndRefresh(): Promise<void> {
       try {
         const cacheNames = await caches.keys();
         await Promise.all(
-          cacheNames.map((name) => caches.delete(name).catch(() => false))
+          cacheNames.map((name) => {
+            if (name !== 'mouzika-branding-cache-v1') {
+              return caches.delete(name).catch(() => false);
+            }
+            return Promise.resolve(true);
+          })
         );
       } catch {}
     }
 
-    // 3. Make a network request with cache: 'reload'
+    // 3. Clear session markers
     try {
-      await fetch(`/?_ts=${Date.now()}`, { cache: 'reload' });
+      sessionStorage.removeItem('__mouzika_chunk_reload');
     } catch {}
 
     // 4. Force hard reload from the server bypassing cache
     const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set('_refresh', Date.now().toString());
+    const ts = Date.now().toString();
+    currentUrl.searchParams.set('_v', ts);
+    currentUrl.searchParams.set('_bust', Math.random().toString(36).slice(2, 8));
     window.location.replace(currentUrl.toString());
   } catch (err) {
     console.error('Failed to force refresh:', err);
@@ -588,46 +610,177 @@ export async function promptPwaInstall(): Promise<{ outcome: 'accepted' | 'dismi
 }
 
 const GITHUB_REPO_COMMITS_URL = 'https://api.github.com/repos/urshabib/mouziketna/commits?per_page=1';
+const GITHUB_RAW_VERSION_URL = 'https://raw.githubusercontent.com/urshabib/mouziketna/main/version.json';
 const GITHUB_COMMIT_KEY = 'mouziketna_github_last_commit';
+const LAST_KNOWN_BUILD_KEY = 'mouziketna_last_known_build_time';
 
 /**
- * Checks GitHub repository for new releases / commits.
- * Triggers app force refresh if a new version is published.
+ * Multi-Tier Update Detector for Mobile & Web:
+ * Tier 1: Local server ./version.json check (Zero rate limits, works reliably on all phones/cellular networks)
+ * Tier 2: Service Worker update & waiting state check
+ * Tier 3: GitHub commits API with raw version fallback (graceful on rate limit)
  */
-export async function checkGitHubRepoForUpdates(onUpdateFound?: () => void): Promise<boolean> {
-  if (typeof window === 'undefined' || !navigator.onLine) return false;
-  if (import.meta.env.DEV || window.location.port === '3000' || window.location.hostname.includes('run.app')) {
-    return false;
+export async function checkForAppUpdates(options?: {
+  forceCheck?: boolean;
+  onUpdateFound?: (result: UpdateCheckResult) => void;
+}): Promise<UpdateCheckResult> {
+  if (typeof window === 'undefined') {
+    return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none' };
   }
+
+  if (!navigator.onLine) {
+    return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'You are currently offline' };
+  }
+
+  // Skip auto background polling inside AI Studio dev preview port 3000 unless manually forced
+  if (!options?.forceCheck && (import.meta.env.DEV || window.location.port === '3000' || window.location.hostname.includes('run.app'))) {
+    return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none' };
+  }
+
+  // --- TIER 1: Same-origin version.json check ---
   try {
-    const res = await fetch(GITHUB_REPO_COMMITS_URL, {
+    const versionRes = await fetch(`./version.json?_t=${Date.now()}&_b=${Math.random().toString(36).slice(2, 6)}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+    });
+
+    if (versionRes.ok) {
+      const data = (await versionRes.json()) as VersionInfo;
+      const remoteBuildTime = Number(data?.buildTime) || 0;
+      const remoteVersion = data?.version || APP_VERSION;
+
+      // Check if remote build timestamp is newer than current running bundle
+      if (remoteBuildTime > APP_BUILD_TIME || (remoteVersion && remoteVersion !== APP_VERSION)) {
+        console.log(`[MOUZIKETNA] Host update detected! Installed: ${APP_VERSION} (${APP_BUILD_TIME}) -> Server: ${remoteVersion} (${remoteBuildTime})`);
+        try {
+          localStorage.setItem(LAST_KNOWN_BUILD_KEY, String(remoteBuildTime));
+        } catch {}
+
+        const result: UpdateCheckResult = {
+          hasUpdate: true,
+          currentVersion: APP_VERSION,
+          latestVersion: remoteVersion,
+          remoteBuildTime,
+          reason: 'new_build_on_server',
+          message: `New update available (v${remoteVersion})`
+        };
+
+        if (options?.onUpdateFound) {
+          options.onUpdateFound(result);
+        }
+        return result;
+      }
+    }
+  } catch (err) {
+    // Continue to next tier if same-origin fetch has issue
+  }
+
+  // --- TIER 2: Service Worker update check ---
+  if ('serviceWorker' in navigator) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        await reg.update().catch(() => {});
+        if (reg.waiting || (reg.installing && reg.installing.state === 'installed')) {
+          console.log('[MOUZIKETNA] New Service Worker waiting. Update ready to activate!');
+          try {
+            reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
+          } catch {}
+
+          const result: UpdateCheckResult = {
+            hasUpdate: true,
+            currentVersion: APP_VERSION,
+            latestVersion: APP_VERSION,
+            reason: 'service_worker_waiting',
+            message: 'New version ready to install'
+          };
+
+          if (options?.onUpdateFound) {
+            options.onUpdateFound(result);
+          }
+          return result;
+        }
+      }
+    } catch {}
+  }
+
+  // --- TIER 3: GitHub repository / raw release check ---
+  try {
+    const gitRes = await fetch(GITHUB_REPO_COMMITS_URL, {
       headers: { Accept: 'application/vnd.github.v3+json' },
       cache: 'no-store',
     });
-    if (!res.ok) return false;
-    const data = await res.json();
-    const latestSha = Array.isArray(data) && data[0]?.sha ? data[0].sha : (data?.sha || null);
-    if (!latestSha) return false;
 
-    const storedSha = localStorage.getItem(GITHUB_COMMIT_KEY);
-    if (!storedSha) {
-      // First run: save current commit baseline
-      localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
-      return false;
-    }
+    if (gitRes.ok) {
+      const data = await gitRes.json();
+      const latestSha = Array.isArray(data) && data[0]?.sha ? data[0].sha : (data?.sha || null);
+      if (latestSha) {
+        const storedSha = localStorage.getItem(GITHUB_COMMIT_KEY);
+        if (storedSha && storedSha !== latestSha) {
+          console.log(`[MOUZIKETNA] GitHub commit update detected (${storedSha.slice(0, 7)} -> ${latestSha.slice(0, 7)})`);
+          localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
 
-    if (storedSha !== latestSha) {
-      console.log(`[MOUZIKETNA] New release found on GitHub (${storedSha.slice(0, 7)} -> ${latestSha.slice(0, 7)}). Auto updating app...`);
-      localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
-      if (onUpdateFound) {
-        onUpdateFound();
+          const result: UpdateCheckResult = {
+            hasUpdate: true,
+            currentVersion: APP_VERSION,
+            latestVersion: APP_VERSION,
+            reason: 'github_release',
+            message: 'New release published on GitHub'
+          };
+
+          if (options?.onUpdateFound) {
+            options.onUpdateFound(result);
+          }
+          return result;
+        } else if (!storedSha) {
+          localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
+        }
       }
-      return true;
+    } else if (gitRes.status === 403) {
+      // GitHub API rate limited! Fallback to GitHub raw version.json which has NO 60 req/hr ceiling
+      try {
+        const rawRes = await fetch(`${GITHUB_RAW_VERSION_URL}?_t=${Date.now()}`, { cache: 'no-store' });
+        if (rawRes.ok) {
+          const rawData = await rawRes.json();
+          const rawBuildTime = Number(rawData?.buildTime) || 0;
+          if (rawBuildTime > APP_BUILD_TIME) {
+            console.log(`[MOUZIKETNA] GitHub raw update detected (${APP_BUILD_TIME} -> ${rawBuildTime})`);
+            const result: UpdateCheckResult = {
+              hasUpdate: true,
+              currentVersion: APP_VERSION,
+              latestVersion: rawData?.version || APP_VERSION,
+              remoteBuildTime: rawBuildTime,
+              reason: 'github_release',
+              message: `New update available (v${rawData?.version || APP_VERSION})`
+            };
+            if (options?.onUpdateFound) {
+              options.onUpdateFound(result);
+            }
+            return result;
+          }
+        }
+      } catch {}
     }
-  } catch (e) {
-    // Gracefully ignore network errors or rate limit
-  }
-  return false;
+  } catch {}
+
+  return {
+    hasUpdate: false,
+    currentVersion: APP_VERSION,
+    reason: 'none',
+    message: `You are on the latest version (v${APP_VERSION})`
+  };
+}
+
+/**
+ * Backwards compatible helper for App.tsx
+ */
+export async function checkGitHubRepoForUpdates(onUpdateFound?: () => void): Promise<boolean> {
+  const result = await checkForAppUpdates({
+    onUpdateFound: () => {
+      if (onUpdateFound) onUpdateFound();
+    }
+  });
+  return result.hasUpdate;
 }
 
 // Automatically apply stored app name & logo on initial bundle evaluation safely

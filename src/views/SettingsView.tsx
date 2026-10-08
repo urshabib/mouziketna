@@ -49,9 +49,11 @@ import {
   getStoredAppName,
   DEFAULT_APP_NAME,
   forceAppUpdateAndRefresh,
+  checkForAppUpdates,
   hasPwaInstallPrompt,
   promptPwaInstall,
 } from '../services/pwa';
+import { APP_VERSION } from '../version';
 import { LogoCropperModal } from '../components/LogoCropperModal';
 
 const MiniProgressBarPreview: React.FC<{ style: string; isSelected: boolean; customColor?: string }> = ({
@@ -1258,25 +1260,58 @@ export const SettingsView: React.FC = () => {
                   <span className="text-xs font-bold text-white/60 uppercase tracking-wider">Release Updates</span>
                   <Sparkles className="w-4 h-4 text-emerald-400" />
                 </div>
-                <div className="text-base font-extrabold text-white mt-1">Check for Updates</div>
+                <div className="text-base font-extrabold text-white mt-1 flex items-center gap-2">
+                  <span>Check for Updates</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    v{APP_VERSION}
+                  </span>
+                </div>
                 <p className="text-[11px] text-white/50 mt-0.5">
-                  Fetches newest software updates and syncs service workers
+                  Detects newest releases, syncs service workers, and busts stale mobile cache
                 </p>
               </div>
 
-              <button
-                type="button"
-                disabled={isRefreshingApp}
-                onClick={async () => {
-                  setIsRefreshingApp(true);
-                  showToast('Checking for application updates...');
-                  await forceAppUpdateAndRefresh();
-                }}
-                className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-              >
-                {isRefreshingApp ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" /> : <RefreshCw className="w-3.5 h-3.5 text-[var(--accent)]" />}
-                <span>Check for Updates</span>
-              </button>
+              <div className="flex flex-col gap-1.5">
+                <button
+                  type="button"
+                  disabled={isRefreshingApp}
+                  onClick={async () => {
+                    setIsRefreshingApp(true);
+                    showToast('Checking for application updates...');
+                    try {
+                      const res = await checkForAppUpdates({ forceCheck: true });
+                      if (res.hasUpdate) {
+                        showToast(`⚡ New version found (v${res.latestVersion || 'latest'})! Updating app...`, true);
+                        setTimeout(async () => {
+                          await forceAppUpdateAndRefresh();
+                        }, 800);
+                      } else {
+                        showToast(`✓ MOUZIKETNA is up to date (v${APP_VERSION})`, true);
+                        setIsRefreshingApp(false);
+                      }
+                    } catch {
+                      await forceAppUpdateAndRefresh();
+                    }
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  {isRefreshingApp ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[var(--accent)]" /> : <RefreshCw className="w-3.5 h-3.5 text-[var(--accent)]" />}
+                  <span>{isRefreshingApp ? 'Checking...' : 'Check for Updates'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isRefreshingApp}
+                  onClick={async () => {
+                    setIsRefreshingApp(true);
+                    showToast('Purging cache & forcing clean network update...', true);
+                    await forceAppUpdateAndRefresh();
+                  }}
+                  className="w-full py-1.5 px-3 rounded-lg bg-transparent hover:bg-white/5 text-white/40 hover:text-white/80 font-semibold text-[10px] flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                >
+                  <span>Force Network Refresh</span>
+                </button>
+              </div>
             </div>
 
             {/* Square 3: Safe Reload (with helper text reassuring data safety) */}
