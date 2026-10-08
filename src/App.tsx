@@ -207,8 +207,16 @@ const AppShell: React.FC = () => {
     setIsInstallModalOpen,
   ]);
 
-  // Automatic Multi-Tier Update Detector & Auto-Restart
+  // Automatic Multi-Tier Update Detector with Single-Shot Loop Guard
   useEffect(() => {
+    // 1. If we just completed an update reload, display confirmation and STOP!
+    const justUpdated = sessionStorage.getItem('mouzika_just_updated');
+    if (justUpdated) {
+      sessionStorage.removeItem('mouzika_just_updated');
+      showToast('✓ App updated to latest version!', true);
+      return; // Do not run any automatic checks on this session mount
+    }
+
     let isUpdating = false;
 
     const triggerRefresh = async (msg = '⚡ New update found! Refreshing app...') => {
@@ -230,35 +238,19 @@ const AppShell: React.FC = () => {
       });
     };
 
-    // 1. Listen for background service worker update event
-    const handleSwUpdate = () => {
-      triggerRefresh('⚡ New version ready! Updating app...');
-    };
-    window.addEventListener('app-update-available', handleSwUpdate);
-
-    // 2. Check on app mount (after initial 2s grace period)
+    // 2. Run background check after a gentle 20s delay so user can use the app without disruption
     const initialTimer = setTimeout(() => {
       runUpdateCheck();
-    }, 2000);
+    }, 20000);
 
-    // 3. Check periodically every 2 minutes
+    // 3. Periodic check every 10 minutes
     const interval = setInterval(() => {
       runUpdateCheck();
-    }, 2 * 60 * 1000);
-
-    // 4. Check whenever returning to the tab / phone screen unlocks
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        runUpdateCheck();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    }, 10 * 60 * 1000);
 
     return () => {
       clearTimeout(initialTimer);
       clearInterval(interval);
-      window.removeEventListener('app-update-available', handleSwUpdate);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [showToast]);
 

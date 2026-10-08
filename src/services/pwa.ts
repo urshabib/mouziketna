@@ -558,9 +558,12 @@ export async function forceAppUpdateAndRefresh(): Promise<void> {
       } catch {}
     }
 
-    // 3. Clear session markers
+    // 3. Clear session markers and mark update as applied to prevent reload loop
     try {
       sessionStorage.removeItem('__mouzika_chunk_reload');
+      sessionStorage.setItem('mouzika_just_updated', '1');
+      sessionStorage.setItem('mouzika_update_attempt_ts', String(Date.now()));
+      localStorage.setItem('mouzika_update_attempt_ts', String(Date.now()));
     } catch {}
 
     // 4. Force hard reload from the server bypassing cache
@@ -613,12 +616,13 @@ const GITHUB_REPO_COMMITS_URL = 'https://api.github.com/repos/urshabib/mouziketn
 const GITHUB_RAW_VERSION_URL = 'https://raw.githubusercontent.com/urshabib/mouziketna/main/version.json';
 const GITHUB_COMMIT_KEY = 'mouziketna_github_last_commit';
 const LAST_KNOWN_BUILD_KEY = 'mouziketna_last_known_build_time';
+const LAST_APPLIED_VERSION_KEY = 'mouzika_last_applied_version';
+const UPDATE_ATTEMPT_KEY = 'mouzika_update_attempt_ts';
+const UPDATE_COOLDOWN_MS = 45 * 1000; // 45 seconds strict cooldown to prevent any reload loops
 
 /**
  * Multi-Tier Update Detector for Mobile & Web:
- * Tier 1: Local server ./version.json check (Zero rate limits, works reliably on all phones/cellular networks)
- * Tier 2: Service Worker update & waiting state check
- * Tier 3: GitHub commits API with raw version fallback (graceful on rate limit)
+ * Has strict single-shot loop guards to guarantee the app updates once and immediately stops.
  */
 export async function checkForAppUpdates(options?: {
   forceCheck?: boolean;
@@ -630,6 +634,16 @@ export async function checkForAppUpdates(options?: {
 
   if (!navigator.onLine) {
     return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'You are currently offline' };
+  }
+
+  // 1. Strict Reload Cooldown Guard: If updated in the last 45s, STOP completely!
+  if (!options?.forceCheck) {
+    const lastAttemptSession = Number(sessionStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
+    const lastAttemptLocal = Number(localStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
+    const mostRecentAttempt = Math.max(lastAttemptSession, lastAttemptLocal);
+    if (Date.now() - mostRecentAttempt < UPDATE_COOLDOWN_MS) {
+      return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'Update cooldown active' };
+    }
   }
 
   // Skip auto background polling inside AI Studio dev preview port 3000 unless manually forced
@@ -649,11 +663,22 @@ export async function checkForAppUpdates(options?: {
       const remoteBuildTime = Number(data?.buildTime) || 0;
       const remoteVersion = data?.version || APP_VERSION;
 
+      // Check if this build/version was already applied to prevent any repeat reloads
+      const lastApplied = localStorage.getItem(LAST_APPLIED_VERSION_KEY);
+      if (!options?.forceCheck && lastApplied && (lastApplied === String(remoteBuildTime) || lastApplied === remoteVersion)) {
+        return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'Latest version already active' };
+      }
+
       // Check if remote build timestamp is newer than current running bundle
       if (remoteBuildTime > APP_BUILD_TIME || (remoteVersion && remoteVersion !== APP_VERSION)) {
         console.log(`[MOUZIKETNA] Host update detected! Installed: ${APP_VERSION} (${APP_BUILD_TIME}) -> Server: ${remoteVersion} (${remoteBuildTime})`);
+        
+        // Mark as applied before triggering refresh so it NEVER loops
         try {
           localStorage.setItem(LAST_KNOWN_BUILD_KEY, String(remoteBuildTime));
+          localStorage.setItem(LAST_APPLIED_VERSION_KEY, String(remoteBuildTime || remoteVersion));
+          sessionStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
+          localStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
         } catch {}
 
         const result: UpdateCheckResult = {
@@ -672,39 +697,23 @@ export async function checkForAppUpdates(options?: {
       }
     }
   } catch (err) {
-    // Continue to next tier if same-origin fetch has issue
+    // Continue if same-origin fetch has network issue
   }
 
-  // --- TIER 2: Service Worker update check ---
+  // --- TIER 2: Service Worker quiet update (NO forced refresh loop) ---
   if ('serviceWorker' in navigator) {
     try {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (const reg of registrations) {
-        await reg.update().catch(() => {});
-        if (reg.waiting || (reg.installing && reg.installing.state === 'installed')) {
-          console.log('[MOUZIKETNA] New Service Worker waiting. Update ready to activate!');
-          try {
-            reg.waiting?.postMessage({ type: 'SKIP_WAITING' });
-          } catch {}
-
-          const result: UpdateCheckResult = {
-            hasUpdate: true,
-            currentVersion: APP_VERSION,
-            latestVersion: APP_VERSION,
-            reason: 'service_worker_waiting',
-            message: 'New version ready to install'
-          };
-
-          if (options?.onUpdateFound) {
-            options.onUpdateFound(result);
-          }
-          return result;
+        if (reg.waiting) {
+          // Tell waiting worker to activate quietly in background without forcing page reload
+          reg.waiting.postMessage({ type: 'SKIP_WAITING' });
         }
       }
     } catch {}
   }
 
-  // --- TIER 3: GitHub repository / raw release check ---
+  // --- TIER 3: GitHub repository check ---
   try {
     const gitRes = await fetch(GITHUB_REPO_COMMITS_URL, {
       headers: { Accept: 'application/vnd.github.v3+json' },
@@ -716,9 +725,13 @@ export async function checkForAppUpdates(options?: {
       const latestSha = Array.isArray(data) && data[0]?.sha ? data[0].sha : (data?.sha || null);
       if (latestSha) {
         const storedSha = localStorage.getItem(GITHUB_COMMIT_KEY);
-        if (storedSha && storedSha !== latestSha) {
+        const lastApplied = localStorage.getItem(LAST_APPLIED_VERSION_KEY);
+
+        if (storedSha && storedSha !== latestSha && lastApplied !== latestSha) {
           console.log(`[MOUZIKETNA] GitHub commit update detected (${storedSha.slice(0, 7)} -> ${latestSha.slice(0, 7)})`);
           localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
+          localStorage.setItem(LAST_APPLIED_VERSION_KEY, latestSha);
+          sessionStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
 
           const result: UpdateCheckResult = {
             hasUpdate: true,
@@ -736,30 +749,6 @@ export async function checkForAppUpdates(options?: {
           localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
         }
       }
-    } else if (gitRes.status === 403) {
-      // GitHub API rate limited! Fallback to GitHub raw version.json which has NO 60 req/hr ceiling
-      try {
-        const rawRes = await fetch(`${GITHUB_RAW_VERSION_URL}?_t=${Date.now()}`, { cache: 'no-store' });
-        if (rawRes.ok) {
-          const rawData = await rawRes.json();
-          const rawBuildTime = Number(rawData?.buildTime) || 0;
-          if (rawBuildTime > APP_BUILD_TIME) {
-            console.log(`[MOUZIKETNA] GitHub raw update detected (${APP_BUILD_TIME} -> ${rawBuildTime})`);
-            const result: UpdateCheckResult = {
-              hasUpdate: true,
-              currentVersion: APP_VERSION,
-              latestVersion: rawData?.version || APP_VERSION,
-              remoteBuildTime: rawBuildTime,
-              reason: 'github_release',
-              message: `New update available (v${rawData?.version || APP_VERSION})`
-            };
-            if (options?.onUpdateFound) {
-              options.onUpdateFound(result);
-            }
-            return result;
-          }
-        }
-      } catch {}
     }
   } catch {}
 
