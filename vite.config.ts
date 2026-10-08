@@ -23,8 +23,26 @@ export default defineConfig(({command}) => {
         if (!fs.existsSync('public')) fs.mkdirSync('public', { recursive: true });
         fs.writeFileSync('public/version.json', versionPayload);
         fs.writeFileSync('version.json', versionPayload);
+
+        // Update sw.js cache name with new timestamp to ensure instant mobile cache invalidation
+        const updateSwCacheName = (filePath: string) => {
+          if (fs.existsSync(filePath)) {
+            let content = fs.readFileSync(filePath, 'utf-8');
+            content = content.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = 'mouzika-pwa-${buildTimestamp}';`);
+            fs.writeFileSync(filePath, content);
+          }
+        };
+        updateSwCacheName('sw.js');
+        updateSwCacheName('public/sw.js');
+
+        // Update window.__MOUZIKETNA_BUILD_TIME__ in index.html
+        if (fs.existsSync('index.html')) {
+          let html = fs.readFileSync('index.html', 'utf-8');
+          html = html.replace(/window\.__MOUZIKETNA_BUILD_TIME__\s*=\s*['"][^'"]+['"];/, `window.__MOUZIKETNA_BUILD_TIME__ = '${buildTimestamp}';`);
+          fs.writeFileSync('index.html', html);
+        }
       } catch (e) {
-        console.warn('Could not write public/version.json:', e);
+        console.warn('Could not write version metadata:', e);
       }
     },
     closeBundle() {
@@ -37,6 +55,11 @@ export default defineConfig(({command}) => {
       try {
         if (fs.existsSync('dist')) {
           fs.writeFileSync('dist/version.json', versionPayload);
+        }
+        if (fs.existsSync('dist/sw.js')) {
+          let content = fs.readFileSync('dist/sw.js', 'utf-8');
+          content = content.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = 'mouzika-pwa-${buildTimestamp}';`);
+          fs.writeFileSync('dist/sw.js', content);
         }
       } catch (e) {
         console.warn('Could not write dist/version.json:', e);

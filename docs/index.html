@@ -79,6 +79,7 @@
   </head>
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
+    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791490459373';</script>
     <script>
       (function() {
         var isDev = location.port === '3000' ||
@@ -90,7 +91,9 @@
           if (window.__MOUZIKETNA_BUNDLE_INJECTED__) return;
           window.__MOUZIKETNA_BUNDLE_INJECTED__ = true;
 
-          var assetSuffix = '?v=' + (window.__MOUZIKETNA_BUILD_TIME__ || '1.2.1');
+          var q = new URLSearchParams(window.location.search);
+          var queryBust = q.get('_v') || q.get('v') || q.get('_bust');
+          var assetSuffix = '?v=' + (queryBust || window.__MOUZIKETNA_BUILD_TIME__ || '1.2.2');
 
           if (!document.querySelector('link[href*="index.css"]')) {
             var css = document.createElement('link');
@@ -129,39 +132,13 @@
         window.dispatchEvent(new CustomEvent('pwa-installed'));
       });
 
-      // Register Service Worker for offline PWA functionality & automatic update activation
+      // Register Service Worker for offline PWA functionality safely
       if ('serviceWorker' in navigator) {
         if (location.port !== '3000') {
-          var isReloadingForUpdate = false;
-          navigator.serviceWorker.addEventListener('controllerchange', function() {
-            if (isReloadingForUpdate) return;
-            isReloadingForUpdate = true;
-            console.log('[MOUZIKETNA] New service worker took control. Refreshing to apply update...');
-            window.location.reload();
-          });
-
           window.addEventListener('load', function() {
-            navigator.serviceWorker.register('./sw.js')
+            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
               .then(function(reg) {
                 console.log('[MOUZIKETNA] PWA Service Worker active with scope:', reg.scope);
-                reg.update().catch(function() {});
-
-                if (reg.waiting) {
-                  reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-                  window.dispatchEvent(new CustomEvent('app-update-available'));
-                }
-
-                reg.addEventListener('updatefound', function() {
-                  var newWorker = reg.installing;
-                  if (!newWorker) return;
-                  newWorker.addEventListener('statechange', function() {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                      console.log('[MOUZIKETNA] New version installed and ready.');
-                      newWorker.postMessage({ type: 'SKIP_WAITING' });
-                      window.dispatchEvent(new CustomEvent('app-update-available'));
-                    }
-                  });
-                });
               })
               .catch(function(err) {
                 console.warn('[MOUZIKETNA] Service Worker registration notice:', err);

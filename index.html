@@ -77,6 +77,7 @@
   </head>
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
+    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791490459373';</script>
     <script>
       (function() {
         var isDev = location.port === '3000' ||
@@ -88,7 +89,9 @@
           if (window.__MOUZIKETNA_BUNDLE_INJECTED__) return;
           window.__MOUZIKETNA_BUNDLE_INJECTED__ = true;
 
-          var assetSuffix = '?v=' + (window.__MOUZIKETNA_BUILD_TIME__ || '1.2.1');
+          var q = new URLSearchParams(window.location.search);
+          var queryBust = q.get('_v') || q.get('v') || q.get('_bust');
+          var assetSuffix = '?v=' + (queryBust || window.__MOUZIKETNA_BUILD_TIME__ || '1.2.2');
 
           if (!document.querySelector('link[href*="index.css"]')) {
             var css = document.createElement('link');
@@ -132,7 +135,7 @@
       if ('serviceWorker' in navigator) {
         if (location.port !== '3000') {
           window.addEventListener('load', function() {
-            navigator.serviceWorker.register('./sw.js')
+            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
               .then(function(reg) {
                 console.log('[MOUZIKETNA] PWA Service Worker active with scope:', reg.scope);
               })

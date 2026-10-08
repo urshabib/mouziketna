@@ -1296,9 +1296,9 @@ export const SettingsView: React.FC = () => {
                     try {
                       const res = await checkForAppUpdates({ forceCheck: true });
                       if (res.hasUpdate) {
-                        showToast(`⚡ New version found (v${res.latestVersion || 'latest'})! Updating app...`, true);
+                        showToast(`⚡ New version found (${res.latestVersion || 'latest'})! Updating app...`, true);
                         setTimeout(async () => {
-                          await forceAppUpdateAndRefresh();
+                          await forceAppUpdateAndRefresh(res.latestSha);
                         }, 800);
                       } else {
                         showToast(`✓ MOUZIKETNA is up to date (v${APP_VERSION})`, true);

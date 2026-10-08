@@ -214,17 +214,25 @@ const AppShell: React.FC = () => {
     if (justUpdated) {
       sessionStorage.removeItem('mouzika_just_updated');
       showToast('✓ App updated to latest version!', true);
+      try {
+        const cleanUrl = new URL(window.location.href);
+        if (cleanUrl.searchParams.has('_v') || cleanUrl.searchParams.has('_bust')) {
+          cleanUrl.searchParams.delete('_v');
+          cleanUrl.searchParams.delete('_bust');
+          window.history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+        }
+      } catch {}
       return; // Do not run any automatic checks on this session mount
     }
 
     let isUpdating = false;
 
-    const triggerRefresh = async (msg = '⚡ New update found! Refreshing app...') => {
+    const triggerRefresh = async (msg = '⚡ New update found! Refreshing app...', targetSha?: string) => {
       if (isUpdating) return;
       isUpdating = true;
       showToast(msg, true);
       setTimeout(async () => {
-        await forceAppUpdateAndRefresh();
+        await forceAppUpdateAndRefresh(targetSha);
       }, 1000);
     };
 
@@ -232,8 +240,8 @@ const AppShell: React.FC = () => {
       if (isUpdating) return;
       await checkForAppUpdates({
         onUpdateFound: (result) => {
-          const detail = result.latestVersion ? ` (v${result.latestVersion})` : '';
-          triggerRefresh(`⚡ Update detected${detail}! Applying latest version...`);
+          const detail = result.latestVersion ? ` (${result.latestVersion})` : '';
+          triggerRefresh(`⚡ Update detected${detail}! Applying latest version...`, result.latestSha);
         },
       });
     };

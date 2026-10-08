@@ -508,6 +508,7 @@ export interface UpdateCheckResult {
   hasUpdate: boolean;
   currentVersion: string;
   latestVersion?: string;
+  latestSha?: string;
   remoteBuildTime?: number;
   reason?: 'new_build_on_server' | 'service_worker_waiting' | 'github_release' | 'manual_override' | 'none';
   message?: string;
@@ -520,8 +521,15 @@ export interface UpdateCheckResult {
  * - DOES NOT touch IndexedDB or localStorage (downloaded songs, playlists, lyrics, account remain 100% safe)
  * - Reloads with a cache-busting timestamp
  */
-export async function forceAppUpdateAndRefresh(): Promise<void> {
+export async function forceAppUpdateAndRefresh(targetSha?: string): Promise<void> {
   try {
+    if (targetSha) {
+      try {
+        localStorage.setItem(GITHUB_COMMIT_KEY, targetSha);
+        localStorage.setItem(LAST_APPLIED_VERSION_KEY, targetSha);
+      } catch {}
+    }
+
     // 1. Trigger Service Worker update checks & message them to purge HTTP caches
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       try {
@@ -613,16 +621,20 @@ export async function promptPwaInstall(): Promise<{ outcome: 'accepted' | 'dismi
 }
 
 const GITHUB_REPO_COMMITS_URL = 'https://api.github.com/repos/urshabib/mouziketna/commits?per_page=1';
+const GITHUB_ATOM_FEED_URL = 'https://github.com/urshabib/mouziketna/commits/main.atom';
 const GITHUB_RAW_VERSION_URL = 'https://raw.githubusercontent.com/urshabib/mouziketna/main/version.json';
 const GITHUB_COMMIT_KEY = 'mouziketna_github_last_commit';
 const LAST_KNOWN_BUILD_KEY = 'mouziketna_last_known_build_time';
 const LAST_APPLIED_VERSION_KEY = 'mouzika_last_applied_version';
 const UPDATE_ATTEMPT_KEY = 'mouzika_update_attempt_ts';
-const UPDATE_COOLDOWN_MS = 45 * 1000; // 45 seconds strict cooldown to prevent any reload loops
+const UPDATE_COOLDOWN_MS = 30 * 1000; // 30 seconds cooldown for auto-polling
 
 /**
  * Multi-Tier Update Detector for Mobile & Web:
- * Has strict single-shot loop guards to guarantee the app updates once and immediately stops.
+ * - Tier 1: Real-time GitHub Atom Feed (Instant commit detection, NO API rate limits)
+ * - Tier 2: GitHub Commits API fallback
+ * - Tier 3: GitHub Raw & Host version.json check
+ * - Tier 4: Service Worker waiting update
  */
 export async function checkForAppUpdates(options?: {
   forceCheck?: boolean;
@@ -636,7 +648,7 @@ export async function checkForAppUpdates(options?: {
     return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'You are currently offline' };
   }
 
-  // 1. Strict Reload Cooldown Guard: If updated in the last 45s, STOP completely!
+  // Reload cooldown only applies to automatic background checks (bypassed if forceCheck is true)
   if (!options?.forceCheck) {
     const lastAttemptSession = Number(sessionStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
     const lastAttemptLocal = Number(localStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
@@ -651,7 +663,157 @@ export async function checkForAppUpdates(options?: {
     return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none' };
   }
 
-  // --- TIER 1: Same-origin version.json check ---
+  // --- TIER 1: GitHub Atom Feed (Zero API Rate Limits, Real-time Commits) ---
+  try {
+    const atomRes = await fetch(`${GITHUB_ATOM_FEED_URL}?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+    });
+
+    if (atomRes.ok) {
+      const xml = await atomRes.text();
+      const shaMatch = xml.match(/Grit::Commit\/([a-f0-9]{40})/);
+      const dateMatch = xml.match(/<updated>([^<]+)<\/updated>/);
+      const latestSha = shaMatch ? shaMatch[1] : null;
+      const commitTime = dateMatch ? new Date(dateMatch[1]).getTime() : 0;
+
+      if (latestSha) {
+        const storedSha = localStorage.getItem(GITHUB_COMMIT_KEY);
+        const lastApplied = localStorage.getItem(LAST_APPLIED_VERSION_KEY);
+
+        if (lastApplied && lastApplied === latestSha) {
+          // Commit was already applied in this browser session
+        } else if (storedSha && storedSha !== latestSha) {
+          console.log(`[MOUZIKETNA] GitHub commit update detected: ${storedSha.slice(0, 7)} -> ${latestSha.slice(0, 7)}`);
+          const result: UpdateCheckResult = {
+            hasUpdate: true,
+            currentVersion: APP_VERSION,
+            latestVersion: latestSha.slice(0, 7),
+            latestSha,
+            remoteBuildTime: commitTime,
+            reason: 'github_release',
+            message: `New update available on GitHub (${latestSha.slice(0, 7)})`
+          };
+          if (options?.onUpdateFound) {
+            options.onUpdateFound(result);
+          }
+          return result;
+        } else if (!storedSha) {
+          // If storedSha is empty, verify if GitHub commit is newer than the local bundle build timestamp
+          if (commitTime && commitTime > APP_BUILD_TIME + 45000) {
+            console.log(`[MOUZIKETNA] Newer commit on GitHub detected: ${latestSha.slice(0, 7)}`);
+            const result: UpdateCheckResult = {
+              hasUpdate: true,
+              currentVersion: APP_VERSION,
+              latestVersion: latestSha.slice(0, 7),
+              latestSha,
+              remoteBuildTime: commitTime,
+              reason: 'github_release',
+              message: `New update available on GitHub (${latestSha.slice(0, 7)})`
+            };
+            if (options?.onUpdateFound) {
+              options.onUpdateFound(result);
+            }
+            return result;
+          } else {
+            localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Continue to Tier 2
+  }
+
+  // --- TIER 2: Direct GitHub Commits REST API fallback ---
+  try {
+    const gitRes = await fetch(`${GITHUB_REPO_COMMITS_URL}&_t=${Date.now()}`, {
+      headers: { Accept: 'application/vnd.github.v3+json' },
+      cache: 'no-store',
+    });
+
+    if (gitRes.ok) {
+      const data = await gitRes.json();
+      const latestSha = Array.isArray(data) && data[0]?.sha ? data[0].sha : (data?.sha || null);
+      const commitDateStr = Array.isArray(data) && data[0]?.commit?.committer?.date ? data[0].commit.committer.date : null;
+      const commitTime = commitDateStr ? new Date(commitDateStr).getTime() : 0;
+
+      if (latestSha) {
+        const storedSha = localStorage.getItem(GITHUB_COMMIT_KEY);
+        const lastApplied = localStorage.getItem(LAST_APPLIED_VERSION_KEY);
+
+        if (lastApplied && lastApplied === latestSha) {
+          // Already applied
+        } else if (storedSha && storedSha !== latestSha) {
+          console.log(`[MOUZIKETNA] GitHub commit update detected: ${storedSha.slice(0, 7)} -> ${latestSha.slice(0, 7)}`);
+          const result: UpdateCheckResult = {
+            hasUpdate: true,
+            currentVersion: APP_VERSION,
+            latestVersion: latestSha.slice(0, 7),
+            latestSha,
+            remoteBuildTime: commitTime,
+            reason: 'github_release',
+            message: `New update available on GitHub (${latestSha.slice(0, 7)})`
+          };
+          if (options?.onUpdateFound) {
+            options.onUpdateFound(result);
+          }
+          return result;
+        } else if (!storedSha) {
+          if (commitTime && commitTime > APP_BUILD_TIME + 45000) {
+            const result: UpdateCheckResult = {
+              hasUpdate: true,
+              currentVersion: APP_VERSION,
+              latestVersion: latestSha.slice(0, 7),
+              latestSha,
+              remoteBuildTime: commitTime,
+              reason: 'github_release',
+              message: `New update available on GitHub (${latestSha.slice(0, 7)})`
+            };
+            if (options?.onUpdateFound) {
+              options.onUpdateFound(result);
+            }
+            return result;
+          } else {
+            localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // --- TIER 3: GitHub Raw & Same-Origin version.json CDN check ---
+  try {
+    const rawRes = await fetch(`${GITHUB_RAW_VERSION_URL}?_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+    });
+    if (rawRes.ok) {
+      const rawData = (await rawRes.json()) as VersionInfo;
+      const remoteBuildTime = Number(rawData?.buildTime) || 0;
+      const remoteVersion = rawData?.version || APP_VERSION;
+      const lastKnownBuild = Number(localStorage.getItem(LAST_KNOWN_BUILD_KEY) || '0');
+      const lastApplied = localStorage.getItem(LAST_APPLIED_VERSION_KEY);
+
+      if ((remoteBuildTime > APP_BUILD_TIME || (lastKnownBuild && remoteBuildTime > lastKnownBuild) || (remoteVersion && remoteVersion !== APP_VERSION)) && lastApplied !== String(remoteBuildTime)) {
+        console.log(`[MOUZIKETNA] GitHub version update detected! Local: ${APP_BUILD_TIME} -> Remote: ${remoteBuildTime}`);
+        const result: UpdateCheckResult = {
+          hasUpdate: true,
+          currentVersion: APP_VERSION,
+          latestVersion: remoteVersion,
+          remoteBuildTime,
+          reason: 'github_release',
+          message: `New update available on GitHub (v${remoteVersion})`
+        };
+        if (options?.onUpdateFound) {
+          options.onUpdateFound(result);
+        }
+        return result;
+      }
+    }
+  } catch {}
+
+  // Same-origin host version.json check
   try {
     const versionRes = await fetch(`./version.json?_t=${Date.now()}&_b=${Math.random().toString(36).slice(2, 6)}`, {
       cache: 'no-store',
@@ -662,25 +824,10 @@ export async function checkForAppUpdates(options?: {
       const data = (await versionRes.json()) as VersionInfo;
       const remoteBuildTime = Number(data?.buildTime) || 0;
       const remoteVersion = data?.version || APP_VERSION;
-
-      // Check if this build/version was already applied to prevent any repeat reloads
       const lastApplied = localStorage.getItem(LAST_APPLIED_VERSION_KEY);
-      if (!options?.forceCheck && lastApplied && (lastApplied === String(remoteBuildTime) || lastApplied === remoteVersion)) {
-        return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'Latest version already active' };
-      }
 
-      // Check if remote build timestamp is newer than current running bundle
-      if (remoteBuildTime > APP_BUILD_TIME || (remoteVersion && remoteVersion !== APP_VERSION)) {
+      if ((remoteBuildTime > APP_BUILD_TIME || (remoteVersion && remoteVersion !== APP_VERSION)) && lastApplied !== String(remoteBuildTime)) {
         console.log(`[MOUZIKETNA] Host update detected! Installed: ${APP_VERSION} (${APP_BUILD_TIME}) -> Server: ${remoteVersion} (${remoteBuildTime})`);
-        
-        // Mark as applied before triggering refresh so it NEVER loops
-        try {
-          localStorage.setItem(LAST_KNOWN_BUILD_KEY, String(remoteBuildTime));
-          localStorage.setItem(LAST_APPLIED_VERSION_KEY, String(remoteBuildTime || remoteVersion));
-          sessionStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
-          localStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
-        } catch {}
-
         const result: UpdateCheckResult = {
           hasUpdate: true,
           currentVersion: APP_VERSION,
@@ -689,68 +836,35 @@ export async function checkForAppUpdates(options?: {
           reason: 'new_build_on_server',
           message: `New update available (v${remoteVersion})`
         };
-
         if (options?.onUpdateFound) {
           options.onUpdateFound(result);
         }
         return result;
       }
     }
-  } catch (err) {
-    // Continue if same-origin fetch has network issue
-  }
+  } catch {}
 
-  // --- TIER 2: Service Worker quiet update (NO forced refresh loop) ---
+  // --- TIER 4: Service Worker waiting update check ---
   if ('serviceWorker' in navigator) {
     try {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (const reg of registrations) {
         if (reg.waiting) {
-          // Tell waiting worker to activate quietly in background without forcing page reload
           reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-        }
-      }
-    } catch {}
-  }
-
-  // --- TIER 3: GitHub repository check ---
-  try {
-    const gitRes = await fetch(GITHUB_REPO_COMMITS_URL, {
-      headers: { Accept: 'application/vnd.github.v3+json' },
-      cache: 'no-store',
-    });
-
-    if (gitRes.ok) {
-      const data = await gitRes.json();
-      const latestSha = Array.isArray(data) && data[0]?.sha ? data[0].sha : (data?.sha || null);
-      if (latestSha) {
-        const storedSha = localStorage.getItem(GITHUB_COMMIT_KEY);
-        const lastApplied = localStorage.getItem(LAST_APPLIED_VERSION_KEY);
-
-        if (storedSha && storedSha !== latestSha && lastApplied !== latestSha) {
-          console.log(`[MOUZIKETNA] GitHub commit update detected (${storedSha.slice(0, 7)} -> ${latestSha.slice(0, 7)})`);
-          localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
-          localStorage.setItem(LAST_APPLIED_VERSION_KEY, latestSha);
-          sessionStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
-
           const result: UpdateCheckResult = {
             hasUpdate: true,
             currentVersion: APP_VERSION,
-            latestVersion: APP_VERSION,
-            reason: 'github_release',
-            message: 'New release published on GitHub'
+            reason: 'service_worker_waiting',
+            message: 'New version ready in background'
           };
-
           if (options?.onUpdateFound) {
             options.onUpdateFound(result);
           }
           return result;
-        } else if (!storedSha) {
-          localStorage.setItem(GITHUB_COMMIT_KEY, latestSha);
         }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   return {
     hasUpdate: false,
