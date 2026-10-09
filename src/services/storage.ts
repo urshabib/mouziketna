@@ -358,8 +358,6 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       progressBarColor: profile.progressBarColor || '#ffffff',
       customProgressBarHex: profile.customProgressBarHex || undefined,
       keyPartsDisplay: profile.keyPartsDisplay || 'dots',
-      displayName: profile.displayName || undefined,
-      avatarUrl: profile.avatarUrl !== undefined ? profile.avatarUrl : undefined,
     }));
   } catch {}
 }
@@ -372,6 +370,12 @@ export function loadDeviceSettings(): Partial<UserProfile> | null {
       return dedicatedStyle ? { progressBarStyle: dedicatedStyle as any } : null;
     }
     const parsed = JSON.parse(raw);
+    // Strictly strip any legacy account-specific fields from device settings
+    if (parsed) {
+      delete parsed.displayName;
+      delete parsed.avatarUrl;
+      delete parsed.username;
+    }
     if (dedicatedStyle && (!parsed.progressBarStyle || parsed.progressBarStyle === 'default')) {
       parsed.progressBarStyle = dedicatedStyle;
     }
@@ -385,14 +389,16 @@ export function loadDeviceSettings(): Partial<UserProfile> | null {
 export function cacheProfileLocally(username: string, profile: UserProfile) {
   if (!username) return;
   try {
-    localStorage.setItem('mouzika_profile_cache_' + username, JSON.stringify(profile));
+    const cleanKey = 'mouzika_profile_cache_' + username.toLowerCase().trim();
+    localStorage.setItem(cleanKey, JSON.stringify(profile));
   } catch {}
 }
 
 export function restoreProfileFromCache(username: string): Partial<UserProfile> | null {
   if (!username) return null;
   try {
-    const cached = localStorage.getItem('mouzika_profile_cache_' + username);
+    const cleanKey = 'mouzika_profile_cache_' + username.toLowerCase().trim();
+    const cached = localStorage.getItem(cleanKey) || localStorage.getItem('mouzika_profile_cache_' + username);
     if (!cached) return null;
     return JSON.parse(cached);
   } catch {

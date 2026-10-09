@@ -284,13 +284,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       savedUser = localStorage.getItem('hub_active_user');
     } catch {}
     const cached = savedUser ? restoreProfileFromCache(savedUser) : null;
+    const isCachedMatch = Boolean(savedUser && cached && (!cached.username || cached.username.toLowerCase() === savedUser.toLowerCase()));
     return {
       ...defaultProfile,
-      ...(cached || {}),
       ...(dev || {}),
-      username: savedUser || (dev as any)?.username || '',
-      displayName: cached?.displayName || (dev as any)?.displayName || savedUser || '',
-      avatarUrl: (cached?.avatarUrl !== undefined ? cached.avatarUrl : (dev as any)?.avatarUrl) || null,
+      ...(isCachedMatch ? cached : {}),
+      username: savedUser || '',
+      displayName: (isCachedMatch && cached?.displayName) ? cached.displayName : (savedUser || ''),
+      avatarUrl: (isCachedMatch && cached?.avatarUrl !== undefined) ? cached.avatarUrl : null,
     };
   });
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
@@ -509,10 +510,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // System record embedded inside favouriteAlbums:
         // Cloudflare Worker whitelist preserves favouriteAlbums completely across devices!
+        // Storing displayName & avatarUrl here guarantees server persistence across accounts and devices
         const cloudStatsRecord: any = {
           id: '__mouzika_cloud_stats_v1__',
           title: '__mouzika_cloud_stats__',
           type: 'system_stats',
+          displayName: profToSync.displayName || profToSync.username || globalUser,
+          avatarUrl: profToSync.avatarUrl !== undefined ? profToSync.avatarUrl : null,
           stats: activeStats,
           explicitInterested,
           explicitNotInterested,
@@ -520,7 +524,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
 
         const rawAlbums = (profToSync.favouriteAlbums || userProfile.favouriteAlbums || []).filter(
-          (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__'
+          (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
         );
 
         // Full consolidated profile payload with listening stats and explicit music taste
@@ -528,7 +532,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...profToSync,
           username: globalUser,
           displayName: profToSync.displayName || profToSync.username || globalUser,
-          avatarUrl: profToSync.avatarUrl || null,
+          avatarUrl: profToSync.avatarUrl !== undefined ? profToSync.avatarUrl : null,
           stats: activeStats,
           favouriteAlbums: [...rawAlbums, cloudStatsRecord],
           explicitInterested,
@@ -999,23 +1003,38 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         };
 
         const localCached = restoreProfileFromCache(user);
-        const localStats = localCached?.stats || userProfile.stats;
+        const isCurrentLocalCacheValid = Boolean(localCached && (!localCached.username || localCached.username.toLowerCase() === user.toLowerCase()));
+        const localStats = isCurrentLocalCacheValid ? localCached?.stats : undefined;
         let serverStats = p.stats;
         let cloudTasteInterested = p.explicitInterested;
         let cloudTasteNotInterested = p.explicitNotInterested;
+        let cloudDisplayName: string | undefined = undefined;
+        let cloudAvatarUrl: string | null | undefined = undefined;
+        let cloudAvatarExplicitlySet = false;
 
-        // Extract cloud stats preserved inside favouriteAlbums system record
+        // Extract cloud stats, explicit taste, and server-persisted profile data from favouriteAlbums system record
         if (Array.isArray(p.favouriteAlbums)) {
-          const cloudRecord = p.favouriteAlbums.find((a: any) => a && a.id === '__mouzika_cloud_stats_v1__');
-          if (cloudRecord && cloudRecord.stats) {
-            if (!serverStats || (cloudRecord.stats.totalMinutesListened || 0) >= (serverStats.totalMinutesListened || 0)) {
-              serverStats = cloudRecord.stats;
+          const cloudRecord = p.favouriteAlbums.find(
+            (a: any) => a && (a.id === '__mouzika_cloud_stats_v1__' || a.id === '__mouzika_cloud_profile_v1__')
+          );
+          if (cloudRecord) {
+            if (cloudRecord.stats) {
+              if (!serverStats || (cloudRecord.stats.totalMinutesListened || 0) >= (serverStats.totalMinutesListened || 0)) {
+                serverStats = cloudRecord.stats;
+              }
             }
             if (!cloudTasteInterested && cloudRecord.explicitInterested) {
               cloudTasteInterested = cloudRecord.explicitInterested;
             }
             if (!cloudTasteNotInterested && cloudRecord.explicitNotInterested) {
               cloudTasteNotInterested = cloudRecord.explicitNotInterested;
+            }
+            if (cloudRecord.displayName !== undefined && cloudRecord.displayName !== null && String(cloudRecord.displayName).trim()) {
+              cloudDisplayName = String(cloudRecord.displayName).trim();
+            }
+            if (cloudRecord.avatarUrl !== undefined) {
+              cloudAvatarUrl = cloudRecord.avatarUrl;
+              cloudAvatarExplicitlySet = true;
             }
           }
         }
@@ -1045,12 +1064,41 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           } catch {}
         }
 
-        const cleanAlbums = (p.favouriteAlbums || []).filter((a: any) => a && a.id !== '__mouzika_cloud_stats_v1__');
+        const cleanAlbums = (p.favouriteAlbums || []).filter(
+          (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
+        );
+
+        // Server-authoritative resolution:
+        // Priority 1: Cloud system record stored on server inside favouriteAlbums
+        // Priority 2: Direct server profile field (if returned by backend)
+        // Priority 3: Local cache strictly matching this specific user
+        // Priority 4: Default username / null avatar.
+        // NEVER inherit from other accounts or device-level settings!
+        const resolvedDisplayName =
+          cloudDisplayName ||
+          (p.displayName && String(p.displayName).trim()) ||
+          (isCurrentLocalCacheValid && localCached?.displayName ? localCached.displayName : undefined) ||
+          p.username ||
+          user;
+
+        let resolvedAvatarUrl: string | null = null;
+        if (cloudAvatarExplicitlySet) {
+          resolvedAvatarUrl = cloudAvatarUrl || null;
+        } else if (p.avatarUrl !== undefined && p.avatarUrl !== null) {
+          resolvedAvatarUrl = p.avatarUrl;
+        } else if (isCurrentLocalCacheValid && localCached?.avatarUrl) {
+          resolvedAvatarUrl = localCached.avatarUrl;
+        } else {
+          resolvedAvatarUrl = null;
+        }
 
         const merged: UserProfile = {
-          ...userProfile,
+          ...defaultProfile,
+          ...p,
           username: p.username || user,
           isAdmin: isUserAdmin,
+          displayName: resolvedDisplayName,
+          avatarUrl: resolvedAvatarUrl,
           likedSongs: sanitizeTracks(p.likedSongs),
           customPlaylists: p.customPlaylists || [],
           favouriteArtists: p.favouriteArtists || [],
@@ -1058,14 +1106,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           recentlyPlayed: sanitizeTracks(p.recentlyPlayed),
           dataSaver: devSettings.dataSaver !== undefined ? !!devSettings.dataSaver : !!p.dataSaver,
           dataSaverLevel: devSettings.dataSaverLevel || p.dataSaverLevel || 'off',
-          downloadQuality: devSettings.downloadQuality || userProfile.downloadQuality || 'stable',
+          downloadQuality: devSettings.downloadQuality || defaultProfile.downloadQuality || 'stable',
           downloadArtOffline: devSettings.downloadArtOffline !== undefined ? devSettings.downloadArtOffline : true,
-          artQualityOffline: devSettings.artQualityOffline || userProfile.artQualityOffline || 'low',
-          customAppName: devSettings.customAppName || userProfile.customAppName || 'MOUZIKETNA',
-          appLogo: devSettings.appLogo || userProfile.appLogo || 'default',
+          artQualityOffline: devSettings.artQualityOffline || defaultProfile.artQualityOffline || 'low',
+          customAppName: devSettings.customAppName || defaultProfile.customAppName || 'MOUZIKETNA',
+          appLogo: devSettings.appLogo || defaultProfile.appLogo || 'default',
           downloadLyricsOffline: devSettings.downloadLyricsOffline !== undefined ? !!devSettings.downloadLyricsOffline : !!p.downloadLyricsOffline,
           autoCachePlayed: devSettings.autoCachePlayed !== undefined ? !!devSettings.autoCachePlayed : false,
-          autoCacheQuality: devSettings.autoCacheQuality || userProfile.autoCacheQuality || 'stable',
+          autoCacheQuality: devSettings.autoCacheQuality || defaultProfile.autoCacheQuality || 'stable',
           liquidGlass: devSettings.liquidGlass !== undefined ? !!devSettings.liquidGlass : (p.liquidGlass !== undefined ? !!p.liquidGlass : true),
           theme: devSettings.theme || (p.theme === 'light' ? 'light' : 'dark'),
           accentColor: devSettings.accentColor || p.accentColor || 'orange',
@@ -1074,16 +1122,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           presetTint: devSettings.presetTint || p.presetTint || 'none',
           uiScale: devSettings.uiScale || p.uiScale || 'default',
           activePreset: devSettings.activePreset || p.activePreset || 'glass',
-          liquidGlassLevel: devSettings.liquidGlassLevel || p.liquidGlassLevel || userProfile.liquidGlassLevel || 'medium',
-          customAccentHex: devSettings.customAccentHex || p.customAccentHex || userProfile.customAccentHex,
-          lyricsFont: devSettings.lyricsFont || p.lyricsFont || userProfile.lyricsFont,
-          customLyricsHex: devSettings.customLyricsHex || p.customLyricsHex || userProfile.customLyricsHex,
-          progressBarStyle: devSettings.progressBarStyle || loadProgressBarStyle() || p.progressBarStyle || userProfile.progressBarStyle || 'default',
-          progressBarColor: devSettings.progressBarColor || p.progressBarColor || userProfile.progressBarColor || '#ffffff',
-          customProgressBarHex: devSettings.customProgressBarHex || p.customProgressBarHex || userProfile.customProgressBarHex,
-          keyPartsDisplay: devSettings.keyPartsDisplay || p.keyPartsDisplay || userProfile.keyPartsDisplay || 'dots',
-          displayName: p.displayName || localCached?.displayName || (devSettings as any)?.displayName || p.username || user,
-          avatarUrl: p.avatarUrl || localCached?.avatarUrl || (devSettings as any)?.avatarUrl || null,
+          liquidGlassLevel: devSettings.liquidGlassLevel || p.liquidGlassLevel || defaultProfile.liquidGlassLevel || 'medium',
+          customAccentHex: devSettings.customAccentHex || p.customAccentHex || defaultProfile.customAccentHex,
+          lyricsFont: devSettings.lyricsFont || p.lyricsFont || defaultProfile.lyricsFont,
+          customLyricsHex: devSettings.customLyricsHex || p.customLyricsHex || defaultProfile.customLyricsHex,
+          progressBarStyle: devSettings.progressBarStyle || loadProgressBarStyle() || p.progressBarStyle || defaultProfile.progressBarStyle || 'default',
+          progressBarColor: devSettings.progressBarColor || p.progressBarColor || defaultProfile.progressBarColor || '#ffffff',
+          customProgressBarHex: devSettings.customProgressBarHex || p.customProgressBarHex || defaultProfile.customProgressBarHex,
+          keyPartsDisplay: devSettings.keyPartsDisplay || p.keyPartsDisplay || defaultProfile.keyPartsDisplay || 'dots',
           stats: mergedStats,
         };
         setUserProfile(merged);
@@ -1110,11 +1156,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setTimeout(() => flushProfileToServer(merged), 800);
         }
       } else {
-        setUserProfile((prev) => ({
-          ...prev,
+        const localCached = restoreProfileFromCache(user);
+        const isCurrentLocalCacheValid = Boolean(localCached && (!localCached.username || localCached.username.toLowerCase() === user.toLowerCase()));
+        const cleanProf: UserProfile = {
+          ...defaultProfile,
           username: user,
+          displayName: (isCurrentLocalCacheValid && localCached?.displayName) ? localCached.displayName : user,
+          avatarUrl: (isCurrentLocalCacheValid && localCached?.avatarUrl) ? localCached.avatarUrl : null,
           isAdmin: isUserAdmin,
-        }));
+        };
+        setUserProfile(cleanProf);
+        cacheProfileLocally(user, cleanProf);
       }
       return { success: true };
     } catch {
@@ -1331,10 +1383,25 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       localStorage.removeItem('hub_active_user');
       localStorage.removeItem('hub_active_pass');
       localStorage.removeItem('hub_is_guest');
+      const rawDev = localStorage.getItem('mouzika_device_settings');
+      if (rawDev) {
+        try {
+          const parsed = JSON.parse(rawDev);
+          delete parsed.displayName;
+          delete parsed.avatarUrl;
+          delete parsed.username;
+          localStorage.setItem('mouzika_device_settings', JSON.stringify(parsed));
+        } catch {}
+      }
     } catch {}
     setGlobalUser(null);
     setGlobalPass(null);
-    setUserProfile(defaultProfile);
+    setUserProfile({
+      ...defaultProfile,
+      username: '',
+      displayName: '',
+      avatarUrl: null,
+    });
     setIsAuthGateOpen(true);
     showToast('Logged out', true);
   };
