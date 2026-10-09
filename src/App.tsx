@@ -9,6 +9,7 @@ import { QueueDrawer } from './components/QueueDrawer';
 import { ActionSheet } from './components/ActionSheet';
 import { Modals } from './components/Modals';
 import { InstallModal } from './components/InstallModal';
+import { SupersededBanner } from './components/SupersededBanner';
 import { HomeView } from './views/HomeView';
 import { SearchView } from './views/SearchView';
 import { LibraryView } from './views/LibraryView';
@@ -396,6 +397,7 @@ const AppShell: React.FC = () => {
       </div>
 
       {/* Fullscreen Overlays & Sheets */}
+      <SupersededBanner />
       <FullScreenPlayer />
       <LandscapeStagePlayer />
       <LyricsSheet />

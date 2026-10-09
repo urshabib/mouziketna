@@ -4,7 +4,8 @@
   "version": "1.2.1",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev": "tsx server.ts",
+    "start": "tsx server.ts",
     "build": "rm -rf dist docs assets && vite build && cp dist/404.html 404.html && cp -r dist docs && mkdir -p assets && cp -r dist/assets/* assets/ && cp public/assets/index.html assets/index.html 2>/dev/null || true && cp public/assets/index.html docs/assets/index.html 2>/dev/null || true && cp public/apple-touch-icon.png public/favicon* public/icon* public/manifest.json public/sw.js public/version.json . 2>/dev/null || true && cp public/version.json public/sw.js public/manifest.json docs/ 2>/dev/null || true && touch .nojekyll dist/.nojekyll docs/.nojekyll 2>/dev/null || true",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",

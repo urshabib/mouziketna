@@ -64,6 +64,7 @@ import {
   downloadsRegistryReady,
 } from '../services/storage';
 import { ensureAudioGraph, setBaseAudioVolume, resumeAudioContext } from '../services/audioEnhancer';
+import { sessionManager, SupersededEvent } from '../services/sessionManager';
 
 interface Toast {
   id: string;
@@ -215,6 +216,12 @@ interface MusicContextType {
   addTrackToPlaylist: (plId: string, track: Track) => void;
   updatePlaylistTracks: (plId: string, newTracks: Track[]) => void;
   addMultipleTracksToPlaylist: (plId: string, tracks: Track[]) => void;
+
+  // Single-Device Playback Sessions (Spotify Connect style)
+  supersededNotice: SupersededEvent | null;
+  setSupersededNotice: (notice: SupersededEvent | null) => void;
+  claimPlaybackHere: () => Promise<void>;
+  currentDeviceName: string;
 }
 
 const MusicContext = createContext<MusicContextType | null>(null);
@@ -296,6 +303,29 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
+
+  // Single-Device Playback Supersession Notice
+  const [supersededNotice, setSupersededNotice] = useState<SupersededEvent | null>(null);
+  const currentDeviceName = sessionManager.getDeviceName();
+
+  // Listen for real-time supersession events across devices or tabs
+  useEffect(() => {
+    if (globalUser) {
+      sessionManager.connectSse();
+    }
+    const unsub = sessionManager.onSuperseded((evt) => {
+      console.warn('[MusicContext] Playback superseded on remote device:', evt);
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setSupersededNotice(evt);
+    });
+    return () => {
+      unsub();
+      sessionManager.disconnectSse();
+    };
+  }, [globalUser]);
 
   // Playback state
   const [activeTrack, setActiveTrack] = useState<Track | null>(() => {
@@ -978,6 +1008,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       setGlobalUser(user);
       setGlobalPass(pass);
+      if (data.sessionToken) {
+        sessionManager.setSession(data.sessionToken, user);
+      } else {
+        sessionManager.setSession(`sess_${Date.now()}`, user);
+      }
       try {
         localStorage.setItem('hub_active_user', user);
         localStorage.setItem('hub_active_pass', pass);
@@ -1396,6 +1431,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
     setGlobalUser(null);
     setGlobalPass(null);
+    sessionManager.clearSession();
+    setSupersededNotice(null);
     setUserProfile({
       ...defaultProfile,
       username: '',
@@ -2201,6 +2238,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const audio = audioRef.current;
     if (!audio) return false;
 
+    // Clear any previous remote supersession alert and claim single-device lease
+    setSupersededNotice(null);
+    const leaseClaim = await sessionManager.claimPlaybackLease({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+    });
+    if (!leaseClaim.active) {
+      console.warn('[MusicContext] Playback claim rejected by server:', leaseClaim.error);
+      setIsPlaying(false);
+      return false;
+    }
+
     // Immediately stop and reset previous audio to prevent playing wrong song
     try {
       audio.pause();
@@ -2524,10 +2574,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   };
 
-  const togglePlay = () => {
+  const togglePlay = async () => {
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) {
+      setSupersededNotice(null);
+      const leaseClaim = await sessionManager.claimPlaybackLease(activeTrack || undefined);
+      if (!leaseClaim.active) {
+        setIsPlaying(false);
+        return;
+      }
       resumeAudioContext();
       if (audio.error || !audio.src || audio.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
         if (activeTrack) {
@@ -2555,6 +2611,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } else {
       audio.pause();
+      sessionManager.releasePlaybackLease();
     }
   };
 
@@ -3294,6 +3351,32 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Transfer playback lease back to this device (Spotify "Play Here Instead" style)
+  const claimPlaybackHere = useCallback(async () => {
+    setSupersededNotice(null);
+    const lease = await sessionManager.claimPlaybackLease(activeTrack || undefined);
+    if (lease.active) {
+      if (audioRef.current) {
+        resumeAudioContext();
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+              showToast(`Playback transferred to ${sessionManager.getDeviceName()}`);
+            })
+            .catch(() => {
+              if (activeTrack) {
+                playTrack(activeTrack, true);
+              }
+            });
+        }
+      } else if (activeTrack) {
+        playTrack(activeTrack, true);
+      }
+    }
+  }, [activeTrack, playTrack, showToast]);
+
   return (
     <MusicContext.Provider
       value={{
@@ -3416,6 +3499,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         addTrackToPlaylist,
         updatePlaylistTracks,
         addMultipleTracksToPlaylist,
+        supersededNotice,
+        setSupersededNotice,
+        claimPlaybackHere,
+        currentDeviceName,
       }}
     >
       {children}

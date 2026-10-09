@@ -15,8 +15,12 @@ import {
   ChevronRight,
   Info,
   Clock,
+  Radio,
+  Laptop,
+  Smartphone,
 } from 'lucide-react';
 import { useMusic } from '../context/MusicContext';
+import { sessionManager } from '../services/sessionManager';
 
 interface AccountSettingsModalProps {
   isOpen: boolean;
@@ -542,6 +546,28 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
                 <span>
                   Credentials are verified with zero-interruption session caching. Modifying your password updates both cloud servers and your device cache so you never get locked out.
                 </span>
+              </div>
+
+              {/* Single-Device Listening Enforcement Info */}
+              <div className="p-3.5 rounded-2xl bg-neutral-900/60 border border-white/10 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Radio className="w-4 h-4 text-[#28c76f]" />
+                    <span className="text-xs font-bold text-white">Single-Device Sessions</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-[#28c76f] bg-[#28c76f]/15 px-2 py-0.5 rounded-full border border-[#28c76f]/30">
+                    Enforced
+                  </span>
+                </div>
+                <div className="text-[11px] text-white/60 leading-relaxed">
+                  Spotify-like single stream protection is active. When you start listening on a second device or browser, playback on this device is automatically paused.
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px]">
+                  <span className="text-white/40">This Device:</span>
+                  <span className="font-semibold text-white truncate max-w-[200px]">
+                    {sessionManager.getDeviceName()}
+                  </span>
+                </div>
               </div>
             </div>
           )}

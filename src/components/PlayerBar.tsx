@@ -19,6 +19,7 @@ import {
   Plus,
   Mic,
   Loader2,
+  Radio,
 } from 'lucide-react';
 import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
 import { useTrackThumb, TrackThumbImage } from '../services/useTrackThumb';
@@ -61,6 +62,7 @@ export const PlayerBar: React.FC = () => {
     isQueueOpen,
     setModalAddToPlaylistTrack,
     currentLyrics,
+    currentDeviceName,
     t,
   } = useMusic();
 
@@ -240,6 +242,15 @@ export const PlayerBar: React.FC = () => {
         >
           <ListMusic className="w-4 h-4" />
         </button>
+
+        {/* Current Active Device Badge */}
+        <div
+          className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/5 text-[11px] text-white/50 max-w-[140px] truncate"
+          title={`Connected: ${currentDeviceName}`}
+        >
+          <Radio className="w-3 h-3 text-[#28c76f] flex-shrink-0 animate-pulse" />
+          <span className="truncate">{currentDeviceName}</span>
+        </div>
 
         <div className="flex items-center gap-2 group">
           <button

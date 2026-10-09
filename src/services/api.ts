@@ -1,7 +1,15 @@
 import { CustomPlaylist, LyricsData, SyncedLyricsLine, Track } from '../types';
 import { getExplicitInterestedTracks, getExplicitNotInterestedTracks } from './storage';
+import { sessionManager } from './sessionManager';
 
-export const NEW_HUB_BACKEND = 'https://new-music-space-api.urshabib.workers.dev';
+export const NEW_HUB_BACKEND =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.includes('run.app') ||
+    window.location.port === '3000')
+    ? ''
+    : 'https://new-music-space-api.urshabib.workers.dev';
 
 export const STREAM_MIRRORS = [
   'https://invidious.schenkel.eti.br/api/v1/videos/',
@@ -437,7 +445,15 @@ export async function resolveSaavnStream(
 export async function resolveWorkerStream(id: string): Promise<string | null> {
   if (!id || id.length < 5) return null;
   try {
-    const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}`, 5500);
+    const devId = sessionManager.getDeviceId();
+    const token = sessionManager.getSessionToken();
+    const query = new URLSearchParams({
+      deviceId: devId,
+      ...(token ? { sessionToken: token } : {}),
+    }).toString();
+    const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}?${query}`, 5500, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
     if (r.ok) {
       const j = await r.json();
       const audio = (j?.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
