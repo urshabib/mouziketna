@@ -980,9 +980,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch {}
       setIsAuthGateOpen(false);
 
-      if (data.isAdmin) {
+      const isUserAdmin = Boolean(data.isAdmin || user.toLowerCase() === 'admin' || data.profile?.isAdmin);
+      if (isUserAdmin) {
         showToast('Logged in as Admin');
-      } else if (data.profile) {
+      }
+
+      if (data.profile) {
         const p = data.profile;
         const devSettings = loadDeviceSettings() || {};
         const sanitizeTracks = (tracks?: Track[]): Track[] => {
@@ -1047,6 +1050,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const merged: UserProfile = {
           ...userProfile,
           username: p.username || user,
+          isAdmin: isUserAdmin,
           likedSongs: sanitizeTracks(p.likedSongs),
           customPlaylists: p.customPlaylists || [],
           favouriteArtists: p.favouriteArtists || [],
@@ -1105,6 +1109,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (mergedStats.totalMinutesListened > (serverStats?.totalMinutesListened || 0)) {
           setTimeout(() => flushProfileToServer(merged), 800);
         }
+      } else {
+        setUserProfile((prev) => ({
+          ...prev,
+          username: user,
+          isAdmin: isUserAdmin,
+        }));
       }
       return { success: true };
     } catch {
@@ -1365,31 +1375,40 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!globalUser) {
       return { success: false, error: 'You must be logged in to change your password.' };
     }
-    const cachedPass = globalPass || localStorage.getItem('hub_active_pass');
-    if (cachedPass && currentPass !== cachedPass) {
-      return { success: false, error: 'Current password is incorrect.' };
+    if (!currentPass) {
+      return { success: false, error: 'Please enter your current password.' };
     }
-
     if (!newPass || newPass.length < 6) {
       return { success: false, error: 'New password must be at least 6 characters long for security.' };
     }
+    if (currentPass === newPass) {
+      return { success: false, error: 'New password must be different from your current password.' };
+    }
 
-    // Verify current credentials with server if online
+    // 1. Verify current credentials against server first
     try {
-      const verifyRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 5000, {
+      const verifyRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 6000, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: globalUser, password: currentPass }),
       });
       const verifyData = await verifyRes.json().catch(() => null);
       if (verifyData && verifyData.error) {
+        return { success: false, error: verifyData.error || 'Current password is incorrect.' };
+      }
+    } catch {
+      const cachedPass = globalPass || localStorage.getItem('hub_active_pass');
+      if (cachedPass && currentPass !== cachedPass) {
         return { success: false, error: 'Current password is incorrect.' };
       }
-    } catch {}
+    }
 
     try {
+      const profSnapshot = { ...userProfile };
+      const isUserAdmin = Boolean(userProfile.isAdmin || globalUser.toLowerCase() === 'admin');
+
       let updatedOnServer = false;
-      // 1. Try dedicated endpoint first if supported
+      // 2. Try dedicated endpoint first if supported
       try {
         const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/change-password`, 5000, {
           method: 'POST',
@@ -1401,16 +1420,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }),
         });
         const resData = await res.json().catch(() => null);
-        if (res.ok && (!resData || !resData.error)) {
+        if (res.ok && resData && !resData.error && resData.success) {
           updatedOnServer = true;
         }
       } catch {}
 
-      // 2. If dedicated endpoint not present, perform atomic recreate while preserving profile
+      // 3. Perform atomic recreate to reliably update credentials on Cloudflare while preserving profile & roles
       if (!updatedOnServer) {
-        const profSnapshot = { ...userProfile };
-        const isAdmin = Boolean(userProfile.isAdmin);
-
         // Delete user
         const delRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/delete-user`, 8000, {
           method: 'POST',
@@ -1429,7 +1445,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           body: JSON.stringify({
             username: globalUser,
             password: newPass,
-            isAdmin,
+            isAdmin: isUserAdmin,
           }),
         });
         const createData = await createRes.json().catch(() => null);
@@ -1438,7 +1454,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         // Preserve admin role if applicable
-        if (isAdmin) {
+        if (isUserAdmin) {
           await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/set-admin`, 8000, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1459,31 +1475,43 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedOnServer = true;
       }
 
-      // Verify login with the new password
+      // 4. Verify authentication with the NEW password
+      const verifyNew = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 6000, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: globalUser, password: newPass }),
+      });
+      const verifyNewData = await verifyNew.json().catch(() => null);
+      if (!verifyNew.ok || !verifyNewData || verifyNewData.error || !verifyNewData.success) {
+        throw new Error(verifyNewData?.error || 'Verification with new password failed');
+      }
+
+      // 5. Verify the OLD password NO LONGER works
       try {
-        const verifyNew = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 5000, {
+        const verifyOld = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 5000, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: globalUser, password: newPass }),
+          body: JSON.stringify({ username: globalUser, password: currentPass }),
         });
-        const verifyNewData = await verifyNew.json().catch(() => null);
-        if (!verifyNew.ok || (verifyNewData && verifyNewData.error)) {
-          throw new Error(verifyNewData?.error || 'Verification with new password failed');
+        const verifyOldData = await verifyOld.json().catch(() => null);
+        if (verifyOldData && verifyOldData.success) {
+          throw new Error('Security check failed: Old password is still active on server.');
         }
-      } catch (e: any) {
-        if (e.message && !e.message.includes('fetch')) {
-          return { success: false, error: e.message };
+      } catch (oldErr: any) {
+        if (oldErr.message && oldErr.message.includes('Security check failed')) {
+          throw oldErr;
         }
       }
 
-      // CRITICAL: Update global password state and website cache so user is NOT locked out
+      // 6. Update global password state and website cache so active session remains valid
       setGlobalPass(newPass);
       try {
         localStorage.setItem('hub_active_pass', newPass);
       } catch {}
 
-      cacheProfileLocally(globalUser, userProfile);
-      showToast('Password updated and cached securely');
+      cacheProfileLocally(globalUser, { ...profSnapshot, isAdmin: isUserAdmin });
+      setUserProfile((prev) => ({ ...prev, isAdmin: isUserAdmin }));
+      showToast('Password updated successfully');
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to update password.' };
@@ -1497,6 +1525,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (newPass.length < 4) {
       return { success: false, error: 'Password must be at least 4 characters long.' };
     }
+
+    // Verify caller is authorized
+    const isCallerAdmin = Boolean(
+      (globalUser && globalUser.toLowerCase() === 'admin') ||
+      userProfile.isAdmin
+    );
+    if (!isCallerAdmin) {
+      return { success: false, error: 'Unauthorized: Admin privileges required to modify user passwords.' };
+    }
+
     try {
       let updatedOnServer = false;
       // 1. Try dedicated endpoints first if supported
@@ -1513,7 +1551,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }),
         });
         const resData = await res.json().catch(() => null);
-        if (res.ok && (!resData || !resData.error)) {
+        if (res.ok && resData && !resData.error && resData.success) {
           updatedOnServer = true;
         }
       } catch {}
@@ -1531,25 +1569,27 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }),
           });
           const resData = await res.json().catch(() => null);
-          if (res.ok && (!resData || !resData.error)) {
+          if (res.ok && resData && !resData.error && resData.success) {
             updatedOnServer = true;
           }
         } catch {}
       }
 
-      // 2. If endpoints not supported, atomic recreate with admin status and profile preservation
+      // 2. Perform atomic recreate while preserving target user's admin status and profile
       if (!updatedOnServer) {
-        let wasAdmin = false;
+        let wasAdmin = targetUsername.toLowerCase() === 'admin';
         try {
           const listRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/list-users`, 5000);
           const listData = await listRes.json().catch(() => null);
           const userEntry = listData?.users?.find(
             (u: any) => u.username.toLowerCase() === targetUsername.toLowerCase()
           );
-          if (userEntry) wasAdmin = Boolean(userEntry.isAdmin);
+          if (userEntry) wasAdmin = wasAdmin || Boolean(userEntry.isAdmin);
         } catch {}
 
-        const cachedTarget = restoreProfileFromCache(targetUsername);
+        const cachedTarget = targetUsername.toLowerCase() === globalUser?.toLowerCase()
+          ? userProfile
+          : restoreProfileFromCache(targetUsername);
 
         // Delete user
         const delRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/delete-user`, 8000, {
@@ -1601,29 +1641,24 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedOnServer = true;
       }
 
-      // Verify authentication with new password
-      try {
-        const verifyRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 5000, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: targetUsername, password: newPass }),
-        });
-        const verifyData = await verifyRes.json().catch(() => null);
-        if (!verifyRes.ok || (verifyData && verifyData.error)) {
-          throw new Error(verifyData?.error || 'Authentication verification failed');
-        }
-      } catch (e: any) {
-        if (e.message && !e.message.includes('fetch')) {
-          return { success: false, error: e.message };
-        }
+      // 3. Verify authentication with new password
+      const verifyRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 6000, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: targetUsername, password: newPass }),
+      });
+      const verifyData = await verifyRes.json().catch(() => null);
+      if (!verifyRes.ok || !verifyData || verifyData.error || !verifyData.success) {
+        throw new Error(verifyData?.error || 'Authentication verification failed with new password');
       }
 
-      // If updating the currently logged-in account
+      // If updating the currently logged-in account, keep active session in sync
       if (globalUser && targetUsername.toLowerCase() === globalUser.toLowerCase()) {
         setGlobalPass(newPass);
         try {
           localStorage.setItem('hub_active_pass', newPass);
         } catch {}
+        setUserProfile((prev) => ({ ...prev, isAdmin: true }));
       }
 
       showToast(`Password updated for "${targetUsername}"`);
@@ -1631,7 +1666,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to update user password.' };
     }
-  }, [globalUser, globalPass, showToast]);
+  }, [globalUser, globalPass, userProfile, showToast]);
 
   // Music Taste Tuning
   const tuneMusicTaste = useCallback((track: Track, direction: 'more' | 'less') => {

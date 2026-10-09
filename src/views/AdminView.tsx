@@ -208,6 +208,9 @@ export const AdminView: React.FC = () => {
         showToast(`Password updated for user "${target}"`);
         setEditingPasswordUser(null);
         setTargetNewPassword('');
+        setUsers((prev) =>
+          prev.map((u) => (u.username.toLowerCase() === target.toLowerCase() ? { ...u, password: newPass } : u))
+        );
         loadUsers();
       } else {
         showToast(res.error || 'Failed to update password', true);

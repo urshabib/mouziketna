@@ -383,14 +383,14 @@ export function loadDeviceSettings(): Partial<UserProfile> | null {
 }
 
 export function cacheProfileLocally(username: string, profile: UserProfile) {
-  if (!username || username === 'admin') return;
+  if (!username) return;
   try {
     localStorage.setItem('mouzika_profile_cache_' + username, JSON.stringify(profile));
   } catch {}
 }
 
 export function restoreProfileFromCache(username: string): Partial<UserProfile> | null {
-  if (!username || username === 'admin') return null;
+  if (!username) return null;
   try {
     const cached = localStorage.getItem('mouzika_profile_cache_' + username);
     if (!cached) return null;

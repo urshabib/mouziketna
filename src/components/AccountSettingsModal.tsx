@@ -161,6 +161,11 @@ export const AccountSettingsModal: React.FC<AccountSettingsModalProps> = ({
       return;
     }
 
+    if (currentPassInput === newPassInput) {
+      setPasswordError('New password must be different from your current password.');
+      return;
+    }
+
     setPasswordSaving(true);
     try {
       const res = await updateUserPassword(currentPassInput, newPassInput);
