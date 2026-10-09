@@ -169,13 +169,39 @@ const server = http.createServer(app);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Security Headers
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+// Tunisia Geo-Blocking & Anti-VPN / Anti-Proxy Security Middleware
+function enforceTunisiaGeoAndAntiVpn(req: Request, res: Response, next: NextFunction) {
+  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+  const isLocal = ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('localhost') || ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.');
+
+  if (isLocal || process.env.NODE_ENV !== 'production' || process.env.BYPASS_GEO_BLOCK === 'true') {
+    return next();
+  }
+
+  const country = (req.headers['cf-ipcountry'] as string || '').toUpperCase();
+  const forwardedFor = req.headers['x-forwarded-for'];
+
+  if (country) {
+    if (country !== 'TN') {
+      return res.status(403).json({
+        error: 'geoblock_restricted',
+        message: 'Access restricted: MOUZIKETNA is exclusively available within Tunisia. International IPs, VPNs, and proxies are blocked.',
+      });
+    }
+  } else {
+    if (forwardedFor || req.headers['via'] || req.headers['x-real-ip']) {
+      return res.status(403).json({
+        error: 'vpn_proxy_blocked',
+        message: 'Access denied: VPN, proxy, or anonymous tunneling detected.',
+      });
+    }
+  }
+
   next();
-});
+}
+
+// Apply geo and anti-VPN security middleware to all requests
+app.use(enforceTunisiaGeoAndAntiVpn);
 
 // =========================================================================
 // API ROUTES: SINGLE-DEVICE SESSION & PLAYBACK CONTROL
@@ -390,42 +416,146 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// 4. Claim Playback Lease (Multi-device simultaneous playback allowed)
+// 4. Claim Playback Lease (Enforces strict single-device active session - Spotify mechanism)
 app.post('/api/session/claim-playback', rateLimit(120, 60000), async (req: Request, res: Response) => {
-  return res.json({
-    active: true,
-    leaseEpoch: 1,
-    success: true,
-    message: 'Playback allowed on multiple devices',
+  const session = extractSession(req);
+  const username = session?.username || req.body?.username;
+  if (!username) {
+    return res.status(401).json({ error: 'Unauthorized session' });
+  }
+
+  const normUser = cleanUsername(username);
+  const deviceId = req.body?.deviceId || session?.deviceId || 'dev_unknown';
+  const deviceName = req.body?.deviceName || session?.deviceName || 'Web Player';
+
+  return await withUserLock(normUser, async () => {
+    const existingLease = activePlaybacks.get(normUser);
+    let leaseEpoch = 1;
+
+    if (existingLease) {
+      leaseEpoch = existingLease.leaseEpoch;
+      if (existingLease.deviceId !== deviceId) {
+        // New device taking over! Increment epoch and notify old device via SSE
+        leaseEpoch++;
+        notifySupersededViaSse(normUser, existingLease.deviceId, deviceName, leaseEpoch);
+      }
+    }
+
+    const newLease: PlaybackLease = {
+      username: normUser,
+      deviceId,
+      deviceName,
+      sessionToken: session?.sessionToken || 'token',
+      leaseEpoch,
+      leaseId: generateSecureToken(12),
+      trackId: req.body?.trackId,
+      trackTitle: req.body?.trackTitle,
+      trackArtist: req.body?.trackArtist,
+      startedAt: Date.now(),
+      lastHeartbeat: Date.now(),
+      expiresAt: Date.now() + 30000,
+      state: 'playing',
+    };
+
+    activePlaybacks.set(normUser, newLease);
+
+    return res.json({
+      success: true,
+      active: true,
+      leaseEpoch,
+      deviceId,
+      message: 'Playback lease claimed successfully (Single-device active)',
+    });
   });
 });
 
-// 5. Playback Heartbeat (Multi-device simultaneous playback allowed)
+// 5. Playback Heartbeat (Verifies active session lease ownership; returns 409 Conflict if superseded)
 app.post('/api/session/heartbeat', rateLimit(200, 60000), async (req: Request, res: Response) => {
-  return res.json({
-    active: true,
-    leaseEpoch: 1,
-    expiresAt: Date.now() + 15000,
+  const session = extractSession(req);
+  const username = session?.username || req.body?.username;
+  const deviceId = req.body?.deviceId || session?.deviceId;
+
+  if (!username || !deviceId) {
+    return res.status(401).json({ error: 'Unauthorized heartbeat' });
+  }
+
+  const normUser = cleanUsername(username);
+
+  return await withUserLock(normUser, async () => {
+    const lease = activePlaybacks.get(normUser);
+    if (!lease || lease.deviceId !== deviceId) {
+      return res.status(409).json({
+        active: false,
+        superseded: true,
+        supersededBy: lease?.deviceName || 'Another device',
+        leaseEpoch: lease?.leaseEpoch || 1,
+        error: 'playback_superseded',
+        message: 'Playback paused because another device or browser tab started playing.',
+      });
+    }
+
+    lease.lastHeartbeat = Date.now();
+    lease.expiresAt = Date.now() + 30000;
+    activePlaybacks.set(normUser, lease);
+
+    return res.json({
+      active: true,
+      leaseEpoch: lease.leaseEpoch,
+      expiresAt: lease.expiresAt,
+    });
   });
 });
 
 // 6. Release Playback Lease
 app.post('/api/session/release-playback', async (req: Request, res: Response) => {
+  const session = extractSession(req);
+  const username = session?.username || req.body?.username;
+  const deviceId = req.body?.deviceId || session?.deviceId;
+  if (!username || !deviceId) return res.json({ success: true });
+
+  const normUser = cleanUsername(username);
+  await withUserLock(normUser, async () => {
+    const lease = activePlaybacks.get(normUser);
+    if (lease && lease.deviceId === deviceId) {
+      activePlaybacks.delete(normUser);
+    }
+  });
+
   return res.json({ success: true, message: 'Playback lease released' });
 });
 
 // 7. Get Playback Status
 app.get('/api/session/status', (req: Request, res: Response) => {
+  const session = extractSession(req);
+  const username = (req.query?.username as string) || session?.username;
+  const deviceId = (req.query?.deviceId as string) || session?.deviceId;
+
+  if (!username) return res.json({ active: false });
+  const normUser = cleanUsername(username);
+  const lease = activePlaybacks.get(normUser);
+
+  const isActive = Boolean(lease && lease.deviceId === deviceId);
   return res.json({
-    active: true,
-    hasActivePlayback: true,
-    isCurrentDeviceActive: true,
-    leaseEpoch: 1,
+    active: isActive,
+    hasActivePlayback: Boolean(lease),
+    isCurrentDeviceActive: isActive,
+    supersededBy: lease && !isActive ? lease.deviceName : null,
+    leaseEpoch: lease?.leaseEpoch || 1,
   });
 });
 
-// 8. Server-Sent Events (SSE)
+// 8. Server-Sent Events (SSE) for Instant Supersession Push
 app.get('/api/session/events', (req: Request, res: Response) => {
+  const sessionToken = req.query?.sessionToken as string;
+  const deviceId = req.query?.deviceId as string;
+  const session = sessions.get(sessionToken);
+
+  if (!session || !deviceId) {
+    return res.status(401).end();
+  }
+
+  const normUser = session.username;
+
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -433,6 +563,12 @@ app.get('/api/session/events', (req: Request, res: Response) => {
     'X-Accel-Buffering': 'no',
   });
   res.write(': connected\n\n');
+
+  if (!sseClients.has(normUser)) {
+    sseClients.set(normUser, new Map());
+  }
+  sseClients.get(normUser)!.set(deviceId, res);
+
   const pingInterval = setInterval(() => {
     try {
       res.write(': ping\n\n');
@@ -440,8 +576,14 @@ app.get('/api/session/events', (req: Request, res: Response) => {
       clearInterval(pingInterval);
     }
   }, 15000);
+
   req.on('close', () => {
     clearInterval(pingInterval);
+    const userClients = sseClients.get(normUser);
+    if (userClients) {
+      userClients.delete(deviceId);
+      if (userClients.size === 0) sseClients.delete(normUser);
+    }
   });
 });
 

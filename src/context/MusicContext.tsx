@@ -533,6 +533,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           type: 'system_stats',
           displayName: profToSync.displayName || profToSync.username || globalUser,
           avatarUrl: profToSync.avatarUrl !== undefined ? profToSync.avatarUrl : null,
+          email: profToSync.email !== undefined ? profToSync.email : null,
           stats: activeStats,
           explicitInterested,
           explicitNotInterested,
@@ -549,6 +550,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           username: globalUser,
           displayName: profToSync.displayName || profToSync.username || globalUser,
           avatarUrl: profToSync.avatarUrl !== undefined ? profToSync.avatarUrl : null,
+          email: profToSync.email !== undefined ? profToSync.email : null,
           stats: activeStats,
           favouriteAlbums: [...rawAlbums, cloudStatsRecord],
           explicitInterested,
@@ -922,12 +924,33 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (lyricsFont) {
       document.documentElement.setAttribute('data-lyrics-font', lyricsFont);
     }
+    const accentRgbMap: Record<string, string> = {
+      orange: '255, 107, 26',
+      purple: '168, 85, 247',
+      green: '34, 197, 94',
+      blue: '59, 130, 246',
+      red: '239, 68, 68',
+      pink: '236, 72, 153',
+      teal: '20, 184, 166',
+      cyan: '6, 182, 212',
+      violet: '139, 92, 246',
+      emerald: '16, 185, 129',
+    };
     if (customAccentHex || (accent && accent.startsWith('#'))) {
       const hex = customAccentHex || accent;
       document.documentElement.style.setProperty('--accent', hex);
       document.documentElement.style.setProperty('--accent-hover', hex);
       document.documentElement.style.setProperty('--accent-soft', `${hex}28`);
+      const cleanHex = hex.replace('#', '');
+      if (cleanHex.length === 6) {
+        const r = parseInt(cleanHex.slice(0, 2), 16);
+        const g = parseInt(cleanHex.slice(2, 4), 16);
+        const b = parseInt(cleanHex.slice(4, 6), 16);
+        document.documentElement.style.setProperty('--accent-rgb', `${r}, ${g}, ${b}`);
+      }
     } else {
+      const rgb = accentRgbMap[accent] || '255, 107, 26';
+      document.documentElement.style.setProperty('--accent-rgb', rgb);
       document.documentElement.style.removeProperty('--accent');
       document.documentElement.style.removeProperty('--accent-hover');
       document.documentElement.style.removeProperty('--accent-soft');
@@ -1032,6 +1055,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         let cloudDisplayName: string | undefined = undefined;
         let cloudAvatarUrl: string | null | undefined = undefined;
         let cloudAvatarExplicitlySet = false;
+        let cloudEmail: string | undefined = undefined;
 
         // Extract cloud stats, explicit taste, and server-persisted profile data from favouriteAlbums system record
         if (Array.isArray(p.favouriteAlbums)) {
@@ -1056,6 +1080,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (cloudRecord.avatarUrl !== undefined) {
               cloudAvatarUrl = cloudRecord.avatarUrl;
               cloudAvatarExplicitlySet = true;
+            }
+            if (cloudRecord.email !== undefined && cloudRecord.email !== null && String(cloudRecord.email).trim()) {
+              cloudEmail = String(cloudRecord.email).trim();
             }
           }
         }
@@ -1113,6 +1140,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           resolvedAvatarUrl = null;
         }
 
+        const resolvedEmail =
+          cloudEmail ||
+          (p.email && String(p.email).trim()) ||
+          (isCurrentLocalCacheValid && localCached?.email ? localCached.email : undefined) ||
+          null;
+
         const merged: UserProfile = {
           ...defaultProfile,
           ...p,
@@ -1120,6 +1153,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           isAdmin: isUserAdmin,
           displayName: resolvedDisplayName,
           avatarUrl: resolvedAvatarUrl,
+          email: resolvedEmail,
           likedSongs: sanitizeTracks(p.likedSongs),
           customPlaylists: p.customPlaylists || [],
           favouriteArtists: p.favouriteArtists || [],

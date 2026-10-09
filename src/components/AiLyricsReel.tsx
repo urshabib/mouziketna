@@ -29,9 +29,28 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
   currentTime,
   syncedLines,
   onSeek,
-  dominantColor = { r: 255, g: 107, b: 26 },
+  dominantColor,
 }) => {
   const [plan, setPlan] = useState<ReelDirectorPlan | null>(null);
+  const [resolvedColor, setResolvedColor] = useState<{ r: number; g: number; b: number }>(dominantColor || { r: 255, g: 107, b: 26 });
+
+  useEffect(() => {
+    if (dominantColor) {
+      setResolvedColor(dominantColor);
+      return;
+    }
+    try {
+      const rgbStr = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim();
+      if (rgbStr && rgbStr.includes(',')) {
+        const [r, g, b] = rgbStr.split(',').map((v) => parseInt(v.trim(), 10));
+        if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+          setResolvedColor({ r, g, b });
+          return;
+        }
+      }
+    } catch {}
+    setResolvedColor({ r: 255, g: 107, b: 26 });
+  }, [dominantColor]);
 
   // Generate or load offline plan instantly (0ms)
   useEffect(() => {
@@ -287,7 +306,7 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
                     <span
                       className="absolute inset-0 -m-3 rounded-2xl pointer-events-none opacity-80 blur-xl transition-opacity duration-150"
                       style={{
-                        background: `radial-gradient(circle, rgba(${dominantColor.r}, ${dominantColor.g}, ${dominantColor.b}, 0.85) 0%, transparent 70%)`,
+                        background: `radial-gradient(circle, rgba(${resolvedColor.r}, ${resolvedColor.g}, ${resolvedColor.b}, 0.85) 0%, transparent 70%)`,
                       }}
                     />
                   )}
@@ -300,7 +319,7 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
                     style={
                       isActive
                         ? {
-                            textShadow: `0 0 15px rgba(${dominantColor.r}, ${dominantColor.g}, ${dominantColor.b}, 0.95), 0 0 35px rgba(${dominantColor.r}, ${dominantColor.g}, ${dominantColor.b}, 0.6)`,
+                            textShadow: `0 0 15px rgba(${resolvedColor.r}, ${resolvedColor.g}, ${resolvedColor.b}, 0.95), 0 0 35px rgba(${resolvedColor.r}, ${resolvedColor.g}, ${resolvedColor.b}, 0.6)`,
                           }
                         : undefined
                     }
