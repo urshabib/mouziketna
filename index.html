@@ -21,6 +21,14 @@
       (function() {
         var l = window.location;
         var p = l.pathname;
+
+        // Auto-fix for PWA shortcut /assets white page issue: normalize /assets to app root immediately
+        if (p.endsWith('/assets') || p.endsWith('/assets/')) {
+          var cleanRoot = p.replace(/\/assets\/?$/, '/');
+          l.replace(l.origin + cleanRoot + l.search + l.hash);
+          return;
+        }
+
         if (!p.endsWith('/') && !p.split('/').pop().includes('.')) {
           l.replace(p + '/' + l.search + l.hash);
           return;
@@ -77,7 +85,7 @@
   </head>
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
-    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791490459373';</script>
+    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791533617889';</script>
     <script>
       (function() {
         var isDev = location.port === '3000' ||
@@ -93,18 +101,23 @@
           var queryBust = q.get('_v') || q.get('v') || q.get('_bust');
           var assetSuffix = '?v=' + (queryBust || window.__MOUZIKETNA_BUILD_TIME__ || '1.2.2');
 
+          var basePrefix = './assets/';
+          if (window.location.pathname.endsWith('/assets') || window.location.pathname.endsWith('/assets/')) {
+            basePrefix = './';
+          }
+
           if (!document.querySelector('link[href*="index.css"]')) {
             var css = document.createElement('link');
             css.rel = 'stylesheet';
             css.crossOrigin = 'anonymous';
-            css.href = './assets/index.css' + assetSuffix;
+            css.href = basePrefix + 'index.css' + assetSuffix;
             document.head.appendChild(css);
           }
           if (!document.querySelector('script[src*="index.js"]')) {
             var js = document.createElement('script');
             js.type = 'module';
             js.crossOrigin = 'anonymous';
-            js.src = './assets/index.js' + assetSuffix;
+            js.src = basePrefix + 'index.js' + assetSuffix;
             document.body.appendChild(js);
           }
         }

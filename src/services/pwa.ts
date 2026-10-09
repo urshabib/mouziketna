@@ -333,7 +333,8 @@ export async function updatePwaManifest(
       manifestLink.setAttribute('rel', 'manifest');
       manifestLink.setAttribute('href', './manifest.json');
       document.head.appendChild(manifestLink);
-    } else if (manifestLink.getAttribute('href')?.startsWith('blob:')) {
+    } else {
+      // ALWAYS force link href to ./manifest.json at the app root, NEVER ./assets/manifest.json!
       manifestLink.setAttribute('href', './manifest.json');
     }
 
@@ -350,6 +351,28 @@ export async function updatePwaManifest(
         await brandingCache.put('manifest.json', manifestResp.clone());
         await brandingCache.put('./manifest.json', manifestResp.clone());
         await brandingCache.put('/manifest.json', manifestResp.clone());
+
+        // Also cache a version for assets/manifest.json that sets start_url to "../" so it points back to root
+        const assetManifestJson = {
+          ...manifestJson,
+          start_url: '../',
+          scope: '../',
+          icons: manifestJson.icons.map((ic) => ({
+            ...ic,
+            src: ic.src.startsWith('./') ? '../' + ic.src.slice(2) : ic.src,
+          })),
+        };
+        const assetBlob = new Blob([JSON.stringify(assetManifestJson, null, 2)], {
+          type: 'application/manifest+json; charset=utf-8',
+        });
+        const assetResp = new Response(assetBlob, {
+          headers: {
+            'Content-Type': 'application/manifest+json; charset=utf-8',
+            'Cache-Control': 'no-cache, must-revalidate',
+          },
+        });
+        await brandingCache.put('assets/manifest.json', assetResp.clone());
+        await brandingCache.put('./assets/manifest.json', assetResp.clone());
       } catch {}
     }
   } catch (e) {

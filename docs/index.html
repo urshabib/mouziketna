@@ -21,6 +21,14 @@
       (function() {
         var l = window.location;
         var p = l.pathname;
+
+        // Auto-fix for PWA shortcut /assets white page issue: normalize /assets to app root immediately
+        if (p.endsWith('/assets') || p.endsWith('/assets/')) {
+          var cleanRoot = p.replace(/\/assets\/?$/, '/');
+          l.replace(l.origin + cleanRoot + l.search + l.hash);
+          return;
+        }
+
         if (!p.endsWith('/') && !p.split('/').pop().includes('.')) {
           l.replace(p + '/' + l.search + l.hash);
           return;
@@ -58,17 +66,17 @@
       })();
     </script>
 
-    <link rel="manifest" href="./assets/manifest.json" />
-    <link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32x32.png" />
-    <link rel="icon" type="image/png" href="./assets/favicon.ico" />
-    <link rel="shortcut icon" href="./assets/favicon.ico" />
-    <link rel="icon" href="./assets/favicon.ico" />
-    <link rel="icon" type="image/svg+xml" href="./assets/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="192x192" href="./assets/icon-192.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="./assets/apple-touch-icon.png" />
-    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
-    <meta property="og:image" content="./assets/icon-512.png" />
-    <meta name="twitter:image" content="./assets/icon-512.png" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./favicon-32x32.png" />
+    <link rel="icon" type="image/png" href="./favicon.ico" />
+    <link rel="shortcut icon" href="./favicon.ico" />
+    <link rel="icon" href="./favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+    <link rel="apple-touch-icon" href="./icon-192.png" />
+    <meta property="og:image" content="./icon-512.png" />
+    <meta name="twitter:image" content="./icon-512.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -79,7 +87,7 @@
   </head>
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
-    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791490459373';</script>
+    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791533617889';</script>
     <script>
       (function() {
         var isDev = location.port === '3000' ||
@@ -95,18 +103,23 @@
           var queryBust = q.get('_v') || q.get('v') || q.get('_bust');
           var assetSuffix = '?v=' + (queryBust || window.__MOUZIKETNA_BUILD_TIME__ || '1.2.2');
 
+          var basePrefix = './assets/';
+          if (window.location.pathname.endsWith('/assets') || window.location.pathname.endsWith('/assets/')) {
+            basePrefix = './';
+          }
+
           if (!document.querySelector('link[href*="index.css"]')) {
             var css = document.createElement('link');
             css.rel = 'stylesheet';
             css.crossOrigin = 'anonymous';
-            css.href = './assets/index.css' + assetSuffix;
+            css.href = basePrefix + 'index.css' + assetSuffix;
             document.head.appendChild(css);
           }
           if (!document.querySelector('script[src*="index.js"]')) {
             var js = document.createElement('script');
             js.type = 'module';
             js.crossOrigin = 'anonymous';
-            js.src = './assets/index.js' + assetSuffix;
+            js.src = basePrefix + 'index.js' + assetSuffix;
             document.body.appendChild(js);
           }
         }

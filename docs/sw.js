@@ -1,5 +1,5 @@
 // Service Worker for MOUZIKETNA PWA
-const CACHE_NAME = 'mouzika-pwa-1791490459373';
+const CACHE_NAME = 'mouzika-pwa-1791533617889';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
 // Precache static shell assets
@@ -93,6 +93,11 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.open(BRANDING_CACHE).then(async (brandingCache) => {
         try {
+          if (pathname.includes('/assets/manifest.json')) {
+            const assetManifest = await brandingCache.match('assets/manifest.json');
+            if (assetManifest) return assetManifest;
+          }
+
           const customMatch =
             (await brandingCache.match(filename)) ||
             (await brandingCache.match('./' + filename)) ||
@@ -127,6 +132,15 @@ self.addEventListener('fetch', (event) => {
   const isNav = event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html');
 
   if (isNav) {
+    // If navigation request ends with /assets or /assets/ (from an outdated PWA shortcut), redirect to app root!
+    if (pathname.endsWith('/assets') || pathname.endsWith('/assets/')) {
+      const rootUrl = url.href.replace(/\/assets\/?$/, '/');
+      event.respondWith(
+        Response.redirect(rootUrl, 302)
+      );
+      return;
+    }
+
     event.respondWith(
       fetch(event.request, { cache: 'no-cache' })
         .then((response) => {
@@ -135,6 +149,14 @@ self.addEventListener('fetch', (event) => {
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, respClone).catch(() => {});
             }).catch(() => {});
+            return response;
+          }
+          // If server returns 404 on navigation (e.g. GitHub Pages SPA routing or /assets navigation), serve index.html
+          if (!response || response.status === 404) {
+            return caches.match('./index.html')
+              .then((cached) => cached || caches.match('index.html'))
+              .then((cached) => cached || caches.match('/index.html'))
+              .then((cached) => cached || response);
           }
           return response;
         })

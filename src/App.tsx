@@ -277,6 +277,17 @@ const AppShell: React.FC = () => {
     }
   }, [activePane]);
 
+  // Normalize URL if launched at /assets or /assets/ (from any outdated PWA home screen shortcut)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname;
+      if (p.endsWith('/assets') || p.endsWith('/assets/')) {
+        const cleanPath = p.replace(/\/assets\/?$/, '/');
+        window.history.replaceState(null, '', cleanPath + window.location.search + window.location.hash);
+      }
+    }
+  }, []);
+
   // Initial check on app launch if started without network connection
   useEffect(() => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {

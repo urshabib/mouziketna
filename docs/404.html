@@ -9,6 +9,14 @@
       // https://github.com/rafgraph/spa-github-pages
       (function() {
         var l = window.location;
+
+        // If navigation request hits /assets or /assets/, redirect immediately to app root
+        if (l.pathname.endsWith('/assets') || l.pathname.endsWith('/assets/')) {
+          var cleanPath = l.pathname.replace(/\/assets\/?$/, '/');
+          l.replace(l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') + cleanPath + l.search + l.hash);
+          return;
+        }
+
         // Don't redirect if it looks like a missing static asset/media file
         var lastPart = l.pathname.split('/').pop();
         if (lastPart && lastPart.indexOf('.') !== -1 && !lastPart.endsWith('.html')) {

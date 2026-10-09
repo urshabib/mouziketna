@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MOUZIKETNA</title>
+    <script>
+      (function() {
+        var l = window.location;
+        var p = l.pathname;
+        var cleanTarget = p.replace(/\/assets\/?$/, '/');
+        l.replace(l.origin + cleanTarget + l.search + l.hash);
+      })();
+    </script>
+    <meta http-equiv="refresh" content="0; url=../" />
+  </head>
+  <body style="background-color: #000000; color: #ffffff; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif;">
+    <div style="text-align: center;">
+      <p style="font-size: 16px; font-weight: bold;">Loading MOUZIKETNA...</p>
+      <a href="../" style="color: #ff6b1a; text-decoration: none; font-size: 14px;">Open Player</a>
+    </div>
+  </body>
+</html>
