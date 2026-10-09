@@ -14,6 +14,7 @@ import {
   resolveMirrorStreams,
   resolveSaavnStream,
   resolveWorkerStream,
+  resolveBestStreamUniversal,
   canonicalThumbUrl,
   fetchArtworkBlob,
   FALLBACK_ART,
@@ -308,24 +309,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [supersededNotice, setSupersededNotice] = useState<SupersededEvent | null>(null);
   const currentDeviceName = sessionManager.getDeviceName();
 
-  // Listen for real-time supersession events across devices or tabs
+  // Multi-device simultaneous playback supported (no supersession pause)
   useEffect(() => {
-    if (globalUser) {
-      sessionManager.connectSse();
-    }
-    const unsub = sessionManager.onSuperseded((evt) => {
-      console.warn('[MusicContext] Playback superseded on remote device:', evt);
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-      setIsPlaying(false);
-      setSupersededNotice(evt);
-    });
-    return () => {
-      unsub();
-      sessionManager.disconnectSse();
-    };
-  }, [globalUser]);
+    return () => {};
+  }, []);
 
   // Playback state
   const [activeTrack, setActiveTrack] = useState<Track | null>(() => {
@@ -2238,18 +2225,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const audio = audioRef.current;
     if (!audio) return false;
 
-    // Clear any previous remote supersession alert and claim single-device lease
-    setSupersededNotice(null);
-    const leaseClaim = await sessionManager.claimPlaybackLease({
+    // Claim playback lease asynchronously without blocking playback
+    sessionManager.claimPlaybackLease({
       id: track.id,
       title: track.title,
       artist: track.artist,
-    });
-    if (!leaseClaim.active) {
-      console.warn('[MusicContext] Playback claim rejected by server:', leaseClaim.error);
-      setIsPlaying(false);
-      return false;
-    }
+    }).catch(() => {});
 
     // Immediately stop and reset previous audio to prevent playing wrong song
     try {
@@ -2410,79 +2391,25 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch {}
     }
 
-    const candidates: string[] = [];
-
-    // Parallel Stream Resolution across Worker Proxy, JioSaavn and Global Invidious/Piped Mirrors
-    const [workerUrl, saavnUrl, mirrors] = await Promise.all([
-      resolveWorkerStream(resolvedTrack.id).catch(() => null),
-      resolveSaavnStream(
-        cleanTitleForLyrics(resolvedTrack.title) || resolvedTrack.title,
-        cleanedArtist,
-        quality,
-        resolvedTrack.title,
-        resolvedTrack.artist
-      ).catch(() => null),
-      resolveMirrorStreams(resolvedTrack.id).catch(() => []),
-    ]);
-
-    if (workerUrl) candidates.push(workerUrl);
-    if (saavnUrl) candidates.push(saavnUrl);
-    if (mirrors && mirrors.length > 0) candidates.push(...mirrors);
+    // Universal Multi-Server Parallel Racing Resolution (Races Worker, all 7 Invidious mirrors, Saavn, and search fallbacks simultaneously)
+    const streamUrl = await resolveBestStreamUniversal(resolvedTrack, quality).catch(() => null);
 
     if (token !== playTokenRef.current) {
       clearTimeout(slowNoticeTimer);
       return false;
     }
 
-    // Startup Race Condition Deferral: fallback search if no candidates were found
-    if (candidates.length === 0) {
-      try {
-        const fallbackSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
-        if (fallbackSearch.length > 0 && fallbackSearch[0].id) {
-          const fbTrack = fallbackSearch[0];
-          const [altWorker, altSaavn, altMirrors] = await Promise.all([
-            resolveWorkerStream(fbTrack.id).catch(() => null),
-            resolveSaavnStream(
-              cleanTitleForLyrics(fbTrack.title) || fbTrack.title,
-              cleanArtistName(fbTrack.artist),
-              quality,
-              fbTrack.title,
-              fbTrack.artist
-            ).catch(() => null),
-            resolveMirrorStreams(fbTrack.id).catch(() => []),
-          ]);
-          if (altWorker) candidates.push(altWorker);
-          if (altSaavn) candidates.push(altSaavn);
-          if (altMirrors && altMirrors.length > 0) candidates.push(...altMirrors);
-        }
-      } catch {}
+    let ok = false;
+    if (streamUrl) {
+      ok = await tryPlayCandidates([streamUrl], token, resolvedTrack.id, 0);
     }
 
-    if (candidates.length === 0) {
-      clearTimeout(slowNoticeTimer);
-      if (token === playTokenRef.current) {
-        setIsBuffering(false);
-        try {
-          audio.pause();
-          audio.removeAttribute('src');
-          audio.load();
-        } catch {}
-        showToast('Sources are resolving. Please wait a moment or tap track again.', true);
-      }
-      return false;
-    }
-
-    // Play first working candidate
-    let ok = await tryPlayCandidates(candidates, token, resolvedTrack.id, 0);
-    
-    // Auto-retry once with refreshed mirror list if first cycle had a network warmup hiccup
+    // Auto-retry with fresh universal resolution if first attempt had a warmup hiccup
     if (!ok && token === playTokenRef.current) {
-      try {
-        const freshMirrors = await resolveMirrorStreams(resolvedTrack.id).catch(() => []);
-        if (freshMirrors.length > 0) {
-          ok = await tryPlayCandidates(freshMirrors, token, resolvedTrack.id, 0);
-        }
-      } catch {}
+      const freshUrl = await resolveBestStreamUniversal(resolvedTrack, quality).catch(() => null);
+      if (freshUrl) {
+        ok = await tryPlayCandidates([freshUrl], token, resolvedTrack.id, 0);
+      }
     }
 
     clearTimeout(slowNoticeTimer);

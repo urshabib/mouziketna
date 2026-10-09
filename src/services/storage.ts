@@ -398,9 +398,14 @@ export function restoreProfileFromCache(username: string): Partial<UserProfile> 
   if (!username) return null;
   try {
     const cleanKey = 'mouzika_profile_cache_' + username.toLowerCase().trim();
-    const cached = localStorage.getItem(cleanKey) || localStorage.getItem('mouzika_profile_cache_' + username);
+    const cached = localStorage.getItem(cleanKey);
     if (!cached) return null;
-    return JSON.parse(cached);
+    const parsed = JSON.parse(cached);
+    if (parsed && parsed.username && parsed.username.toLowerCase() !== username.toLowerCase()) {
+      localStorage.removeItem(cleanKey);
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }

@@ -224,75 +224,28 @@ class SessionManager {
     }
   }
 
-  // Claim active playback lease on the server before playing audio
+  // Claim active playback lease on the server (Allows multi-device simultaneous playback)
   public async claimPlaybackLease(track?: { id?: string; title?: string; artist?: string }): Promise<{
     success: boolean;
     active: boolean;
     leaseEpoch?: number;
     error?: string;
   }> {
-    const token = this.getSessionToken();
-    const user = this.username || (typeof localStorage !== 'undefined' ? localStorage.getItem('hub_active_user') : null);
-
-    // Broadcast to other tabs in the same browser to pause them immediately
+    this.isHoldingLease = true;
     try {
-      this.broadcastChannel?.postMessage({
-        type: 'PLAYBACK_CLAIMED',
-        tabId: this.tabId,
-        deviceId: this.deviceId,
-        timestamp: Date.now(),
-      });
-    } catch {}
-
-    if (!token && !user) {
-      // Unauthenticated playback is allowed locally without server lease
-      this.isHoldingLease = true;
-      return { success: true, active: true };
-    }
-
-    try {
-      const res = await fetch('/api/session/claim-playback', {
+      await fetch('/api/session/claim-playback', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          sessionToken: token,
-          username: user,
           deviceId: this.deviceId,
           deviceName: this.deviceName,
           trackId: track?.id,
           trackTitle: track?.title,
           trackArtist: track?.artist,
         }),
-      });
-
-      const data = await res.json().catch(() => null);
-
-      if (res.ok && data?.active) {
-        this.isHoldingLease = true;
-        this.currentLeaseEpoch = data.leaseEpoch || this.currentLeaseEpoch + 1;
-        this.startHeartbeat();
-        return { success: true, active: true, leaseEpoch: this.currentLeaseEpoch };
-      }
-
-      if (data?.superseded) {
-        this.handleSuperseded({
-          byDevice: data.supersededBy || 'Another device',
-          at: Date.now(),
-          reason: 'claim_rejected_active_elsewhere',
-        });
-        return { success: false, active: false, error: 'Account is playing on another device' };
-      }
-
-      return { success: false, active: false, error: data?.error || 'Could not claim playback lease' };
-    } catch (err: any) {
-      console.warn('[SessionManager] Network issue claiming playback, fallback to optimistic lease:', err);
-      // In offline/airplane mode, allow playback
-      this.isHoldingLease = true;
-      return { success: true, active: true };
-    }
+      }).catch(() => {});
+    } catch {}
+    return { success: true, active: true, leaseEpoch: 1 };
   }
 
   // Periodic heartbeat keep-alive while audio is actively playing

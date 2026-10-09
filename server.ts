@@ -390,193 +390,42 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// 4. Claim Playback Lease (Spotify Connect style)
-// Atomic claim with monotonic lease epoch and cross-device supersession notification
+// 4. Claim Playback Lease (Multi-device simultaneous playback allowed)
 app.post('/api/session/claim-playback', rateLimit(120, 60000), async (req: Request, res: Response) => {
-  const session = extractSession(req);
-  const { username: bodyUser, deviceId, deviceName, trackId, trackTitle, trackArtist } = req.body || {};
-
-  const username = cleanUsername(session?.username || bodyUser);
-  if (!username) {
-    // Unauthenticated playback is allowed locally without server lease
-    return res.json({ active: true, leaseEpoch: 1, message: 'Unauthenticated playback granted' });
-  }
-
-  const effectiveDeviceId = deviceId || session?.deviceId || `dev_${generateSecureToken(8)}`;
-  const effectiveDeviceName = deviceName || session?.deviceName || 'Web Player';
-  const effectiveToken = session?.sessionToken || '';
-
-  // Atomic mutex execution per username to prevent race conditions
-  const result = await withUserLock(username, async () => {
-    const existingLease = activePlaybacks.get(username);
-    const now = Date.now();
-    const nextEpoch = existingLease ? existingLease.leaseEpoch + 1 : 1;
-
-    // Check if another device was actively holding the lease
-    if (existingLease && existingLease.deviceId !== effectiveDeviceId) {
-      console.log(
-        `[SessionManager] Account '${username}' playback transferred: ${existingLease.deviceName} -> ${effectiveDeviceName}`
-      );
-      // Immediately notify the previous device over SSE to pause playback
-      notifySupersededViaSse(username, existingLease.deviceId, effectiveDeviceName, nextEpoch);
-    }
-
-    const newLease: PlaybackLease = {
-      username,
-      deviceId: effectiveDeviceId,
-      deviceName: effectiveDeviceName,
-      sessionToken: effectiveToken,
-      leaseEpoch: nextEpoch,
-      leaseId: generateSecureToken(16),
-      trackId,
-      trackTitle,
-      trackArtist,
-      startedAt: now,
-      lastHeartbeat: now,
-      expiresAt: now + 15000, // 15-second TTL without heartbeat
-      state: 'playing',
-    };
-
-    activePlaybacks.set(username, newLease);
-
-    return {
-      active: true,
-      leaseEpoch: nextEpoch,
-      leaseId: newLease.leaseId,
-      deviceId: effectiveDeviceId,
-      deviceName: effectiveDeviceName,
-      previousDeviceSuperseded: existingLease ? existingLease.deviceId !== effectiveDeviceId : false,
-      message: 'Active playback lease acquired',
-    };
-  });
-
-  return res.json(result);
-});
-
-// 5. Playback Heartbeat (Keep-alive every 3-5 seconds while playing)
-// Returns 409 Conflict if another device claimed the lease
-app.post('/api/session/heartbeat', rateLimit(200, 60000), async (req: Request, res: Response) => {
-  const session = extractSession(req);
-  const { username: bodyUser, deviceId, leaseEpoch } = req.body || {};
-  const username = cleanUsername(session?.username || bodyUser);
-
-  if (!username) {
-    return res.json({ active: true });
-  }
-
-  const effectiveDeviceId = deviceId || session?.deviceId;
-  if (!effectiveDeviceId) {
-    return res.status(400).json({ error: 'Device ID required' });
-  }
-
-  const currentLease = activePlaybacks.get(username);
-  const now = Date.now();
-
-  // If no lease exists, or another device holds the lease, or leaseEpoch is stale:
-  if (!currentLease) {
-    return res.status(409).json({
-      active: false,
-      superseded: true,
-      supersededBy: 'Server',
-      reason: 'no_active_lease',
-    });
-  }
-
-  if (currentLease.deviceId !== effectiveDeviceId) {
-    return res.status(409).json({
-      active: false,
-      superseded: true,
-      supersededBy: currentLease.deviceName || 'Another Device',
-      reason: 'playback_transferred',
-    });
-  }
-
-  if (leaseEpoch && currentLease.leaseEpoch > Number(leaseEpoch)) {
-    return res.status(409).json({
-      active: false,
-      superseded: true,
-      supersededBy: currentLease.deviceName || 'Another Device',
-      reason: 'stale_epoch',
-    });
-  }
-
-  // Extend lease heartbeat
-  currentLease.lastHeartbeat = now;
-  currentLease.expiresAt = now + 15000;
-
   return res.json({
     active: true,
-    leaseEpoch: currentLease.leaseEpoch,
-    expiresAt: currentLease.expiresAt,
+    leaseEpoch: 1,
+    success: true,
+    message: 'Playback allowed on multiple devices',
+  });
+});
+
+// 5. Playback Heartbeat (Multi-device simultaneous playback allowed)
+app.post('/api/session/heartbeat', rateLimit(200, 60000), async (req: Request, res: Response) => {
+  return res.json({
+    active: true,
+    leaseEpoch: 1,
+    expiresAt: Date.now() + 15000,
   });
 });
 
 // 6. Release Playback Lease
 app.post('/api/session/release-playback', async (req: Request, res: Response) => {
-  const session = extractSession(req);
-  const { username: bodyUser, deviceId } = req.body || {};
-  const username = cleanUsername(session?.username || bodyUser);
-
-  if (!username) return res.json({ success: true });
-
-  const effectiveDeviceId = deviceId || session?.deviceId;
-
-  await withUserLock(username, async () => {
-    const currentLease = activePlaybacks.get(username);
-    if (currentLease && (!effectiveDeviceId || currentLease.deviceId === effectiveDeviceId)) {
-      activePlaybacks.delete(username);
-    }
-  });
-
   return res.json({ success: true, message: 'Playback lease released' });
 });
 
 // 7. Get Playback Status
 app.get('/api/session/status', (req: Request, res: Response) => {
-  const session = extractSession(req);
-  const rawUser = String(req.query.username || session?.username || '');
-  const username = cleanUsername(rawUser);
-  const deviceId = String(req.query.deviceId || session?.deviceId || '');
-
-  if (!username) {
-    return res.json({ active: false });
-  }
-
-  const currentLease = activePlaybacks.get(username);
-  if (!currentLease || Date.now() > currentLease.expiresAt) {
-    return res.json({
-      active: false,
-      hasActivePlayback: false,
-    });
-  }
-
   return res.json({
-    active: currentLease.deviceId === deviceId,
+    active: true,
     hasActivePlayback: true,
-    activeDeviceId: currentLease.deviceId,
-    activeDeviceName: currentLease.deviceName,
-    isCurrentDeviceActive: currentLease.deviceId === deviceId,
-    leaseEpoch: currentLease.leaseEpoch,
-    track: {
-      id: currentLease.trackId,
-      title: currentLease.trackTitle,
-      artist: currentLease.trackArtist,
-    },
+    isCurrentDeviceActive: true,
+    leaseEpoch: 1,
   });
 });
 
-// 8. Server-Sent Events (SSE) for Real-Time Instant Supersession Push
+// 8. Server-Sent Events (SSE)
 app.get('/api/session/events', (req: Request, res: Response) => {
-  const session = extractSession(req);
-  const rawUser = String(req.query.username || session?.username || '');
-  const username = cleanUsername(rawUser);
-  const deviceId = String(req.query.deviceId || session?.deviceId || `dev_${generateSecureToken(6)}`);
-
-  if (!username) {
-    return res.status(401).json({ error: 'Authentication required for session events' });
-  }
-
-  // Set SSE Headers
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -584,24 +433,6 @@ app.get('/api/session/events', (req: Request, res: Response) => {
     'X-Accel-Buffering': 'no',
   });
   res.write(': connected\n\n');
-
-  // Register client
-  if (!sseClients.has(username)) {
-    sseClients.set(username, new Map());
-  }
-  const userClients = sseClients.get(username)!;
-  userClients.set(deviceId, res);
-
-  // Send current state
-  const lease = activePlaybacks.get(username);
-  const initialPayload = JSON.stringify({
-    type: 'init',
-    activeDeviceId: lease?.deviceId,
-    isCurrentActive: lease?.deviceId === deviceId,
-  });
-  res.write(`data: ${initialPayload}\n\n`);
-
-  // Ping interval to keep connection alive through proxies
   const pingInterval = setInterval(() => {
     try {
       res.write(': ping\n\n');
@@ -609,41 +440,16 @@ app.get('/api/session/events', (req: Request, res: Response) => {
       clearInterval(pingInterval);
     }
   }, 15000);
-
   req.on('close', () => {
     clearInterval(pingInterval);
-    userClients.delete(deviceId);
-    if (userClients.size === 0) {
-      sseClients.delete(username);
-    }
   });
 });
 
-// 9. Server-Side Audio Stream Gate: Validates Active Session Lease Before Streaming
+// 9. Server-Side Audio Stream Proxy: Allows multi-device concurrent streaming
 app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!id || id.length < 3) {
     return res.status(400).json({ error: 'Invalid track id' });
-  }
-
-  const session = extractSession(req);
-  const reqDeviceId = String(req.query.deviceId || session?.deviceId || '');
-  const username = session?.username;
-
-  // Strict Server-Side Enforcement:
-  // If the user has an active session, verify they hold the active playback lease!
-  if (username) {
-    const currentLease = activePlaybacks.get(username);
-    if (currentLease && reqDeviceId && currentLease.deviceId !== reqDeviceId) {
-      console.warn(
-        `[StreamGate] Blocked unauthorized stream access for '${username}'. Active lease belongs to '${currentLease.deviceName}'`
-      );
-      return res.status(403).json({
-        error: 'playback_superseded',
-        message: `Playback active on another device (${currentLease.deviceName}).`,
-        supersededBy: currentLease.deviceName,
-      });
-    }
   }
 
   // Proxy audio stream from upstream worker with Range header support
@@ -659,19 +465,16 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
     });
 
     if (!upstreamRes.ok) {
-      // Forward status code
       return res.status(upstreamRes.status).json({ error: 'Upstream stream failed' });
     }
 
     const contentType = upstreamRes.headers.get('content-type') || 'application/json';
 
-    // If upstream returned JSON format with audio URLs (like standard YouTube adaptive formats)
     if (contentType.includes('application/json')) {
       const data = await upstreamRes.json();
       return res.json(data);
     }
 
-    // Direct binary media stream proxying
     res.status(upstreamRes.status);
     for (const [k, v] of upstreamRes.headers.entries()) {
       if (['content-type', 'content-length', 'content-range', 'accept-ranges'].includes(k.toLowerCase())) {
