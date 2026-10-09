@@ -93,6 +93,91 @@ export function getOfflineThumbUrlSync(id: string): string | null {
   return offlineThumbCache.get(id) || null;
 }
 
+/**
+ * Synchronously retrieves any known stored non-blob cover image URL for a given track id.
+ * Checks:
+ * 1. Synchronous offline thumbnail cache
+ * 2. Active user's profile cache (recentlyPlayed, likedSongs, customPlaylists)
+ * 3. All other cached profiles in localStorage
+ */
+export function getStoredCoverForTrack(id: string): string | null {
+  if (!id) return null;
+  const offThumb = offlineThumbCache.get(id);
+  if (offThumb) return offThumb;
+
+  try {
+    // 1. Check last played track in localStorage
+    const lastPlayedRaw = localStorage.getItem('mouzika_last_played_track');
+    if (lastPlayedRaw) {
+      try {
+        const lastPlayed = JSON.parse(lastPlayedRaw);
+        if (
+          lastPlayed &&
+          lastPlayed.id === id &&
+          lastPlayed.thumb &&
+          !lastPlayed.thumb.startsWith('blob:') &&
+          lastPlayed.thumb.trim().length > 5
+        ) {
+          return lastPlayed.thumb;
+        }
+      } catch {}
+    }
+
+    const activeUser = localStorage.getItem('hub_active_user');
+    const userKeys = activeUser ? ['mouzika_profile_cache_' + activeUser] : [];
+
+    // Also scan any other profile cache keys in localStorage
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('mouzika_profile_cache_') && !userKeys.includes(key)) {
+        userKeys.push(key);
+      }
+    }
+
+    for (const key of userKeys) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!parsed) continue;
+
+      // Check recentlyPlayed first (most recent track data)
+      if (Array.isArray(parsed.recentlyPlayed)) {
+        const found = parsed.recentlyPlayed.find((t: any) => t && t.id === id);
+        if (found?.thumb && !found.thumb.startsWith('blob:') && found.thumb.length > 5) {
+          return found.thumb;
+        }
+      }
+
+      // Check likedSongs
+      if (Array.isArray(parsed.likedSongs)) {
+        const found = parsed.likedSongs.find((t: any) => t && t.id === id);
+        if (found?.thumb && !found.thumb.startsWith('blob:') && found.thumb.length > 5) {
+          return found.thumb;
+        }
+      }
+
+      // Check customPlaylists
+      if (Array.isArray(parsed.customPlaylists)) {
+        for (const pl of parsed.customPlaylists) {
+          if (Array.isArray(pl.tracks)) {
+            const found = pl.tracks.find((t: any) => t && t.id === id);
+            if (found?.thumb && !found.thumb.startsWith('blob:') && found.thumb.length > 5) {
+              return found.thumb;
+            }
+          }
+        }
+      }
+    }
+
+    // Direct YouTube CDN fallback for any 11-char track ID
+    if (id.length === 11) {
+      return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+    }
+  } catch {}
+
+  return null;
+}
+
 export async function getOfflineThumbUrl(id: string): Promise<string | null> {
   if (!id) return null;
   if (offlineThumbCache.has(id)) return offlineThumbCache.get(id) || null;

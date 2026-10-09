@@ -80,21 +80,28 @@ export function cleanTitle(item: any): string {
 
 export function cleanArtistName(item: any): string {
   if (!item) return 'Various Artists';
-  if (typeof item === 'string') return item.replace(' - Topic', '').trim();
+  const cleanStr = (s: string) => {
+    return s
+      .replace(/\s*-\s*Topic\b/gi, '')
+      .replace(/\s*vevo\b/gi, '')
+      .replace(/\s*official\s*(?:video|audio|channel)?\b/gi, '')
+      .replace(/\s*(?:records|recordings|entertainment)\b/gi, '')
+      .trim();
+  };
+  if (typeof item === 'string') return cleanStr(item) || 'Various Artists';
   let runs = item.artists || item.author || item.artist;
   if (!runs) return 'Various Artists';
-  if (typeof runs === 'string') return runs.replace(' - Topic', '').trim();
+  if (typeof runs === 'string') return cleanStr(runs) || 'Various Artists';
   if (Array.isArray(runs)) {
     return runs
-      .map((a) => (typeof a === 'string' ? a : a.name || a.text || ''))
-      .join(', ')
-      .replace(' - Topic', '')
-      .trim();
+      .map((a) => cleanStr(typeof a === 'string' ? a : a.name || a.text || ''))
+      .filter(Boolean)
+      .join(', ') || 'Various Artists';
   }
   if (runs.runs && Array.isArray(runs.runs)) {
-    return runs.runs.map((r: any) => r.text).join(', ').replace(' - Topic', '').trim();
+    return runs.runs.map((r: any) => cleanStr(r.text)).filter(Boolean).join(', ') || 'Various Artists';
   }
-  if (runs.name) return runs.name.replace(' - Topic', '').trim();
+  if (runs.name) return cleanStr(runs.name) || 'Various Artists';
   return 'Various Artists';
 }
 
@@ -310,12 +317,17 @@ export function deriveArtistForLyrics(rawTitle: string, rawArtist: string): stri
       .trim();
     if (left && left.length <= 60) {
       const baseFirst = (artist || '').split(',')[0].trim().toLowerCase();
-      if (!artist || artist === 'Various Artists' || (baseFirst && left.toLowerCase().includes(baseFirst))) {
+      const leftLower = left.toLowerCase();
+      if (
+        !artist ||
+        artist === 'Various Artists' ||
+        (baseFirst && (leftLower.includes(baseFirst) || baseFirst.includes(leftLower)))
+      ) {
         artist = left;
       }
     }
   }
-  return (artist || 'Various Artists').replace(/\s*-\s*Topic$/i, '').trim();
+  return cleanArtistName(artist || 'Various Artists');
 }
 
 export function parseLRC(lrcText: string): SyncedLyricsLine[] {
@@ -355,15 +367,43 @@ export async function resolveSaavnStream(
     attempts.push([t, a]);
   };
 
-  add(title, artist);
+  const cleanT = cleanTitleForLyrics(title) || title;
+  const cleanA = cleanArtistName(artist);
+  add(cleanT, cleanA);
+
   if (rawTitle) {
-    try {
-      add(title, deriveArtistForLyrics(rawTitle, rawArtist ?? artist));
-    } catch {}
+    const derivedArtist = deriveArtistForLyrics(rawTitle, rawArtist ?? artist);
+    const cleanRaw = cleanTitleForLyrics(rawTitle);
+    if (cleanRaw) add(cleanRaw, cleanA);
+    if (derivedArtist) {
+      add(cleanT, derivedArtist);
+      if (cleanRaw) add(cleanRaw, derivedArtist);
+    }
+
+    // Split on dash if formatted as "Artist - Title" or "Title - Artist"
+    if (/\s+[-–—]\s+/.test(rawTitle)) {
+      const parts = rawTitle.split(/\s+[-–—]\s+/).map((p) => p.trim());
+      if (parts.length >= 2) {
+        const left = cleanTitleForLyrics(parts[0]) || parts[0];
+        const right = cleanTitleForLyrics(parts.slice(1).join(' - ')) || parts.slice(1).join(' - ');
+        add(right, cleanArtistName(parts[0]));
+        add(left, cleanArtistName(parts.slice(1).join(' - ')));
+        add(right, cleanA);
+        add(left, cleanA);
+      }
+    }
   }
-  add(title, (artist || '').split(',')[0].trim());
-  if (rawTitle && rawTitle !== title) add(cleanTitleForLyrics(rawTitle) || title, artist);
-  if (rawArtist && rawArtist !== artist) add(title, cleanArtistName(rawArtist));
+
+  // Primary artist alone (strip featured artists)
+  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
+  if (firstArtist && firstArtist !== cleanA) {
+    add(cleanT, firstArtist);
+  }
+
+  // Raw title fallback if clean stripped too much
+  if (rawTitle && rawTitle !== cleanT) {
+    add(rawTitle.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim(), cleanA);
+  }
 
   const looksLikeSaavnId = (txt: string) =>
     txt &&
@@ -372,12 +412,12 @@ export async function resolveSaavnStream(
     !/\s/.test(txt) &&
     !/error|not[\s_-]?found|missing|parameter|invalid|no\s*results?/i.test(txt);
 
-  // Parallel probe across candidate title/artist cleanings for sub-300ms resolution
-  const topAttempts = attempts.slice(0, 4);
-  const probePromises = topAttempts.map(async ([t, a]) => {
+  // Parallel probe across all candidate title/artist cleanings
+  const candidateList = attempts.slice(0, 8);
+  const probePromises = candidateList.map(async ([t, a]) => {
     const res = await fetchWithTimeout(
       `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
-      4500
+      7500
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const txt = (await res.text()).trim();

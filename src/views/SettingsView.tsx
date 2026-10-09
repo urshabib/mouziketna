@@ -407,13 +407,13 @@ export const SettingsView: React.FC = () => {
 
     const endpoints = [
       { id: 1, url: `${NEW_HUB_BACKEND}/api/list-users` },
-      { id: 2, url: 'https://saavn.me/modules?language=english', altUrl: 'https://fast-saavn.vercel.app/api?title=test&artist=test' },
-      { id: 3, url: 'https://yt.omada.cafe/api/v1/stats' },
-      { id: 4, url: 'https://invidious.schenkel.eti.br/api/v1/stats' },
-      { id: 5, url: 'https://invidious.kemonomimi.nl/api/v1/stats' },
-      { id: 6, url: 'https://echostreamz.com/api/v1/stats' },
-      { id: 7, url: 'https://api.piped.private.coffee/trending?region=US' },
-      { id: 8, url: 'https://lrclib.net/api/get?track_name=test&artist_name=test' },
+      { id: 2, url: 'https://fast-saavn.vercel.app/api?title=Yellow&artist=Coldplay' },
+      { id: 3, url: `${NEW_HUB_BACKEND}/api/search-proxy?q=test&f=song` },
+      { id: 4, url: 'https://lrclib.net/api/get?track_name=Yellow&artist_name=Coldplay' },
+      { id: 5, url: `${NEW_HUB_BACKEND}/api/suggestions-proxy?q=test` },
+      { id: 6, url: 'https://i.ytimg.com/vi/KWuyx6yZ21U/default.jpg' },
+      { id: 7, url: `${NEW_HUB_BACKEND}/api/similar-proxy?title=Yellow&artist=Coldplay` },
+      { id: 8, url: `${NEW_HUB_BACKEND}/api/resolve-video-proxy?url=https://www.youtube.com/watch?v=KWuyx6yZ21U` },
     ];
 
     const results: Array<{ name: string; status: string; latency?: number }> = [];
@@ -423,30 +423,19 @@ export const SettingsView: React.FC = () => {
         const serverLabel = `Server ${idx + 1}`;
         const start = Date.now();
         try {
-          const r = await fetchWithTimeout(t.url, 3500);
+          const r = await fetchWithTimeout(t.url, 4000);
           const lat = Date.now() - start;
+          const isOk = r.status >= 200 && r.status < 400;
           results.push({
             name: serverLabel,
-            status: r.status < 500 ? 'Reachable' : `HTTP ${r.status}`,
+            status: isOk ? 'Reachable' : `HTTP ${r.status}`,
             latency: lat,
           });
         } catch {
-          try {
-            const probeTarget = (t as any).altUrl || t.url;
-            const startNoCors = Date.now();
-            await fetch(probeTarget, { mode: 'no-cors', signal: AbortSignal.timeout(3000) });
-            const latNoCors = Date.now() - startNoCors;
-            results.push({
-              name: serverLabel,
-              status: 'Reachable',
-              latency: latNoCors,
-            });
-          } catch {
-            results.push({
-              name: serverLabel,
-              status: 'Unreachable',
-            });
-          }
+          results.push({
+            name: serverLabel,
+            status: 'Unreachable',
+          });
         }
       })
     );

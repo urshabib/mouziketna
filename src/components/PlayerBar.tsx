@@ -21,7 +21,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
-import { useTrackThumb } from '../services/useTrackThumb';
+import { useTrackThumb, TrackThumbImage } from '../services/useTrackThumb';
 import { TrackProgressBar } from './TrackProgressBar';
 import { getSongHighlights } from '../services/songHighlights';
 
@@ -89,12 +89,9 @@ export const PlayerBar: React.FC = () => {
           onClick={() => setIsFullScreenOpen(true)}
           className="relative w-14 h-14 rounded-xl overflow-hidden cursor-pointer shadow-lg group flex-shrink-0"
         >
-          <img
-            src={thumbSrc}
+          <TrackThumbImage
+            track={activeTrack}
             alt={activeTrack.title}
-            onError={(e) => {
-              e.currentTarget.src = FALLBACK_ART;
-            }}
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -407,12 +404,9 @@ export const MiniPlayer: React.FC = () => {
     >
       {/* Thumbnail */}
       <div className="relative flex-shrink-0">
-        <img
-          src={thumbSrc}
+        <TrackThumbImage
+          track={activeTrack}
           alt={activeTrack.title}
-          onError={(e) => {
-            e.currentTarget.src = FALLBACK_ART;
-          }}
           className="w-11 h-11 rounded-xl object-cover shadow-md pointer-events-none"
           draggable={false}
         />

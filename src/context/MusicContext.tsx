@@ -59,6 +59,9 @@ import {
   isExplicitNotInterested,
   getExplicitInterestedTracks,
   getExplicitNotInterestedTracks,
+  getStoredCoverForTrack,
+  getOfflineThumbUrlSync,
+  downloadsRegistryReady,
 } from '../services/storage';
 import { ensureAudioGraph, setBaseAudioVolume, resumeAudioContext } from '../services/audioEnhancer';
 
@@ -299,7 +302,28 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const saved = localStorage.getItem('mouzika_last_played_track');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.id && parsed.title) return parsed;
+        if (parsed && parsed.id && parsed.title) {
+          // If parsed.thumb is missing, empty, generic fallback, or an expired blob URL, recover the persistent cover
+          if (
+            !parsed.thumb ||
+            parsed.thumb.startsWith('blob:') ||
+            parsed.thumb.trim().length <= 5 ||
+            parsed.thumb === FALLBACK_ART
+          ) {
+            const recovered = getStoredCoverForTrack(parsed.id);
+            if (recovered && !recovered.startsWith('blob:') && recovered !== FALLBACK_ART) {
+              parsed.thumb = recovered;
+            } else if (parsed.id.length === 11) {
+              parsed.thumb = `https://i.ytimg.com/vi/${parsed.id}/hqdefault.jpg`;
+            } else {
+              parsed.thumb = canonicalThumbUrl(parsed.id);
+            }
+            try {
+              localStorage.setItem('mouzika_last_played_track', JSON.stringify(parsed));
+            } catch {}
+          }
+          return parsed;
+        }
       }
     } catch {}
     return null;
@@ -329,6 +353,35 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const dismissMiniPlayer = useCallback(() => {
     setIsMiniPlayerDismissed(true);
   }, []);
+
+  // Ensure activeTrack cover and metadata remain synchronized with recentlyPlayed and offline downloads
+  useEffect(() => {
+    if (!activeTrack || !activeTrack.id) return;
+    const match = userProfile.recentlyPlayed?.find((t) => t.id === activeTrack.id) ||
+                  userProfile.likedSongs?.find((t) => t.id === activeTrack.id);
+    if (match?.thumb && !match.thumb.startsWith('blob:') && match.thumb.trim().length > 5 && match.thumb !== FALLBACK_ART) {
+      if (match.thumb !== activeTrack.thumb || !activeTrack.thumb || activeTrack.thumb === FALLBACK_ART) {
+        setActiveTrack((prev) => {
+          if (!prev || prev.id !== activeTrack.id) return prev;
+          const updated = { ...prev, thumb: match.thumb };
+          try {
+            localStorage.setItem('mouzika_last_played_track', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+      }
+    }
+  }, [userProfile.recentlyPlayed, userProfile.likedSongs, activeTrack?.id, activeTrack?.thumb]);
+
+  useEffect(() => {
+    downloadsRegistryReady.then(() => {
+      if (!activeTrack || !activeTrack.id) return;
+      const offThumb = getOfflineThumbUrlSync(activeTrack.id);
+      if (offThumb && (!activeTrack.thumb || activeTrack.thumb.startsWith('blob:'))) {
+        setActiveTrack((prev) => (prev ? { ...prev, thumb: offThumb } : prev));
+      }
+    });
+  }, [activeTrack?.id]);
   const [volume, setVolume] = useState(() => {
     try {
       return Number(localStorage.getItem('hub_volume') ?? 50);
@@ -520,6 +573,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Flush pending changes when user switches away, minimizes app, or closes window
   useEffect(() => {
     const handleFlushOnLeave = () => {
+      if (audioRef.current && audioRef.current.currentTime >= 0) {
+        try {
+          localStorage.setItem('mouzika_last_played_pos', String(Math.floor(audioRef.current.currentTime)));
+        } catch {}
+      }
+      if (activeTrack) {
+        try {
+          const safeThumb = (activeTrack.thumb && !activeTrack.thumb.startsWith('blob:') && activeTrack.thumb.trim().length > 5 && activeTrack.thumb !== FALLBACK_ART)
+            ? activeTrack.thumb
+            : (getStoredCoverForTrack(activeTrack.id) || (activeTrack.id.length === 11 ? `https://i.ytimg.com/vi/${activeTrack.id}/hqdefault.jpg` : canonicalThumbUrl(activeTrack.id)));
+          const safePersistent = { ...activeTrack, thumb: safeThumb };
+          localStorage.setItem('mouzika_last_played_track', JSON.stringify(safePersistent));
+        } catch {}
+      }
       if (isSyncDirtyRef.current && globalUser && globalUser !== 'admin') {
         flushProfileToServer();
       }
@@ -588,6 +655,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     const onPause = () => {
       setIsPlaying(false);
+      if (audio && audio.currentTime >= 0) {
+        try {
+          localStorage.setItem('mouzika_last_played_pos', String(Math.floor(audio.currentTime)));
+        } catch {}
+      }
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'paused';
       }
@@ -668,6 +740,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatePositionState();
     };
     const onEnded = () => {
+      try {
+        localStorage.setItem('mouzika_last_played_pos', '0');
+      } catch {}
       if (isLoopingRef.current || (audioRef.current && audioRef.current.loop)) {
         if (audioRef.current) {
           audioRef.current.currentTime = 0;
@@ -1299,10 +1374,24 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: 'New password must be at least 6 characters long for security.' };
     }
 
+    // Verify current credentials with server if online
     try {
-      // Send password update to Cloudflare Workers server
+      const verifyRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 5000, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: globalUser, password: currentPass }),
+      });
+      const verifyData = await verifyRes.json().catch(() => null);
+      if (verifyData && verifyData.error) {
+        return { success: false, error: 'Current password is incorrect.' };
+      }
+    } catch {}
+
+    try {
+      let updatedOnServer = false;
+      // 1. Try dedicated endpoint first if supported
       try {
-        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/change-password`, 9000, {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/change-password`, 5000, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1312,11 +1401,79 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }),
         });
         const resData = await res.json().catch(() => null);
-        if (resData && resData.error && !resData.error.includes('Not Found') && !resData.error.includes('Cannot POST')) {
-          return { success: false, error: resData.error };
+        if (res.ok && (!resData || !resData.error)) {
+          updatedOnServer = true;
         }
-      } catch (e) {
-        // Fallback gracefully
+      } catch {}
+
+      // 2. If dedicated endpoint not present, perform atomic recreate while preserving profile
+      if (!updatedOnServer) {
+        const profSnapshot = { ...userProfile };
+        const isAdmin = Boolean(userProfile.isAdmin);
+
+        // Delete user
+        const delRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/delete-user`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: globalUser }),
+        });
+        const delData = await delRes.json().catch(() => null);
+        if (!delRes.ok || (delData && delData.error)) {
+          throw new Error(delData?.error || 'Failed to update credentials on server');
+        }
+
+        // Re-create user with new password
+        const createRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/create-user`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: globalUser,
+            password: newPass,
+            isAdmin,
+          }),
+        });
+        const createData = await createRes.json().catch(() => null);
+        if (!createRes.ok || (createData && createData.error)) {
+          throw new Error(createData?.error || 'Failed to set new password on server');
+        }
+
+        // Preserve admin role if applicable
+        if (isAdmin) {
+          await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/set-admin`, 8000, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: globalUser, isAdmin: true }),
+          }).catch(() => {});
+        }
+
+        // Restore full profile data
+        await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...profSnapshot,
+            username: globalUser,
+          }),
+        }).catch(() => {});
+
+        updatedOnServer = true;
+      }
+
+      // Verify login with the new password
+      try {
+        const verifyNew = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 5000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: globalUser, password: newPass }),
+        });
+        const verifyNewData = await verifyNew.json().catch(() => null);
+        if (!verifyNew.ok || (verifyNewData && verifyNewData.error)) {
+          throw new Error(verifyNewData?.error || 'Verification with new password failed');
+        }
+      } catch (e: any) {
+        if (e.message && !e.message.includes('fetch')) {
+          return { success: false, error: e.message };
+        }
       }
 
       // CRITICAL: Update global password state and website cache so user is NOT locked out
@@ -1325,13 +1482,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         localStorage.setItem('hub_active_pass', newPass);
       } catch {}
 
-      await forceProfileServerSync();
+      cacheProfileLocally(globalUser, userProfile);
       showToast('Password updated and cached securely');
       return { success: true };
     } catch (err: any) {
       return { success: false, error: err?.message || 'Failed to update password.' };
     }
-  }, [globalUser, globalPass, forceProfileServerSync, showToast]);
+  }, [globalUser, globalPass, userProfile, showToast]);
 
   const adminResetUserPassword = useCallback(async (targetUsername: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
     if (!targetUsername || !newPass) {
@@ -1341,10 +1498,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return { success: false, error: 'Password must be at least 4 characters long.' };
     }
     try {
-      let success = false;
-      let errMsg = '';
+      let updatedOnServer = false;
+      // 1. Try dedicated endpoints first if supported
       try {
-        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin-set-password`, 9000, {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin-set-password`, 5000, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1357,15 +1514,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
         const resData = await res.json().catch(() => null);
         if (res.ok && (!resData || !resData.error)) {
-          success = true;
-        } else if (resData?.error) {
-          errMsg = resData.error;
+          updatedOnServer = true;
         }
       } catch {}
 
-      if (!success) {
+      if (!updatedOnServer) {
         try {
-          const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/change-password`, 9000, {
+          const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/change-password`, 5000, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1377,11 +1532,90 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
           const resData = await res.json().catch(() => null);
           if (res.ok && (!resData || !resData.error)) {
-            success = true;
-          } else if (resData?.error) {
-            errMsg = errMsg || resData.error;
+            updatedOnServer = true;
           }
         } catch {}
+      }
+
+      // 2. If endpoints not supported, atomic recreate with admin status and profile preservation
+      if (!updatedOnServer) {
+        let wasAdmin = false;
+        try {
+          const listRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/list-users`, 5000);
+          const listData = await listRes.json().catch(() => null);
+          const userEntry = listData?.users?.find(
+            (u: any) => u.username.toLowerCase() === targetUsername.toLowerCase()
+          );
+          if (userEntry) wasAdmin = Boolean(userEntry.isAdmin);
+        } catch {}
+
+        const cachedTarget = restoreProfileFromCache(targetUsername);
+
+        // Delete user
+        const delRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/delete-user`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: targetUsername }),
+        });
+        const delData = await delRes.json().catch(() => null);
+        if (!delRes.ok || (delData && delData.error)) {
+          throw new Error(delData?.error || 'Failed to update user credentials on server');
+        }
+
+        // Re-create user with new password
+        const createRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/create-user`, 8000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: targetUsername,
+            password: newPass,
+            isAdmin: wasAdmin,
+          }),
+        });
+        const createData = await createRes.json().catch(() => null);
+        if (!createRes.ok || (createData && createData.error)) {
+          throw new Error(createData?.error || 'Failed to set user password on server');
+        }
+
+        // Restore admin role if applicable
+        if (wasAdmin) {
+          await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/set-admin`, 8000, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: targetUsername, isAdmin: true }),
+          }).catch(() => {});
+        }
+
+        // Restore profile if cached
+        if (cachedTarget) {
+          await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/save-profile`, 8000, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...cachedTarget,
+              username: targetUsername,
+            }),
+          }).catch(() => {});
+        }
+
+        updatedOnServer = true;
+      }
+
+      // Verify authentication with new password
+      try {
+        const verifyRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 5000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: targetUsername, password: newPass }),
+        });
+        const verifyData = await verifyRes.json().catch(() => null);
+        if (!verifyRes.ok || (verifyData && verifyData.error)) {
+          throw new Error(verifyData?.error || 'Authentication verification failed');
+        }
+      } catch (e: any) {
+        if (e.message && !e.message.includes('fetch')) {
+          return { success: false, error: e.message };
+        }
       }
 
       // If updating the currently logged-in account
@@ -1489,7 +1723,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const tryPlayCandidates = async (candidates: string[], token: number, idx = 0): Promise<boolean> => {
+  const tryPlayCandidates = async (candidates: string[], token: number, targetTrackId: string, idx = 0): Promise<boolean> => {
     if (idx >= candidates.length) return false;
     if (token !== playTokenRef.current) return false;
     const url = candidates[idx];
@@ -1515,7 +1749,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return;
         }
         if (ok) {
-          if (activeTrack) cacheStreamUrl(activeTrack.id, url);
+          if (targetTrackId) cacheStreamUrl(targetTrackId, url);
           resolve(true);
         } else {
           try {
@@ -1523,7 +1757,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             audio.removeAttribute('src');
             audio.load();
           } catch {}
-          const nextOk = await tryPlayCandidates(candidates, token, idx + 1);
+          const nextOk = await tryPlayCandidates(candidates, token, targetTrackId, idx + 1);
           resolve(nextOk);
         }
       };
@@ -1773,7 +2007,27 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setUserProfile((prev) => {
       const prevRecent = prev.recentlyPlayed || [];
-      const updated = [track, ...prevRecent.filter((t) => t.id !== track.id)].slice(0, 30);
+      const matchIdx = prevRecent.findIndex((t) => t.id === track.id);
+
+      let mergedThumb = (track.thumb && !track.thumb.startsWith('blob:') && track.thumb.trim().length > 5 && track.thumb !== FALLBACK_ART)
+        ? track.thumb
+        : null;
+
+      if (!mergedThumb && matchIdx >= 0 && prevRecent[matchIdx]?.thumb && !prevRecent[matchIdx].thumb.startsWith('blob:') && prevRecent[matchIdx].thumb !== FALLBACK_ART) {
+        mergedThumb = prevRecent[matchIdx].thumb;
+      }
+      if (!mergedThumb) {
+        mergedThumb = getStoredCoverForTrack(track.id);
+      }
+      if (!mergedThumb && track.id.length === 11) {
+        mergedThumb = `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
+      }
+      if (!mergedThumb) {
+        mergedThumb = canonicalThumbUrl(track.id);
+      }
+
+      const mergedTrack = { ...track, thumb: mergedThumb };
+      const updated = [mergedTrack, ...prevRecent.filter((t) => t.id !== track.id)].slice(0, 30);
 
       const stats = prev.stats || {
         totalMinutesListened: 0,
@@ -1798,7 +2052,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             id: track.id,
             title: track.title,
             artist: track.artist,
-            thumb: track.thumb,
+            thumb: mergedThumb,
             playCount: 1,
             minutesListened: 1,
             lastPlayed: Date.now(),
@@ -1816,6 +2070,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedProf = { ...prev, recentlyPlayed: updated, stats: updatedStats };
       saveDeviceSettings(updatedProf);
 
+      // Keep last played track synchronized in storage with recentlyPlayed
+      try {
+        localStorage.setItem('mouzika_last_played_track', JSON.stringify(mergedTrack));
+      } catch {}
+
+      // Keep activeTrack synchronized with the verified merged cover
+      setActiveTrack((current) => {
+        if (current && current.id === track.id) {
+          return { ...current, thumb: mergedThumb };
+        }
+        return current;
+      });
+
       // Save locally immediately; batch sync periodically without hammering server on each track click
       if (globalUser && globalUser !== 'admin') {
         cacheProfileLocally(globalUser, updatedProf);
@@ -1831,6 +2098,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track || !track.id) return false;
     const audio = audioRef.current;
     if (!audio) return false;
+
+    // Immediately stop and reset previous audio to prevent playing wrong song
+    try {
+      audio.pause();
+      audio.removeAttribute('src');
+      audio.load();
+    } catch {}
 
     hasPrefetchedNextRef.current = false;
     const token = ++playTokenRef.current;
@@ -1848,10 +2122,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (playedHistoryRef.current.length > 50) playedHistoryRef.current.shift();
     }
 
-    setActiveTrack(track);
+    // Ensure we never store a dead blob URL into persistent storage and recover best available cover
+    const safeInitialThumb = (track.thumb && !track.thumb.startsWith('blob:') && track.thumb.trim().length > 5 && track.thumb !== FALLBACK_ART)
+      ? track.thumb
+      : (userProfile.recentlyPlayed?.find((t) => t.id === track.id)?.thumb ||
+         userProfile.likedSongs?.find((t) => t.id === track.id)?.thumb ||
+         getStoredCoverForTrack(track.id) ||
+         (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg` : canonicalThumbUrl(track.id)));
+    const persistentInitialTrack = { ...track, thumb: safeInitialThumb };
+
+    setActiveTrack(persistentInitialTrack);
     setIsMiniPlayerDismissed(false);
     try {
-      localStorage.setItem('mouzika_last_played_track', JSON.stringify(track));
+      localStorage.setItem('mouzika_last_played_track', JSON.stringify(persistentInitialTrack));
     } catch {}
     setIsBuffering(true);
     setCurrentTime(0);
@@ -1916,20 +2199,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           audio.src = blobUrl;
           audio.play().catch(() => {});
 
-          let activeThumb = track.thumb;
+          let activeThumb = safeInitialThumb;
           if (record.thumbLowRes) {
             try {
               activeThumb = URL.createObjectURL(record.thumbLowRes);
             } catch {}
           }
           // Note: Keep track.thumb persistent (do not store blob: URL in profile/recentlyPlayed)
-          const playingTrack = activeThumb !== track.thumb ? { ...track, thumb: activeThumb } : track;
-          const persistentTrack = track.thumb?.startsWith('blob:')
-            ? { ...track, thumb: canonicalThumbUrl(track.id) }
-            : track;
+          const playingTrack = { ...track, thumb: activeThumb };
+          const persistentTrack = { ...track, thumb: safeInitialThumb };
           setActiveTrack(playingTrack);
           recordPlaybackSync(persistentTrack);
           updateMediaSession(playingTrack);
+          try {
+            localStorage.setItem('mouzika_last_played_track', JSON.stringify(persistentTrack));
+          } catch {}
           return true;
         }
       } catch {}
@@ -1941,8 +2225,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (token !== playTokenRef.current) return false;
       audio.src = cachedUrl;
       audio.play().catch(() => {});
-      recordPlaybackSync(track);
-      updateMediaSession(track);
+      recordPlaybackSync(persistentInitialTrack);
+      updateMediaSession(persistentInitialTrack);
       return true;
     }
 
@@ -1950,7 +2234,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const level = userProfile.dataSaverLevel || 'off';
     const quality = level === 'ultra' ? '48' : level === 'saver' ? '96' : '320';
     const cleanedArtist = cleanArtistName(track.artist);
-    let resolvedTrack = { ...track };
+    let resolvedTrack = { ...track, thumb: safeInitialThumb };
 
     // Gentle loading feedback if page or network is slow/loading
     const slowNoticeTimer = setTimeout(() => {
@@ -1967,7 +2251,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const found = await searchTracks(queryTerm, 'song');
           if (found.length > 0 && found[0].id) {
             resolvedTrack.id = found[0].id;
-            if (!resolvedTrack.thumb) resolvedTrack.thumb = found[0].thumb;
+            if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART) resolvedTrack.thumb = found[0].thumb || safeInitialThumb;
             if (resolvedTrack.title === 'Loading...') resolvedTrack.title = found[0].title;
           }
         }
@@ -2003,11 +2287,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const fallbackSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
         if (fallbackSearch.length > 0 && fallbackSearch[0].id) {
-          const [altWorker, altMirrors] = await Promise.all([
-            resolveWorkerStream(fallbackSearch[0].id).catch(() => null),
-            resolveMirrorStreams(fallbackSearch[0].id).catch(() => []),
+          const fbTrack = fallbackSearch[0];
+          const [altWorker, altSaavn, altMirrors] = await Promise.all([
+            resolveWorkerStream(fbTrack.id).catch(() => null),
+            resolveSaavnStream(
+              cleanTitleForLyrics(fbTrack.title) || fbTrack.title,
+              cleanArtistName(fbTrack.artist),
+              quality,
+              fbTrack.title,
+              fbTrack.artist
+            ).catch(() => null),
+            resolveMirrorStreams(fbTrack.id).catch(() => []),
           ]);
           if (altWorker) candidates.push(altWorker);
+          if (altSaavn) candidates.push(altSaavn);
           if (altMirrors && altMirrors.length > 0) candidates.push(...altMirrors);
         }
       } catch {}
@@ -2015,20 +2308,27 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (candidates.length === 0) {
       clearTimeout(slowNoticeTimer);
-      setIsBuffering(false);
-      showToast('Sources are resolving. Please wait a moment or tap track again.', true);
+      if (token === playTokenRef.current) {
+        setIsBuffering(false);
+        try {
+          audio.pause();
+          audio.removeAttribute('src');
+          audio.load();
+        } catch {}
+        showToast('Sources are resolving. Please wait a moment or tap track again.', true);
+      }
       return false;
     }
 
     // Play first working candidate
-    let ok = await tryPlayCandidates(candidates, token, 0);
+    let ok = await tryPlayCandidates(candidates, token, resolvedTrack.id, 0);
     
     // Auto-retry once with refreshed mirror list if first cycle had a network warmup hiccup
     if (!ok && token === playTokenRef.current) {
       try {
         const freshMirrors = await resolveMirrorStreams(resolvedTrack.id).catch(() => []);
         if (freshMirrors.length > 0) {
-          ok = await tryPlayCandidates(freshMirrors, token, 0);
+          ok = await tryPlayCandidates(freshMirrors, token, resolvedTrack.id, 0);
         }
       } catch {}
     }
@@ -2037,8 +2337,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (token !== playTokenRef.current) return false;
 
     if (ok) {
+      setActiveTrack(resolvedTrack);
       recordPlaybackSync(resolvedTrack);
       updateMediaSession(resolvedTrack);
+      try {
+        localStorage.setItem('mouzika_last_played_track', JSON.stringify(resolvedTrack));
+      } catch {}
       // Auto cache if enabled
       if (userProfile.autoCachePlayed && !isDownloaded(resolvedTrack.id)) {
         setTimeout(() => {
@@ -2048,6 +2352,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return true;
     } else {
       setIsBuffering(false);
+      try {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+      } catch {}
       showToast('Playback connection issue. Tap track to retry.', true);
       return false;
     }
@@ -2164,6 +2473,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Immediately synchronize UI scrub position for zero perceived latency
     setCurrentTime(targetTime);
     setIsBuffering(false);
+    try {
+      localStorage.setItem('mouzika_last_played_pos', String(Math.floor(targetTime)));
+    } catch {}
 
     if (Math.abs(audio.currentTime - targetTime) < 0.05) {
       isSeekingRef.current = false;
