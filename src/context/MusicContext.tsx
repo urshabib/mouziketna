@@ -14,7 +14,6 @@ import {
   resolveMirrorStreams,
   resolveSaavnStream,
   resolveWorkerStream,
-  resolveBestStreamUniversal,
   canonicalThumbUrl,
   fetchArtworkBlob,
   FALLBACK_ART,
@@ -1891,8 +1890,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const onPlaying = () => finish(true);
       const onCanPlay = () => finish(true);
       const onError = () => finish(false);
-      // Give candidates ample time (9.5s on cold start, 6.5s for fallbacks) to avoid false negative "sources down"
-      const timer = setTimeout(() => finish(false), idx === 0 ? 9500 : 6500);
+      // Give candidates ample time (5.5s on cold start, 4.0s for fallbacks) to avoid false negative "sources down"
+      const timer = setTimeout(() => finish(false), idx === 0 ? 5500 : 4000);
 
       audio.addEventListener('playing', onPlaying, { once: true });
       audio.addEventListener('canplay', onCanPlay, { once: true });
@@ -2391,25 +2390,79 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch {}
     }
 
-    // Universal Multi-Server Parallel Racing Resolution (Races Worker, all 7 Invidious mirrors, Saavn, and search fallbacks simultaneously)
-    const streamUrl = await resolveBestStreamUniversal(resolvedTrack, quality).catch(() => null);
+    const candidates: string[] = [];
+
+    // Parallel Stream Resolution across Worker Proxy, JioSaavn and Global Invidious/Piped Mirrors
+    const [workerUrl, saavnUrl, mirrors] = await Promise.all([
+      resolveWorkerStream(resolvedTrack.id).catch(() => null),
+      resolveSaavnStream(
+        cleanTitleForLyrics(resolvedTrack.title) || resolvedTrack.title,
+        cleanedArtist,
+        quality,
+        resolvedTrack.title,
+        resolvedTrack.artist
+      ).catch(() => null),
+      resolveMirrorStreams(resolvedTrack.id).catch(() => []),
+    ]);
+
+    if (workerUrl) candidates.push(workerUrl);
+    if (saavnUrl) candidates.push(saavnUrl);
+    if (mirrors && mirrors.length > 0) candidates.push(...mirrors);
 
     if (token !== playTokenRef.current) {
       clearTimeout(slowNoticeTimer);
       return false;
     }
 
-    let ok = false;
-    if (streamUrl) {
-      ok = await tryPlayCandidates([streamUrl], token, resolvedTrack.id, 0);
+    // Startup Race Condition Deferral: fallback search if no candidates were found
+    if (candidates.length === 0) {
+      try {
+        const fallbackSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
+        if (fallbackSearch.length > 0 && fallbackSearch[0].id) {
+          const fbTrack = fallbackSearch[0];
+          const [altWorker, altSaavn, altMirrors] = await Promise.all([
+            resolveWorkerStream(fbTrack.id).catch(() => null),
+            resolveSaavnStream(
+              cleanTitleForLyrics(fbTrack.title) || fbTrack.title,
+              cleanArtistName(fbTrack.artist),
+              quality,
+              fbTrack.title,
+              fbTrack.artist
+            ).catch(() => null),
+            resolveMirrorStreams(fbTrack.id).catch(() => []),
+          ]);
+          if (altWorker) candidates.push(altWorker);
+          if (altSaavn) candidates.push(altSaavn);
+          if (altMirrors && altMirrors.length > 0) candidates.push(...altMirrors);
+        }
+      } catch {}
     }
 
-    // Auto-retry with fresh universal resolution if first attempt had a warmup hiccup
-    if (!ok && token === playTokenRef.current) {
-      const freshUrl = await resolveBestStreamUniversal(resolvedTrack, quality).catch(() => null);
-      if (freshUrl) {
-        ok = await tryPlayCandidates([freshUrl], token, resolvedTrack.id, 0);
+    if (candidates.length === 0) {
+      clearTimeout(slowNoticeTimer);
+      if (token === playTokenRef.current) {
+        setIsBuffering(false);
+        try {
+          audio.pause();
+          audio.removeAttribute('src');
+          audio.load();
+        } catch {}
+        showToast('Sources are resolving. Please wait a moment or tap track again.', true);
       }
+      return false;
+    }
+
+    // Play first working candidate
+    let ok = await tryPlayCandidates(candidates, token, resolvedTrack.id, 0);
+
+    // Auto-retry once with refreshed mirror list if first cycle had a network warmup hiccup
+    if (!ok && token === playTokenRef.current) {
+      try {
+        const freshMirrors = await resolveMirrorStreams(resolvedTrack.id).catch(() => []);
+        if (freshMirrors.length > 0) {
+          ok = await tryPlayCandidates(freshMirrors, token, resolvedTrack.id, 0);
+        }
+      } catch {}
     }
 
     clearTimeout(slowNoticeTimer);

@@ -1,5 +1,5 @@
 // Service Worker for MOUZIKETNA PWA
-const CACHE_NAME = 'mouzika-pwa-1791569093901';
+const CACHE_NAME = 'mouzika-pwa-1791573979695';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
 // Precache static shell assets
