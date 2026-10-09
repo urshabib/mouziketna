@@ -222,6 +222,8 @@ interface MusicContextType {
   setSupersededNotice: (notice: SupersededEvent | null) => void;
   claimPlaybackHere: () => Promise<void>;
   currentDeviceName: string;
+  isRemotePlaybackActive: boolean;
+  remoteDeviceName: string | null;
 }
 
 const MusicContext = createContext<MusicContextType | null>(null);
@@ -304,13 +306,57 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
 
-  // Single-Device Playback Supersession Notice
+  // Single-Device Playback Supersession Notice & Cross-Device Sync State
   const [supersededNotice, setSupersededNotice] = useState<SupersededEvent | null>(null);
+  const [isRemotePlaybackActive, setIsRemotePlaybackActive] = useState(false);
+  const [remoteDeviceName, setRemoteDeviceName] = useState<string | null>(null);
   const currentDeviceName = sessionManager.getDeviceName();
 
-  // Multi-device simultaneous playback supported (no supersession pause)
+  // Cross-device WebSocket & Redis Pub/Sub synchronization
   useEffect(() => {
-    return () => {};
+    const unsubSuperseded = sessionManager.onSuperseded((evt) => {
+      if (audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setSupersededNotice(evt);
+      setIsRemotePlaybackActive(true);
+      setRemoteDeviceName(evt.byDevice);
+    });
+
+    const unsubSync = sessionManager.onSyncUpdate((state) => {
+      const myDeviceId = sessionManager.getDeviceId();
+      const isRemote = Boolean(state.activeDeviceId && state.activeDeviceId !== myDeviceId);
+
+      if (isRemote) {
+        setIsRemotePlaybackActive(state.state === 'playing');
+        setRemoteDeviceName(state.activeDeviceName);
+        if (state.track) {
+          setActiveTrack(state.track);
+        }
+        if (typeof state.currentTime === 'number') {
+          setCurrentTime(state.currentTime);
+        }
+        if (state.duration > 0) {
+          setDuration(state.duration);
+        }
+        setIsPlaying(state.state === 'playing');
+
+        // Strictly keep audio element idle/paused on secondary device!
+        if (audioRef.current && !audioRef.current.paused) {
+          audioRef.current.pause();
+        }
+      } else if (state.activeDeviceId === myDeviceId) {
+        setIsRemotePlaybackActive(false);
+        setRemoteDeviceName(null);
+        setSupersededNotice(null);
+      }
+    });
+
+    return () => {
+      unsubSuperseded();
+      unsubSync();
+    };
   }, []);
 
   // Playback state
@@ -744,6 +790,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (listeningSecondsAccumRef.current >= 45) {
           listeningSecondsAccumRef.current = 0;
           recordListeningMinute(1);
+        }
+
+        // Cross-device sync broadcast from active device
+        if (sessionManager.isCurrentDeviceHoldingLease()) {
+          sessionManager.sendStateSync({
+            trackId: activeTrackRef.current?.id,
+            trackTitle: activeTrackRef.current?.title,
+            trackArtist: activeTrackRef.current?.artist,
+            trackThumb: activeTrackRef.current?.thumb,
+            currentTime: audio.currentTime,
+            duration: audio.duration,
+            isPlaying: !audio.paused,
+          });
         }
       }
 
@@ -2589,11 +2648,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const togglePlay = async () => {
+    if (isRemotePlaybackActive) {
+      await claimPlaybackHere();
+      return;
+    }
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) {
       setSupersededNotice(null);
-      const leaseClaim = await sessionManager.claimPlaybackLease(activeTrack || undefined);
+      setIsRemotePlaybackActive(false);
+      setRemoteDeviceName(null);
+      const leaseClaim = await sessionManager.claimPlaybackLease(activeTrack || undefined, currentTime);
       if (!leaseClaim.active) {
         setIsPlaying(false);
         return;
@@ -3368,28 +3433,36 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Transfer playback lease back to this device (Spotify "Play Here Instead" style)
   const claimPlaybackHere = useCallback(async () => {
     setSupersededNotice(null);
-    const lease = await sessionManager.claimPlaybackLease(activeTrack || undefined);
+    setIsRemotePlaybackActive(false);
+    setRemoteDeviceName(null);
+    const lease = await sessionManager.claimPlaybackLease(activeTrack || undefined, currentTime);
     if (lease.active) {
       if (audioRef.current) {
         resumeAudioContext();
-        const playPromise = audioRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              setIsPlaying(true);
-              showToast(`Playback transferred to ${sessionManager.getDeviceName()}`);
-            })
-            .catch(() => {
-              if (activeTrack) {
-                playTrack(activeTrack, true);
-              }
-            });
+        if (audioRef.current.error || !audioRef.current.src || audioRef.current.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
+          if (activeTrack) {
+            playTrack(activeTrack, true);
+          }
+        } else {
+          const playPromise = audioRef.current.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                setIsPlaying(true);
+                showToast(`Playback transferred to ${sessionManager.getDeviceName()}`);
+              })
+              .catch(() => {
+                if (activeTrack) {
+                  playTrack(activeTrack, true);
+                }
+              });
+          }
         }
       } else if (activeTrack) {
         playTrack(activeTrack, true);
       }
     }
-  }, [activeTrack, playTrack, showToast]);
+  }, [activeTrack, currentTime, playTrack, showToast]);
 
   return (
     <MusicContext.Provider
@@ -3517,6 +3590,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSupersededNotice,
         claimPlaybackHere,
         currentDeviceName,
+        isRemotePlaybackActive,
+        remoteDeviceName,
       }}
     >
       {children}

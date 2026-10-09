@@ -4,6 +4,7 @@ import path from 'path';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { WebSocketServer, WebSocket } from 'ws';
 
 dotenv.config();
 
@@ -14,13 +15,17 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = '0.0.0.0';
 const UPSTREAM_WORKER = 'https://new-music-space-api.urshabib.workers.dev';
 
-// --- Types ---
+// =========================================================================
+// 1. DATA TYPES & SCHEMAS
+// =========================================================================
+
 export interface UserSession {
   sessionId: string;
   sessionToken: string;
   username: string;
   deviceId: string;
   deviceName: string;
+  deviceFingerprint?: string;
   ip: string;
   userAgent: string;
   createdAt: number;
@@ -32,57 +37,278 @@ export interface PlaybackLease {
   username: string;
   deviceId: string;
   deviceName: string;
-  sessionToken: string;
-  leaseEpoch: number;
-  leaseId: string;
+  streamToken: string; // Short-lived audio playback token
+  leaseEpoch: number; // Monotonically increasing epoch
   trackId?: string;
   trackTitle?: string;
   trackArtist?: string;
+  trackThumb?: string;
+  currentTime: number;
+  duration: number;
+  state: 'playing' | 'paused';
   startedAt: number;
   lastHeartbeat: number;
   expiresAt: number;
-  state: 'playing' | 'paused';
+  updatedAt: number;
 }
 
-// --- In-Memory State Stores ---
-// 1. Valid active user sessions (keyed by secure 256-bit session token)
-const sessions = new Map<string, UserSession>();
-// 2. Maps `${username}:${deviceId}` -> sessionToken (enforces device binding)
-const deviceToSession = new Map<string, string>();
-// 3. Authoritative active playback lease per user account (keyed by normalized lowercase username)
-const activePlaybacks = new Map<string, PlaybackLease>();
-// 4. Server-Sent Events subscribers per user account (username -> Map<deviceId, Response>)
-const sseClients = new Map<string, Map<string, Response>>();
-// 5. Rate limiter sliding window records (IP/key -> timestamps[])
-const rateLimitMap = new Map<string, number[]>();
+// =========================================================================
+// 2. REDIS STATE ENGINE (ioredis-compatible with In-Memory Multi-Node Fallback)
+// =========================================================================
 
-// --- Concurrency & Race Condition Mutex ---
-// Serializes state transitions per user so two devices claiming playback at the exact same millisecond cannot race
-const userMutexes = new Map<string, Promise<void>>();
+interface RedisClientInterface {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string, ...args: any[]): Promise<'OK' | null>;
+  del(...keys: string[]): Promise<number>;
+  publish(channel: string, message: string): Promise<number>;
+  subscribe(channel: string, cb: (msg: string) => void): Promise<void>;
+  eval(script: string, numkeys: number, ...keysAndArgs: string[]): Promise<any>;
+}
 
-async function withUserLock<T>(username: string, task: () => Promise<T>): Promise<T> {
-  const normUser = (username || 'anonymous').toLowerCase().trim();
-  const currentLock = userMutexes.get(normUser) || Promise.resolve();
+// Lua Script: Atomic Playback Handover
+// 1. Checks existing lease for user
+// 2. Increments leaseEpoch
+// 3. Sets new streamToken and writes new lease with TTL
+// 4. Publishes handover event to Redis Pub/Sub channel
+export const ATOMIC_HANDOVER_LUA = `
+local current = redis.call("GET", KEYS[1])
+local prevDeviceId = ""
+local prevDeviceName = ""
+local epoch = 1
 
-  let resolveLock!: () => void;
-  const newLock = new Promise<void>((resolve) => {
-    resolveLock = resolve;
-  });
+if current then
+  local lease = cjson.decode(current)
+  prevDeviceId = lease.deviceId or ""
+  prevDeviceName = lease.deviceName or ""
+  epoch = (tonumber(lease.leaseEpoch) or 0) + 1
+end
 
-  userMutexes.set(normUser, newLock);
+local newLease = {
+  username = ARGV[1],
+  deviceId = ARGV[2],
+  deviceName = ARGV[3],
+  streamToken = ARGV[4],
+  leaseEpoch = epoch,
+  trackId = ARGV[5],
+  trackTitle = ARGV[6],
+  trackArtist = ARGV[7],
+  trackThumb = ARGV[8],
+  currentTime = tonumber(ARGV[9]) or 0,
+  duration = tonumber(ARGV[10]) or 0,
+  state = "playing",
+  startedAt = tonumber(ARGV[11]) or 0,
+  lastHeartbeat = tonumber(ARGV[11]) or 0,
+  expiresAt = (tonumber(ARGV[11]) or 0) + ((tonumber(ARGV[12]) or 35) * 1000),
+  updatedAt = tonumber(ARGV[11]) or 0
+}
 
-  try {
-    await currentLock;
-    return await task();
-  } finally {
-    resolveLock();
-    if (userMutexes.get(normUser) === newLock) {
-      userMutexes.delete(normUser);
+local encoded = cjson.encode(newLease)
+redis.call("SET", KEYS[1], encoded, "EX", tonumber(ARGV[12]) or 35)
+
+local pubPayload = cjson.encode({
+  type = "PLAYBACK_HANDOVER",
+  previousDeviceId = prevDeviceId,
+  previousDeviceName = prevDeviceName,
+  newDeviceId = ARGV[2],
+  newDeviceName = ARGV[3],
+  leaseEpoch = epoch,
+  lease = newLease,
+  timestamp = tonumber(ARGV[11])
+})
+redis.call("PUBLISH", KEYS[2], pubPayload)
+
+return encoded
+`;
+
+class InMemoryRedis implements RedisClientInterface {
+  private store = new Map<string, { value: string; expiresAt: number | null }>();
+  private subscribers = new Map<string, Set<(msg: string) => void>>();
+
+  async get(key: string): Promise<string | null> {
+    const item = this.store.get(key);
+    if (!item) return null;
+    if (item.expiresAt !== null && Date.now() > item.expiresAt) {
+      this.store.delete(key);
+      return null;
     }
+    return item.value;
+  }
+
+  async set(key: string, value: string, ...args: any[]): Promise<'OK' | null> {
+    let ttlMs: number | null = null;
+    let nx = false;
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = String(args[i]).toUpperCase();
+      if (arg === 'EX' && i + 1 < args.length) {
+        ttlMs = parseInt(args[i + 1], 10) * 1000;
+        i++;
+      } else if (arg === 'PX' && i + 1 < args.length) {
+        ttlMs = parseInt(args[i + 1], 10);
+        i++;
+      } else if (arg === 'NX') {
+        nx = true;
+      }
+    }
+
+    if (nx) {
+      const existing = await this.get(key);
+      if (existing !== null) return null;
+    }
+
+    this.store.set(key, {
+      value,
+      expiresAt: ttlMs !== null ? Date.now() + ttlMs : null,
+    });
+    return 'OK';
+  }
+
+  async del(...keys: string[]): Promise<number> {
+    let count = 0;
+    for (const k of keys) {
+      if (this.store.delete(k)) count++;
+    }
+    return count;
+  }
+
+  async publish(channel: string, message: string): Promise<number> {
+    const subs = this.subscribers.get(channel);
+    if (!subs || subs.size === 0) return 0;
+    for (const cb of subs) {
+      try {
+        cb(message);
+      } catch (err) {
+        console.error('[RedisPubSub] Error in subscriber callback:', err);
+      }
+    }
+    return subs.size;
+  }
+
+  async subscribe(channel: string, cb: (msg: string) => void): Promise<void> {
+    if (!this.subscribers.has(channel)) {
+      this.subscribers.set(channel, new Set());
+    }
+    this.subscribers.get(channel)!.add(cb);
+  }
+
+  async eval(script: string, numkeys: number, ...keysAndArgs: string[]): Promise<any> {
+    const keys = keysAndArgs.slice(0, numkeys);
+    const argv = keysAndArgs.slice(numkeys);
+
+    const playbackKey = keys[0];
+    const channelKey = keys[1];
+
+    const username = argv[0];
+    const newDeviceId = argv[1];
+    const newDeviceName = argv[2];
+    const newStreamToken = argv[3];
+    const trackId = argv[4];
+    const trackTitle = argv[5];
+    const trackArtist = argv[6];
+    const trackThumb = argv[7];
+    const currentTime = parseFloat(argv[8] || '0') || 0;
+    const duration = parseFloat(argv[9] || '0') || 0;
+    const now = parseInt(argv[10] || String(Date.now()), 10) || Date.now();
+    const ttlSeconds = parseInt(argv[11] || '35', 10) || 35;
+
+    const currentStr = await this.get(playbackKey);
+    let prevDeviceId = '';
+    let prevDeviceName = '';
+    let epoch = 1;
+
+    if (currentStr) {
+      try {
+        const parsed = JSON.parse(currentStr);
+        prevDeviceId = parsed.deviceId || '';
+        prevDeviceName = parsed.deviceName || '';
+        epoch = (parseInt(parsed.leaseEpoch, 10) || 0) + 1;
+      } catch {}
+    }
+
+    const newLease: PlaybackLease = {
+      username,
+      deviceId: newDeviceId,
+      deviceName: newDeviceName,
+      streamToken: newStreamToken,
+      leaseEpoch: epoch,
+      trackId: trackId || undefined,
+      trackTitle: trackTitle || undefined,
+      trackArtist: trackArtist || undefined,
+      trackThumb: trackThumb || undefined,
+      currentTime,
+      duration,
+      state: 'playing',
+      startedAt: now,
+      lastHeartbeat: now,
+      expiresAt: now + ttlSeconds * 1000,
+      updatedAt: now,
+    };
+
+    const encoded = JSON.stringify(newLease);
+    await this.set(playbackKey, encoded, 'EX', ttlSeconds);
+
+    const pubPayload = JSON.stringify({
+      type: 'PLAYBACK_HANDOVER',
+      previousDeviceId: prevDeviceId,
+      previousDeviceName: prevDeviceName,
+      newDeviceId,
+      newDeviceName,
+      leaseEpoch: epoch,
+      lease: newLease,
+      timestamp: now,
+    });
+
+    await this.publish(channelKey, pubPayload);
+    return encoded;
   }
 }
 
-// --- Helpers ---
+// Initialize Redis engine
+let redis: RedisClientInterface;
+
+if (process.env.REDIS_URL) {
+  try {
+    const { default: Redis } = await import('ioredis');
+    const client = new Redis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+    });
+    const subClient = new Redis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 3,
+      enableReadyCheck: false,
+    });
+
+    redis = {
+      get: (k) => client.get(k),
+      set: (k, v, ...args) => client.set(k, v, ...args as any) as any,
+      del: (...k) => client.del(...k),
+      publish: (c, m) => client.publish(c, m),
+      subscribe: async (c, cb) => {
+        await subClient.subscribe(c);
+        subClient.on('message', (chan, msg) => {
+          if (chan === c) cb(msg);
+        });
+      },
+      eval: (script, numkeys, ...keysAndArgs) => client.eval(script, numkeys, ...keysAndArgs),
+    };
+    console.log('[Redis] Connected to external Redis instance at', process.env.REDIS_URL.split('@')[1] || 'cluster');
+  } catch (err) {
+    console.warn('[Redis] Failed to initialize external Redis, falling back to In-Memory engine:', err);
+    redis = new InMemoryRedis();
+  }
+} else {
+  redis = new InMemoryRedis();
+}
+
+// In-Memory Sessions & Sliding Window Rate Limiter
+const sessions = new Map<string, UserSession>();
+const deviceToSession = new Map<string, string>();
+const rateLimitMap = new Map<string, number[]>();
+
+// =========================================================================
+// 3. HELPERS & SECURITY FUNCTIONS
+// =========================================================================
+
 function generateSecureToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString('hex');
 }
@@ -91,6 +317,23 @@ function cleanUsername(user?: string): string {
   return (user || '').toLowerCase().trim();
 }
 
+function getRedisPlaybackKey(username: string): string {
+  return `mouzika:user:${cleanUsername(username)}:playback`;
+}
+
+function getRedisChannelKey(username: string): string {
+  return `mouzika:channel:${cleanUsername(username)}`;
+}
+
+function getRedisLockKey(username: string): string {
+  return `mouzika:user:${cleanUsername(username)}:playback:lock`;
+}
+
+function getRedisSeqKey(deviceId: string): string {
+  return `mouzika:device:${deviceId}:seq`;
+}
+
+// Rate Limiter Middleware
 function rateLimit(limit = 60, windowMs = 60000) {
   return (req: Request, res: Response, next: NextFunction) => {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -112,15 +355,27 @@ function rateLimit(limit = 60, windowMs = 60000) {
   };
 }
 
-// Authentication middleware with Device Binding validation
+// Extract & Verify Session (reads Authorization header, cookie, query, or body)
 function extractSession(req: Request): UserSession | null {
   let token = '';
+
+  // 1. Authorization header
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.slice(7).trim();
-  } else if (req.body && req.body.sessionToken) {
+  }
+
+  // 2. Cookie header: mouzika_session
+  if (!token && req.headers.cookie) {
+    const match = req.headers.cookie.match(/(?:^|;\s*)mouzika_session=([^;]+)/);
+    if (match) token = decodeURIComponent(match[1]).trim();
+  }
+
+  // 3. Body & Query
+  if (!token && req.body && req.body.sessionToken) {
     token = String(req.body.sessionToken).trim();
-  } else if (req.query && req.query.sessionToken) {
+  }
+  if (!token && req.query && req.query.sessionToken) {
     token = String(req.query.sessionToken).trim();
   }
 
@@ -134,65 +389,103 @@ function extractSession(req: Request): UserSession | null {
     return null;
   }
 
-  // Touch session
   session.lastActive = Date.now();
   return session;
 }
 
-// Broadcast an instantaneous supersession event to other connected devices of the user
-function notifySupersededViaSse(username: string, supersededDeviceId: string, byDevice: string, leaseEpoch: number) {
-  const normUser = cleanUsername(username);
-  const clients = sseClients.get(normUser);
-  if (!clients) return;
+// Defend against replay attacks by tracking monotonic sequence counters
+async function verifyReplayProtection(deviceId: string, seq?: number, nonce?: string): Promise<boolean> {
+  if (!deviceId) return true;
 
-  const payload = JSON.stringify({
-    type: 'superseded',
-    supersededDeviceId,
-    byDevice,
-    leaseEpoch,
-    timestamp: Date.now(),
-  });
-
-  for (const [devId, clientRes] of clients.entries()) {
-    try {
-      clientRes.write(`data: ${payload}\n\n`);
-    } catch {
-      clients.delete(devId);
+  // Check Nonce uniqueness via SET NX EX 60
+  if (nonce) {
+    const nonceKey = `mouzika:nonce:${nonce}`;
+    const acquired = await redis.set(nonceKey, '1', 'NX', 'EX', 60);
+    if (!acquired) {
+      console.warn(`[Security] Replay attack detected: reused nonce ${nonce} for device ${deviceId}`);
+      return false;
     }
   }
+
+  // Monotonic sequence counter check
+  if (seq !== undefined && typeof seq === 'number') {
+    const seqKey = getRedisSeqKey(deviceId);
+    const lastSeqStr = await redis.get(seqKey);
+    const lastSeq = lastSeqStr ? parseInt(lastSeqStr, 10) : 0;
+
+    if (seq <= lastSeq) {
+      console.warn(`[Security] Replay / Out-of-order packet: device ${deviceId} sent seq ${seq} <= ${lastSeq}`);
+      return false;
+    }
+
+    await redis.set(seqKey, String(seq), 'EX', 86400);
+  }
+
+  return true;
 }
 
-// --- Express App Setup ---
-const app = express();
-const server = http.createServer(app);
+// =========================================================================
+// 4. TUNISIA GEOFENCING & ANTI-VPN MITIGATION MIDDLEWARE
+// =========================================================================
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// Tunisia Geo-Blocking & Anti-VPN / Anti-Proxy Security Middleware
 function enforceTunisiaGeoAndAntiVpn(req: Request, res: Response, next: NextFunction) {
-  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
-  const isLocal = ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('localhost') || ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.');
-
-  if (isLocal || process.env.NODE_ENV !== 'production' || process.env.BYPASS_GEO_BLOCK === 'true') {
+  if (process.env.BYPASS_GEO_BLOCK === 'true') {
     return next();
   }
 
+  // Cloudflare Geolocation & Threat Headers (from Cloudflare Edge WAF)
   const country = (req.headers['cf-ipcountry'] as string || '').toUpperCase();
-  const forwardedFor = req.headers['x-forwarded-for'];
+  const threatScore = parseInt((req.headers['cf-threat-score'] as string) || '0', 10);
+  const botManagementScore = parseInt((req.headers['cf-bot-management-score'] as string) || '100', 10);
 
+  // 1. Strict Geo-Block: Only Tunisia (TN) permitted
   if (country) {
     if (country !== 'TN') {
       return res.status(403).json({
         error: 'geoblock_restricted',
-        message: 'Access restricted: MOUZIKETNA is exclusively available within Tunisia. International IPs, VPNs, and proxies are blocked.',
+        message: 'Access restricted: MOUZIKETNA is exclusively available within Tunisia. International traffic blocked (ISO: TN).',
+        detectedCountry: country,
       });
     }
-  } else {
-    if (forwardedFor || req.headers['via'] || req.headers['x-real-ip']) {
+  }
+
+  // 2. Cloudflare Threat Score (Blocks suspicious VPNs, proxies, and Tor exit nodes)
+  if (threatScore > 15) {
+    return res.status(403).json({
+      error: 'vpn_proxy_blocked',
+      message: 'Access denied: High threat score or anonymous VPN/proxy network detected.',
+    });
+  }
+
+  // 3. Bot Management Rule (Blocks automated scraping / bots)
+  if (botManagementScore < 30) {
+    return res.status(403).json({
+      error: 'bot_blocked',
+      message: 'Access denied: Automated traffic or bot signature detected.',
+    });
+  }
+
+  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
+  const isLocal =
+    ip.includes('127.0.0.1') ||
+    ip.includes('::1') ||
+    ip.includes('localhost') ||
+    ip.startsWith('10.') ||
+    ip.startsWith('192.168.') ||
+    ip.startsWith('172.');
+
+  if (isLocal || process.env.NODE_ENV !== 'production') {
+    return next();
+  }
+
+  // 4. Proxy / Anonymous tunneling header checks in production
+  const forwardedFor = req.headers['x-forwarded-for'];
+  if (forwardedFor && typeof forwardedFor === 'string' && forwardedFor.includes(',')) {
+    const hops = forwardedFor.split(',').length;
+    if (hops > 3) {
       return res.status(403).json({
-        error: 'vpn_proxy_blocked',
-        message: 'Access denied: VPN, proxy, or anonymous tunneling detected.',
+        error: 'anonymous_proxy_detected',
+        message: 'Access denied: Suspicious multi-hop proxy detected.',
       });
     }
   }
@@ -200,11 +493,356 @@ function enforceTunisiaGeoAndAntiVpn(req: Request, res: Response, next: NextFunc
   next();
 }
 
-// Apply geo and anti-VPN security middleware to all requests
+// =========================================================================
+// 5. EXPRESS & WEBSOCKET SETUP
+// =========================================================================
+
+const app = express();
+const server = http.createServer(app);
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(enforceTunisiaGeoAndAntiVpn);
 
+// WebSocket Server attached to same HTTP Server on port 3000
+const wss = new WebSocketServer({ noServer: true });
+
+interface ConnectedUserSocket {
+  ws: WebSocket;
+  username: string;
+  deviceId: string;
+  deviceName: string;
+  lastActive: number;
+}
+
+const userSockets = new Map<string, Set<ConnectedUserSocket>>();
+
+// Broadcast a message to all connected devices of a specific user
+function broadcastToUser(username: string, payload: any, excludeDeviceId?: string) {
+  const normUser = cleanUsername(username);
+  const sockets = userSockets.get(normUser);
+  if (!sockets) return;
+
+  const msg = JSON.stringify(payload);
+  for (const client of sockets) {
+    if (excludeDeviceId && client.deviceId === excludeDeviceId) continue;
+    if (client.ws.readyState === WebSocket.OPEN) {
+      try {
+        client.ws.send(msg);
+      } catch {
+        sockets.delete(client);
+      }
+    }
+  }
+}
+
+// Subscribe to Redis Pub/Sub channel for cross-server / multi-node fanout
+async function setupRedisPubSubListener(username: string) {
+  const normUser = cleanUsername(username);
+  const channel = getRedisChannelKey(normUser);
+
+  await redis.subscribe(channel, (msgStr: string) => {
+    try {
+      const msg = JSON.parse(msgStr);
+      if (msg.type === 'PLAYBACK_HANDOVER') {
+        const sockets = userSockets.get(normUser);
+        if (!sockets) return;
+
+        // 1. Send immediate FORCE_PAUSE / SUPERSEDED to previous device
+        for (const client of sockets) {
+          if (client.deviceId === msg.previousDeviceId && client.ws.readyState === WebSocket.OPEN) {
+            client.ws.send(
+              JSON.stringify({
+                type: 'SUPERSEDED',
+                byDevice: msg.newDeviceName,
+                leaseEpoch: msg.leaseEpoch,
+                timestamp: msg.timestamp,
+              })
+            );
+          }
+        }
+
+        // 2. Send STATE_SYNC to all devices
+        for (const client of sockets) {
+          if (client.ws.readyState === WebSocket.OPEN) {
+            const isTarget = client.deviceId === msg.newDeviceId;
+            client.ws.send(
+              JSON.stringify({
+                type: 'STATE_SYNC',
+                activeDeviceId: msg.newDeviceId,
+                activeDeviceName: msg.newDeviceName,
+                leaseEpoch: msg.leaseEpoch,
+                track: {
+                  id: msg.lease.trackId,
+                  title: msg.lease.trackTitle,
+                  artist: msg.lease.trackArtist,
+                  thumb: msg.lease.trackThumb,
+                },
+                currentTime: msg.lease.currentTime,
+                duration: msg.lease.duration,
+                state: 'playing',
+                streamToken: isTarget ? msg.lease.streamToken : null,
+                timestamp: msg.timestamp,
+              })
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[RedisPubSub] Message dispatch error:', err);
+    }
+  });
+}
+
+// HTTP to WebSocket Upgrade Handler
+server.on('upgrade', (request, socket, head) => {
+  const urlObj = new URL(request.url || '', `http://${request.headers.host}`);
+  if (urlObj.pathname !== '/ws/playback' && urlObj.pathname !== '/ws') {
+    socket.destroy();
+    return;
+  }
+
+  // Extract session token from query param, cookie, or auth header
+  let token = urlObj.searchParams.get('token');
+  if (!token && request.headers.cookie) {
+    const match = request.headers.cookie.match(/(?:^|;\s*)mouzika_session=([^;]+)/);
+    if (match) token = decodeURIComponent(match[1]).trim();
+  }
+
+  if (!token) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  const session = sessions.get(token);
+  if (!session || Date.now() > session.expiresAt) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request, session, urlObj);
+  });
+});
+
+wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, session: UserSession, urlObj: URL) => {
+  const normUser = cleanUsername(session.username);
+  const deviceId = urlObj.searchParams.get('deviceId') || session.deviceId;
+  const deviceName = urlObj.searchParams.get('deviceName') || session.deviceName;
+
+  const clientSocket: ConnectedUserSocket = {
+    ws,
+    username: normUser,
+    deviceId,
+    deviceName,
+    lastActive: Date.now(),
+  };
+
+  if (!userSockets.has(normUser)) {
+    userSockets.set(normUser, new Set());
+    await setupRedisPubSubListener(normUser);
+  }
+  userSockets.get(normUser)!.add(clientSocket);
+
+  // Send current authoritative playback state immediately on connect
+  const playbackKey = getRedisPlaybackKey(normUser);
+  const currentLeaseStr = await redis.get(playbackKey);
+  let currentLease: PlaybackLease | null = null;
+  if (currentLeaseStr) {
+    try {
+      currentLease = JSON.parse(currentLeaseStr);
+    } catch {}
+  }
+
+  if (currentLease && currentLease.expiresAt > Date.now()) {
+    const isCurrentActive = currentLease.deviceId === deviceId;
+    ws.send(
+      JSON.stringify({
+        type: 'INITIAL_SYNC',
+        activeDeviceId: currentLease.deviceId,
+        activeDeviceName: currentLease.deviceName,
+        leaseEpoch: currentLease.leaseEpoch,
+        track: {
+          id: currentLease.trackId,
+          title: currentLease.trackTitle,
+          artist: currentLease.trackArtist,
+          thumb: currentLease.trackThumb,
+        },
+        currentTime: currentLease.currentTime,
+        duration: currentLease.duration,
+        state: currentLease.state,
+        streamToken: isCurrentActive ? currentLease.streamToken : null,
+        timestamp: Date.now(),
+      })
+    );
+  } else {
+    ws.send(
+      JSON.stringify({
+        type: 'INITIAL_SYNC',
+        activeDeviceId: null,
+        activeDeviceName: null,
+        leaseEpoch: 0,
+        track: null,
+        currentTime: 0,
+        duration: 0,
+        state: 'paused',
+        streamToken: null,
+        timestamp: Date.now(),
+      })
+    );
+  }
+
+  // Handle incoming WebSocket messages from client
+  ws.on('message', async (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      clientSocket.lastActive = Date.now();
+
+      // Nonce / Sequence verification for security
+      const isValid = await verifyReplayProtection(deviceId, msg.seq, msg.nonce);
+      if (!isValid) return;
+
+      switch (msg.type) {
+        case 'CLAIM_PLAYBACK': {
+          // Atomic takeover via Lua script
+          const newStreamToken = `stk_${generateSecureToken(24)}`;
+          const channelKey = getRedisChannelKey(normUser);
+
+          const resultStr = await redis.eval(
+            ATOMIC_HANDOVER_LUA,
+            2,
+            playbackKey,
+            channelKey,
+            normUser,
+            deviceId,
+            deviceName,
+            newStreamToken,
+            msg.trackId || '',
+            msg.trackTitle || '',
+            msg.trackArtist || '',
+            msg.trackThumb || '',
+            String(msg.currentTime || 0),
+            String(msg.duration || 0),
+            String(Date.now()),
+            '35'
+          );
+
+          const newLease = JSON.parse(resultStr);
+
+          // Confirm claim to requesting device
+          ws.send(
+            JSON.stringify({
+              type: 'CLAIM_GRANTED',
+              leaseEpoch: newLease.leaseEpoch,
+              streamToken: newStreamToken,
+              timestamp: Date.now(),
+            })
+          );
+          break;
+        }
+
+        case 'SYNC_STATE': {
+          // Active device syncing its playback progress
+          const currentLeaseStr = await redis.get(playbackKey);
+          if (currentLeaseStr) {
+            const lease: PlaybackLease = JSON.parse(currentLeaseStr);
+            if (lease.deviceId === deviceId) {
+              lease.currentTime = msg.currentTime;
+              lease.duration = msg.duration || lease.duration;
+              lease.state = msg.isPlaying ? 'playing' : 'paused';
+              lease.lastHeartbeat = Date.now();
+              lease.expiresAt = Date.now() + 35000;
+              lease.updatedAt = Date.now();
+
+              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+
+              // Broadcast update to all secondary devices for cross-device UI sync
+              broadcastToUser(
+                normUser,
+                {
+                  type: 'SYNC_UPDATE',
+                  activeDeviceId: deviceId,
+                  activeDeviceName: deviceName,
+                  leaseEpoch: lease.leaseEpoch,
+                  track: {
+                    id: lease.trackId,
+                    title: lease.trackTitle,
+                    artist: lease.trackArtist,
+                    thumb: lease.trackThumb,
+                  },
+                  currentTime: lease.currentTime,
+                  duration: lease.duration,
+                  state: lease.state,
+                  timestamp: Date.now(),
+                },
+                deviceId
+              );
+            }
+          }
+          break;
+        }
+
+        case 'HEARTBEAT': {
+          // Touch active lease TTL
+          const currentLeaseStr = await redis.get(playbackKey);
+          if (currentLeaseStr) {
+            const lease: PlaybackLease = JSON.parse(currentLeaseStr);
+            if (lease.deviceId === deviceId) {
+              lease.lastHeartbeat = Date.now();
+              lease.expiresAt = Date.now() + 35000;
+              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+              ws.send(JSON.stringify({ type: 'PONG', expiresAt: lease.expiresAt }));
+            } else {
+              // Superseded!
+              ws.send(
+                JSON.stringify({
+                  type: 'SUPERSEDED',
+                  byDevice: lease.deviceName,
+                  leaseEpoch: lease.leaseEpoch,
+                })
+              );
+            }
+          }
+          break;
+        }
+
+        case 'RELEASE_PLAYBACK': {
+          const currentLeaseStr = await redis.get(playbackKey);
+          if (currentLeaseStr) {
+            const lease: PlaybackLease = JSON.parse(currentLeaseStr);
+            if (lease.deviceId === deviceId) {
+              lease.state = 'paused';
+              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+              broadcastToUser(normUser, {
+                type: 'SYNC_UPDATE',
+                activeDeviceId: deviceId,
+                activeDeviceName: deviceName,
+                state: 'paused',
+                currentTime: lease.currentTime,
+              });
+            }
+          }
+          break;
+        }
+      }
+    } catch (err) {
+      console.warn('[WebSocket] Error processing client message:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    const userSet = userSockets.get(normUser);
+    if (userSet) {
+      userSet.delete(clientSocket);
+      if (userSet.size === 0) userSockets.delete(normUser);
+    }
+  });
+});
+
 // =========================================================================
-// API ROUTES: SINGLE-DEVICE SESSION & PLAYBACK CONTROL
+// 6. REST API: AUTH & SINGLE-DEVICE PLAYBACK
 // =========================================================================
 
 // 1. Session Verification
@@ -216,7 +854,6 @@ app.post('/api/auth/session/verify', (req: Request, res: Response) => {
 
   const deviceId = req.body?.deviceId || req.query?.deviceId;
   if (deviceId && deviceId !== session.deviceId) {
-    // Device binding mismatch - potential session hijacking attempt
     return res.status(403).json({ valid: false, error: 'Device binding mismatch' });
   }
 
@@ -229,9 +866,21 @@ app.post('/api/auth/session/verify', (req: Request, res: Response) => {
   });
 });
 
-// 2. Login & Session Token Issuance
+// Helper to set secure HttpOnly cookie
+function setAuthCookie(res: Response, token: string) {
+  const isProd = process.env.NODE_ENV === 'production';
+  res.cookie('mouzika_session', token, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'strict',
+    path: '/',
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  });
+}
+
+// 2. Login & Hardened Session Token Issuance
 app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Response) => {
-  const { username, password, deviceId, deviceName } = req.body || {};
+  const { username, password, deviceId, deviceName, fingerprint } = req.body || {};
   if (!username) {
     return res.status(400).json({ error: 'Username is required' });
   }
@@ -243,7 +892,7 @@ app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Resp
   let upstreamData: any = null;
   let authSucceeded = false;
 
-  // Try authenticating with upstream Cloudflare Worker
+  // Upstream verification
   try {
     const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
       method: 'POST',
@@ -255,10 +904,10 @@ app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Resp
       authSucceeded = true;
     }
   } catch (err) {
-    console.warn('[Server] Upstream auth failed or unreachable:', err);
+    console.warn('[Server] Upstream auth unreachable:', err);
   }
 
-  // Local fallback for admin or offline testing if upstream is unreachable
+  // Local fallback for admin or offline testing
   if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
     authSucceeded = true;
     upstreamData = {
@@ -275,7 +924,7 @@ app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Resp
     });
   }
 
-  // Issue cryptographically secure 256-bit session token
+  // Issue 256-bit cryptographically secure session token
   const sessionToken = generateSecureToken(32);
   const sessionId = `sess_${generateSecureToken(16)}`;
   const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
@@ -287,24 +936,24 @@ app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Resp
     username: normUser,
     deviceId: effectiveDeviceId,
     deviceName: effectiveDeviceName,
+    deviceFingerprint: fingerprint,
     ip,
     userAgent,
     createdAt: Date.now(),
     lastActive: Date.now(),
-    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000, // 30-day session
+    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
   };
 
-  await withUserLock(normUser, async () => {
-    // Invalidate previous session on THIS device if any existed
-    const prevKey = `${normUser}:${effectiveDeviceId}`;
-    const oldToken = deviceToSession.get(prevKey);
-    if (oldToken) {
-      sessions.delete(oldToken);
-    }
+  // Invalidate previous session on this specific device
+  const prevKey = `${normUser}:${effectiveDeviceId}`;
+  const oldToken = deviceToSession.get(prevKey);
+  if (oldToken) sessions.delete(oldToken);
 
-    sessions.set(sessionToken, newSession);
-    deviceToSession.set(prevKey, sessionToken);
-  });
+  sessions.set(sessionToken, newSession);
+  deviceToSession.set(prevKey, sessionToken);
+
+  // Set HttpOnly, Secure, SameSite=Strict cookie
+  setAuthCookie(res, sessionToken);
 
   return res.json({
     ...(upstreamData || {}),
@@ -316,7 +965,7 @@ app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Resp
   });
 });
 
-// Proxy for legacy /api/login endpoint to ensure transparent session token enhancement
+// Proxy for legacy /api/login endpoint
 app.post('/api/login', rateLimit(20, 60000), async (req: Request, res: Response) => {
   const { username, password, deviceId, deviceName } = req.body || {};
   const normUser = cleanUsername(username);
@@ -334,9 +983,7 @@ app.post('/api/login', rateLimit(20, 60000), async (req: Request, res: Response)
     if (upstreamRes.ok && upstreamData && !upstreamData.error) {
       authSucceeded = true;
     }
-  } catch (err) {
-    console.warn('[Server] Upstream login unreachable:', err);
-  }
+  } catch {}
 
   if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
     authSucceeded = true;
@@ -372,14 +1019,14 @@ app.post('/api/login', rateLimit(20, 60000), async (req: Request, res: Response)
     expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
   };
 
-  await withUserLock(normUser, async () => {
-    const prevKey = `${normUser}:${effectiveDeviceId}`;
-    const oldToken = deviceToSession.get(prevKey);
-    if (oldToken) sessions.delete(oldToken);
+  const prevKey = `${normUser}:${effectiveDeviceId}`;
+  const oldToken = deviceToSession.get(prevKey);
+  if (oldToken) sessions.delete(oldToken);
 
-    sessions.set(sessionToken, newSession);
-    deviceToSession.set(prevKey, sessionToken);
-  });
+  sessions.set(sessionToken, newSession);
+  deviceToSession.set(prevKey, sessionToken);
+
+  setAuthCookie(res, sessionToken);
 
   return res.json({
     ...(upstreamData || {}),
@@ -395,7 +1042,6 @@ app.post('/api/login', rateLimit(20, 60000), async (req: Request, res: Response)
 app.post('/api/auth/logout', async (req: Request, res: Response) => {
   const session = extractSession(req);
   const rawUser = req.body?.username || session?.username;
-  const deviceId = req.body?.deviceId || session?.deviceId;
 
   if (session) {
     sessions.delete(session.sessionToken);
@@ -404,19 +1050,16 @@ app.post('/api/auth/logout', async (req: Request, res: Response) => {
 
   if (rawUser) {
     const normUser = cleanUsername(rawUser);
-    await withUserLock(normUser, async () => {
-      const lease = activePlaybacks.get(normUser);
-      if (lease && (!deviceId || lease.deviceId === deviceId)) {
-        activePlaybacks.delete(normUser);
-        notifySupersededViaSse(normUser, lease.deviceId, 'Logged Out', lease.leaseEpoch + 1);
-      }
-    });
+    const playbackKey = getRedisPlaybackKey(normUser);
+    await redis.del(playbackKey);
+    broadcastToUser(normUser, { type: 'STATE_SYNC', state: 'paused', activeDeviceId: null });
   }
 
+  res.clearCookie('mouzika_session');
   return res.json({ success: true, message: 'Logged out successfully' });
 });
 
-// 4. Claim Playback Lease (Enforces strict single-device active session - Spotify mechanism)
+// 4. Claim Playback Lease (Atomic Handover via Redis Lua Script)
 app.post('/api/session/claim-playback', rateLimit(120, 60000), async (req: Request, res: Response) => {
   const session = extractSession(req);
   const username = session?.username || req.body?.username;
@@ -428,81 +1071,108 @@ app.post('/api/session/claim-playback', rateLimit(120, 60000), async (req: Reque
   const deviceId = req.body?.deviceId || session?.deviceId || 'dev_unknown';
   const deviceName = req.body?.deviceName || session?.deviceName || 'Web Player';
 
-  return await withUserLock(normUser, async () => {
-    const existingLease = activePlaybacks.get(normUser);
-    let leaseEpoch = 1;
+  // Anti-replay check
+  const isValid = await verifyReplayProtection(deviceId, req.body?.seq, req.body?.nonce);
+  if (!isValid) {
+    return res.status(400).json({ error: 'replay_detected', message: 'Invalid or replayed packet' });
+  }
 
-    if (existingLease) {
-      leaseEpoch = existingLease.leaseEpoch;
-      if (existingLease.deviceId !== deviceId) {
-        // New device taking over! Increment epoch and notify old device via SSE
-        leaseEpoch++;
-        notifySupersededViaSse(normUser, existingLease.deviceId, deviceName, leaseEpoch);
-      }
-    }
+  // Acquire distributed mutex lock with 5-second TTL: SET lockKey nonce NX EX 5
+  const lockKey = getRedisLockKey(normUser);
+  const lockNonce = generateSecureToken(12);
+  const lockAcquired = await redis.set(lockKey, lockNonce, 'NX', 'EX', 5);
 
-    const newLease: PlaybackLease = {
-      username: normUser,
+  if (!lockAcquired) {
+    return res.status(409).json({ error: 'lease_locked', message: 'A playback handover is currently processing. Retry shortly.' });
+  }
+
+  try {
+    const playbackKey = getRedisPlaybackKey(normUser);
+    const channelKey = getRedisChannelKey(normUser);
+    const newStreamToken = `stk_${generateSecureToken(24)}`;
+
+    const resultStr = await redis.eval(
+      ATOMIC_HANDOVER_LUA,
+      2,
+      playbackKey,
+      channelKey,
+      normUser,
       deviceId,
       deviceName,
-      sessionToken: session?.sessionToken || 'token',
-      leaseEpoch,
-      leaseId: generateSecureToken(12),
-      trackId: req.body?.trackId,
-      trackTitle: req.body?.trackTitle,
-      trackArtist: req.body?.trackArtist,
-      startedAt: Date.now(),
-      lastHeartbeat: Date.now(),
-      expiresAt: Date.now() + 30000,
-      state: 'playing',
-    };
+      newStreamToken,
+      req.body?.trackId || '',
+      req.body?.trackTitle || '',
+      req.body?.trackArtist || '',
+      req.body?.trackThumb || '',
+      String(req.body?.currentTime || 0),
+      String(req.body?.duration || 0),
+      String(Date.now()),
+      '35'
+    );
 
-    activePlaybacks.set(normUser, newLease);
+    const lease: PlaybackLease = JSON.parse(resultStr);
 
     return res.json({
       success: true,
       active: true,
-      leaseEpoch,
+      leaseEpoch: lease.leaseEpoch,
       deviceId,
-      message: 'Playback lease claimed successfully (Single-device active)',
+      streamToken: newStreamToken,
+      message: 'Playback lease claimed successfully (Atomic Handover)',
     });
-  });
+  } finally {
+    // Release distributed lock
+    await redis.del(lockKey);
+  }
 });
 
-// 5. Playback Heartbeat (Verifies active session lease ownership; returns 409 Conflict if superseded)
+// 5. Playback Heartbeat
 app.post('/api/session/heartbeat', rateLimit(200, 60000), async (req: Request, res: Response) => {
   const session = extractSession(req);
   const username = session?.username || req.body?.username;
   const deviceId = req.body?.deviceId || session?.deviceId;
+  const streamToken = req.headers['x-playback-token'] || req.body?.streamToken;
 
   if (!username || !deviceId) {
     return res.status(401).json({ error: 'Unauthorized heartbeat' });
   }
 
   const normUser = cleanUsername(username);
+  const playbackKey = getRedisPlaybackKey(normUser);
+  const leaseStr = await redis.get(playbackKey);
 
-  return await withUserLock(normUser, async () => {
-    const lease = activePlaybacks.get(normUser);
-    if (!lease || lease.deviceId !== deviceId) {
-      return res.status(409).json({
-        active: false,
-        superseded: true,
-        supersededBy: lease?.deviceName || 'Another device',
-        leaseEpoch: lease?.leaseEpoch || 1,
-        error: 'playback_superseded',
-        message: 'Playback paused because another device or browser tab started playing.',
-      });
-    }
-
-    lease.lastHeartbeat = Date.now();
-    lease.expiresAt = Date.now() + 30000;
-    activePlaybacks.set(normUser, lease);
-
-    return res.json({
-      active: true,
-      leaseEpoch: lease.leaseEpoch,
-      expiresAt: lease.expiresAt,
+  if (!leaseStr) {
+    return res.status(409).json({
+      active: false,
+      superseded: true,
+      supersededBy: 'Unknown',
+      error: 'no_active_lease',
     });
+  }
+
+  const lease: PlaybackLease = JSON.parse(leaseStr);
+
+  // Validate lease ownership: Device must match and stream token must match
+  if (lease.deviceId !== deviceId || (streamToken && lease.streamToken !== streamToken)) {
+    return res.status(409).json({
+      active: false,
+      superseded: true,
+      supersededBy: lease.deviceName || 'Another device',
+      leaseEpoch: lease.leaseEpoch,
+      error: 'playback_superseded',
+      message: 'Playback paused because another device started playing.',
+    });
+  }
+
+  // Refresh lease TTL
+  lease.lastHeartbeat = Date.now();
+  lease.expiresAt = Date.now() + 35000;
+  await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+
+  return res.json({
+    active: true,
+    leaseEpoch: lease.leaseEpoch,
+    expiresAt: lease.expiresAt,
   });
 });
 
@@ -514,84 +1184,108 @@ app.post('/api/session/release-playback', async (req: Request, res: Response) =>
   if (!username || !deviceId) return res.json({ success: true });
 
   const normUser = cleanUsername(username);
-  await withUserLock(normUser, async () => {
-    const lease = activePlaybacks.get(normUser);
-    if (lease && lease.deviceId === deviceId) {
-      activePlaybacks.delete(normUser);
+  const playbackKey = getRedisPlaybackKey(normUser);
+  const leaseStr = await redis.get(playbackKey);
+
+  if (leaseStr) {
+    const lease: PlaybackLease = JSON.parse(leaseStr);
+    if (lease.deviceId === deviceId) {
+      lease.state = 'paused';
+      await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+      broadcastToUser(normUser, {
+        type: 'SYNC_UPDATE',
+        activeDeviceId: deviceId,
+        state: 'paused',
+        currentTime: lease.currentTime,
+      });
     }
-  });
+  }
 
   return res.json({ success: true, message: 'Playback lease released' });
 });
 
 // 7. Get Playback Status
-app.get('/api/session/status', (req: Request, res: Response) => {
+app.get('/api/session/status', async (req: Request, res: Response) => {
   const session = extractSession(req);
   const username = (req.query?.username as string) || session?.username;
   const deviceId = (req.query?.deviceId as string) || session?.deviceId;
 
   if (!username) return res.json({ active: false });
   const normUser = cleanUsername(username);
-  const lease = activePlaybacks.get(normUser);
+  const playbackKey = getRedisPlaybackKey(normUser);
+  const leaseStr = await redis.get(playbackKey);
 
-  const isActive = Boolean(lease && lease.deviceId === deviceId);
+  if (!leaseStr) return res.json({ active: false, hasActivePlayback: false });
+
+  const lease: PlaybackLease = JSON.parse(leaseStr);
+  const isActive = Boolean(lease && lease.deviceId === deviceId && lease.expiresAt > Date.now());
+
   return res.json({
     active: isActive,
-    hasActivePlayback: Boolean(lease),
+    hasActivePlayback: Boolean(lease && lease.expiresAt > Date.now()),
     isCurrentDeviceActive: isActive,
     supersededBy: lease && !isActive ? lease.deviceName : null,
-    leaseEpoch: lease?.leaseEpoch || 1,
+    leaseEpoch: lease.leaseEpoch,
+    lease: {
+      activeDeviceId: lease.deviceId,
+      activeDeviceName: lease.deviceName,
+      leaseEpoch: lease.leaseEpoch,
+      track: lease.trackId
+        ? {
+            id: lease.trackId,
+            title: lease.trackTitle,
+            artist: lease.trackArtist,
+            thumb: lease.trackThumb,
+          }
+        : null,
+      currentTime: lease.currentTime,
+      duration: lease.duration,
+      state: lease.state,
+      updatedAt: lease.updatedAt,
+    },
   });
 });
 
-// 8. Server-Sent Events (SSE) for Instant Supersession Push
-app.get('/api/session/events', (req: Request, res: Response) => {
-  const sessionToken = req.query?.sessionToken as string;
-  const deviceId = req.query?.deviceId as string;
-  const session = sessions.get(sessionToken);
+// =========================================================================
+// 7. SERVER-AUTHORITATIVE AUDIO CHUNK STREAM VALIDATION
+// =========================================================================
 
-  if (!session || !deviceId) {
-    return res.status(401).end();
-  }
-
-  const normUser = session.username;
-
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-  res.write(': connected\n\n');
-
-  if (!sseClients.has(normUser)) {
-    sseClients.set(normUser, new Map());
-  }
-  sseClients.get(normUser)!.set(deviceId, res);
-
-  const pingInterval = setInterval(() => {
-    try {
-      res.write(': ping\n\n');
-    } catch {
-      clearInterval(pingInterval);
-    }
-  }, 15000);
-
-  req.on('close', () => {
-    clearInterval(pingInterval);
-    const userClients = sseClients.get(normUser);
-    if (userClients) {
-      userClients.delete(deviceId);
-      if (userClients.size === 0) sseClients.delete(normUser);
-    }
-  });
-});
-
-// 9. Server-Side Audio Stream Proxy: Allows multi-device concurrent streaming
+// Validates playback server-side: rejects audio chunk requests from stale tokens
 app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!id || id.length < 3) {
     return res.status(400).json({ error: 'Invalid track id' });
+  }
+
+  // Extract playback token from headers or query parameters
+  let playbackToken = (req.headers['x-playback-token'] as string) || (req.query.streamToken as string) || (req.query.token as string);
+  const session = extractSession(req);
+  const username = session?.username || (req.query.username as string);
+  const deviceId = (req.query.deviceId as string) || session?.deviceId;
+
+  // If user session is present, validate single active stream token server-side!
+  if (username) {
+    const normUser = cleanUsername(username);
+    const playbackKey = getRedisPlaybackKey(normUser);
+    const leaseStr = await redis.get(playbackKey);
+
+    if (leaseStr) {
+      const lease: PlaybackLease = JSON.parse(leaseStr);
+
+      // Enforce: ONLY the device holding the active unexpired lease with the MATCHING streamToken can stream audio chunks!
+      const isTokenValid = !playbackToken || playbackToken === lease.streamToken;
+      const isDeviceActive = !deviceId || lease.deviceId === deviceId;
+      const isLeaseActive = lease.expiresAt > Date.now();
+
+      if (!isDeviceActive || (!isTokenValid && lease.streamToken) || !isLeaseActive) {
+        return res.status(403).json({
+          error: 'stale_playback_token',
+          message: 'Audio chunk rejected: stream lease has expired or was transferred to another active device.',
+          activeDevice: lease.deviceName,
+          leaseEpoch: lease.leaseEpoch,
+        });
+      }
+    }
   }
 
   // Proxy audio stream from upstream worker with Range header support
@@ -649,7 +1343,7 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
   }
 });
 
-// 10. Fallback Proxy for all other /api/* requests to Upstream Cloudflare Worker
+// Proxy for all other /api/* requests to Upstream Cloudflare Worker
 app.all('/api/*', async (req: Request, res: Response) => {
   const targetUrl = `${UPSTREAM_WORKER}${req.originalUrl}`;
   try {
@@ -679,12 +1373,11 @@ app.all('/api/*', async (req: Request, res: Response) => {
 });
 
 // =========================================================================
-// FRONTEND SERVING (Vite in Dev / Static in Prod)
+// 8. FRONTEND SERVING (Vite in Dev / Static in Prod)
 // =========================================================================
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    // Development mode: Mount Vite middleware
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: {
@@ -696,7 +1389,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    // Production mode: Serve dist files
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req: Request, res: Response) => {
@@ -705,7 +1397,7 @@ async function startServer() {
   }
 
   server.listen(PORT, HOST, () => {
-    console.log(`⚡ MOUZIKETNA Full-Stack Server listening on http://${HOST}:${PORT}`);
+    console.log(`⚡ MOUZIKETNA Server with Single-Device Playback Sync running on http://${HOST}:${PORT}`);
   });
 }
 

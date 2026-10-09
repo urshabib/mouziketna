@@ -447,12 +447,17 @@ export async function resolveWorkerStream(id: string): Promise<string | null> {
   try {
     const devId = sessionManager.getDeviceId();
     const token = sessionManager.getSessionToken();
+    const streamToken = sessionManager.getStreamToken();
     const query = new URLSearchParams({
       deviceId: devId,
       ...(token ? { sessionToken: token } : {}),
+      ...(streamToken ? { streamToken } : {}),
     }).toString();
     const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}?${query}`, 5500, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(streamToken ? { 'X-Playback-Token': streamToken } : {}),
+      },
     });
     if (r.ok) {
       const j = await r.json();

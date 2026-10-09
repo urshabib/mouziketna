@@ -63,6 +63,9 @@ export const PlayerBar: React.FC = () => {
     setModalAddToPlaylistTrack,
     currentLyrics,
     currentDeviceName,
+    isRemotePlaybackActive,
+    remoteDeviceName,
+    claimPlaybackHere,
     t,
   } = useMusic();
 
@@ -248,14 +251,30 @@ export const PlayerBar: React.FC = () => {
           <ListMusic className="w-4 h-4" />
         </button>
 
-        {/* Current Active Device Badge */}
-        <div
-          className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/5 text-[11px] text-white/50 max-w-[140px] truncate"
-          title={`Connected: ${currentDeviceName}`}
-        >
-          <Radio className="w-3 h-3 text-[#28c76f] flex-shrink-0 animate-pulse" />
-          <span className="truncate">{currentDeviceName}</span>
-        </div>
+        {/* Device Sync & Active Stream Status */}
+        {isRemotePlaybackActive ? (
+          <div
+            onClick={() => claimPlaybackHere()}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-[#28c76f]/15 border border-[#28c76f]/30 text-xs text-[#28c76f] cursor-pointer hover:bg-[#28c76f]/25 active:scale-95 transition-all shadow-[0_0_12px_rgba(40,199,111,0.2)]"
+            title={`Streaming on ${remoteDeviceName || 'another device'}. Click to transfer playback here.`}
+          >
+            <Radio className="w-3.5 h-3.5 text-[#28c76f] animate-pulse flex-shrink-0" />
+            <span className="font-semibold truncate max-w-[150px]">
+              Playing on {remoteDeviceName || 'Remote Device'}
+            </span>
+            <span className="hidden lg:inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#28c76f] text-black font-extrabold uppercase tracking-wider">
+              Play Here
+            </span>
+          </div>
+        ) : (
+          <div
+            className="hidden xl:flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/5 text-[11px] text-white/50 max-w-[140px] truncate"
+            title={`Connected: ${currentDeviceName}`}
+          >
+            <Radio className="w-3.5 h-3.5 text-[#28c76f] flex-shrink-0 animate-pulse" />
+            <span className="truncate">{currentDeviceName}</span>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 group">
           <button
@@ -306,6 +325,9 @@ export const MiniPlayer: React.FC = () => {
     setIsQueueOpen,
     playNext,
     playPrevious,
+    isRemotePlaybackActive,
+    remoteDeviceName,
+    claimPlaybackHere,
   } = useMusic();
 
   const thumbSrc = useTrackThumb(activeTrack);
@@ -442,7 +464,14 @@ export const MiniPlayer: React.FC = () => {
       {/* Meta */}
       <div className="flex-1 min-w-0">
         <h5 className="text-sm font-bold text-white truncate leading-snug">{activeTrack.title}</h5>
-        <p className="text-xs text-white/50 truncate font-medium">{activeTrack.artist}</p>
+        {isRemotePlaybackActive ? (
+          <p className="text-xs text-[#28c76f] truncate font-semibold flex items-center gap-1 mt-0.5">
+            <Radio className="w-3 h-3 animate-pulse flex-shrink-0" />
+            <span>Playing on {remoteDeviceName || 'Remote Device'}</span>
+          </p>
+        ) : (
+          <p className="text-xs text-white/50 truncate font-medium">{activeTrack.artist}</p>
+        )}
       </div>
 
       {/* Actions */}
