@@ -56,7 +56,7 @@ export interface UserProfile {
   autoCachePlayed: boolean;
   liquidGlass: boolean;
   liquidGlassLevel?: 'off' | 'medium' | 'ultra';
-  language?: 'en' | 'fr';
+  language?: 'en' | 'fr' | 'ar';
   theme: 'dark' | 'light';
   accentColor: string;
   customAccentHex?: string;
@@ -73,6 +73,7 @@ export interface UserProfile {
   activePreset: string | null;
   avatarUrl: string | null;
   isAdmin?: boolean;
+  enabled?: boolean;
 }
 
 export interface SongHighlight {

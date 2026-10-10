@@ -189,10 +189,10 @@ export const PlayerBar: React.FC = () => {
           <button
             onClick={togglePlay}
             className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
-            title={isPlaying ? 'Pause' : 'Play'}
+            title={isBuffering ? 'Loading' : isPlaying ? 'Pause' : 'Play'}
           >
-            {isBuffering && isPlaying ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+            {isBuffering ? (
+              <Loader2 className="w-5 h-5 animate-spin text-black" />
             ) : isPlaying ? (
               <Pause className="w-5 h-5 fill-black" />
             ) : (
@@ -520,10 +520,10 @@ export const MiniPlayer: React.FC = () => {
         <button
           onClick={togglePlay}
           className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg active:scale-95 transition-transform cursor-pointer"
-          title={isPlaying ? 'Pause' : 'Play'}
+          title={isBuffering ? 'Loading' : isPlaying ? 'Pause' : 'Play'}
         >
-          {isBuffering && isPlaying ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+          {isBuffering ? (
+            <Loader2 className="w-4 h-4 animate-spin text-black" />
           ) : isPlaying ? (
             <Pause className="w-4 h-4 fill-black" />
           ) : (

@@ -92,6 +92,8 @@ interface MusicContextType {
   setIsAuthGateOpen: (open: boolean) => void;
   isAccountSettingsOpen: boolean;
   setIsAccountSettingsOpen: (open: boolean) => void;
+  isAccountDisabledModalOpen: boolean;
+  setIsAccountDisabledModalOpen: (open: boolean) => void;
   updateUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   updateUserEmail: (newEmail: string) => Promise<{ success: boolean; error?: string }>;
   adminResetUserPassword: (targetUsername: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
@@ -296,8 +298,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const isCachedMatch = Boolean(savedUser && cached && (!cached.username || cached.username.toLowerCase() === savedUser.toLowerCase()));
     return {
       ...defaultProfile,
-      ...(dev || {}),
       ...(isCachedMatch ? cached : {}),
+      ...(dev || {}),
       username: savedUser || '',
       displayName: (isCachedMatch && cached?.displayName) ? cached.displayName : (savedUser || ''),
       avatarUrl: (isCachedMatch && cached?.avatarUrl !== undefined) ? cached.avatarUrl : null,
@@ -305,6 +307,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
+  const [isAccountDisabledModalOpen, setIsAccountDisabledModalOpen] = useState(false);
 
   // Single-Device Playback Supersession Notice & Cross-Device Sync State
   const [supersededNotice, setSupersededNotice] = useState<SupersededEvent | null>(null);
@@ -551,7 +554,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     (lang: Language) => {
       setUserProfile((prev) => {
         const updated = { ...prev, language: lang };
-        saveDeviceSettings({ language: lang });
+        saveDeviceSettings({ ...updated, language: lang });
+        document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+        document.documentElement.setAttribute('lang', lang);
         if (globalUser && globalUser !== 'admin') {
           cacheProfileLocally(globalUser, updated);
           pendingSyncProfRef.current = updated;
@@ -1017,6 +1022,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     document.documentElement.setAttribute('data-preset-tint', presetTint);
     document.documentElement.setAttribute('data-ui-scale', uiScale || 'default');
     document.documentElement.setAttribute('data-lyrics-glow', lyricsGlow || 'default');
+    document.documentElement.setAttribute('dir', (userProfile?.language || 'en') === 'ar' ? 'rtl' : 'ltr');
+    document.documentElement.setAttribute('lang', userProfile?.language || 'en');
     if (lyricsFont) {
       document.documentElement.setAttribute('data-lyrics-font', lyricsFont);
     }
@@ -1143,9 +1150,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsAuthGateOpen(false);
 
       const isUserAdmin = Boolean(data.isAdmin || user.toLowerCase() === 'admin' || data.profile?.isAdmin);
-      if (isUserAdmin) {
-        showToast('Logged in as Admin');
-      }
+      const userEnabledStatus = data.enabled !== undefined ? data.enabled !== false : (data.profile?.enabled !== undefined ? data.profile.enabled !== false : true);
 
       if (data.profile) {
         const p = data.profile;
@@ -1265,6 +1270,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ...p,
           username: p.username || user,
           isAdmin: isUserAdmin,
+          enabled: userEnabledStatus,
           displayName: resolvedDisplayName,
           avatarUrl: resolvedAvatarUrl,
           email: resolvedEmail,
@@ -1333,6 +1339,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           displayName: (isCurrentLocalCacheValid && localCached?.displayName) ? localCached.displayName : user,
           avatarUrl: (isCurrentLocalCacheValid && localCached?.avatarUrl) ? localCached.avatarUrl : null,
           isAdmin: isUserAdmin,
+          enabled: userEnabledStatus,
         };
         setUserProfile(cleanProf);
         cacheProfileLocally(user, cleanProf);
@@ -1775,17 +1782,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     try {
       let updatedOnServer = false;
-      // 1. Try dedicated endpoints first if supported
+      const sessionToken = sessionManager.getSessionToken();
+      // 1. Try dedicated admin reset-password endpoint first
       try {
-        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin-set-password`, 5000, {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/reset-password`, 6000, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+          },
           body: JSON.stringify({
             username: targetUsername,
-            newPassword: newPass,
             password: newPass,
-            adminUser: globalUser,
-            adminPassword: globalPass || localStorage.getItem('hub_active_pass') || '',
           }),
         });
         const resData = await res.json().catch(() => null);
@@ -2369,6 +2377,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Primary playback execution
   const playTrack = async (track: Track, fromQueue = false): Promise<boolean> => {
     if (!track || !track.id) return false;
+
+    // Playback Gating: Unapproved/Disabled accounts cannot play tracks
+    if (userProfile.enabled === false) {
+      setIsAccountDisabledModalOpen(true);
+      showToast(t('modal.accountDisabledToast', 'Account not enabled. Please contact an administrator.'), true);
+      return false;
+    }
+
     const audio = audioRef.current;
     if (!audio) return false;
 
@@ -2703,6 +2719,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const togglePlay = async () => {
+    if (userProfile.enabled === false) {
+      setIsAccountDisabledModalOpen(true);
+      showToast(t('modal.accountDisabledToast', 'Account not enabled. Please contact an administrator.'), true);
+      return;
+    }
+
     if (isRemotePlaybackActive) {
       if (isPlaying) {
         // Remotely playing: send pause command across account to pause it for him!
@@ -3556,6 +3578,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsAuthGateOpen,
         isAccountSettingsOpen,
         setIsAccountSettingsOpen,
+        isAccountDisabledModalOpen,
+        setIsAccountDisabledModalOpen,
         updateUserPassword,
         updateUserEmail,
         adminResetUserPassword,

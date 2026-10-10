@@ -10,6 +10,10 @@ import {
   AlertTriangle,
   Loader2,
   Gift,
+  ShieldAlert,
+  UserPlus,
+  LogIn,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   importPlaylistFromYoutube,
@@ -18,6 +22,7 @@ import {
   extractSpotifyPlaylistUrl,
   fetchWithTimeout,
   NEW_HUB_BACKEND,
+  registerUser,
 } from '../services/api';
 import { PlaylistCover } from './PlaylistCover';
 import { getPersistentPlaylistCover } from '../services/storage';
@@ -38,6 +43,8 @@ export const Modals: React.FC = () => {
     setModalConfirm,
     isAuthGateOpen,
     setIsAuthGateOpen,
+    isAccountDisabledModalOpen,
+    setIsAccountDisabledModalOpen,
     login,
     createPlaylist,
     addTrackToPlaylist,
@@ -63,11 +70,20 @@ export const Modals: React.FC = () => {
   // Audio Recognition state
   const [isListening, setIsListening] = useState(false);
 
-  // Auth gate state
+  // Auth gate state (Login vs Public Sign Up)
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [gateUser, setGateUser] = useState('');
   const [gatePass, setGatePass] = useState('');
   const [gateLoading, setGateLoading] = useState(false);
   const [gateError, setGateError] = useState('');
+
+  // Public Sign Up state
+  const [regUser, setRegUser] = useState('');
+  const [regPass, setRegPass] = useState('');
+  const [regConfirmPass, setRegConfirmPass] = useState('');
+  const [regLoading, setRegLoading] = useState(false);
+  const [regError, setRegError] = useState('');
+  const [regSuccessMsg, setRegSuccessMsg] = useState('');
 
   // Handle Add to Playlist
   const handleAddToExisting = (plId: string) => {
@@ -159,6 +175,55 @@ export const Modals: React.FC = () => {
       setGateError(err.message || 'Connection error. Please try again.');
     } finally {
       setGateLoading(false);
+    }
+  };
+
+  // Handle Public Registration
+  const handlePublicRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const u = regUser.trim();
+    const p = regPass.trim();
+    const cp = regConfirmPass.trim();
+
+    if (!u || !p) {
+      setRegError('Please fill in all fields.');
+      return;
+    }
+    if (u.length < 3) {
+      setRegError('Username must be at least 3 characters.');
+      return;
+    }
+    if (p.length < 4) {
+      setRegError('Password must be at least 4 characters.');
+      return;
+    }
+    if (p !== cp) {
+      setRegError('Passwords do not match.');
+      return;
+    }
+
+    setRegLoading(true);
+    setRegError('');
+    setRegSuccessMsg('');
+
+    try {
+      const res = await registerUser(u, p);
+      if (!res.success) {
+        setRegError(res.error || 'Registration failed.');
+      } else {
+        setRegSuccessMsg(res.message || 'Account registered successfully!');
+        if (res.enabled) {
+          await login(u, p);
+        } else {
+          setRegUser('');
+          setRegPass('');
+          setRegConfirmPass('');
+        }
+      }
+    } catch (err: any) {
+      setRegError(err.message || 'Connection error.');
+    } finally {
+      setRegLoading(false);
     }
   };
 
@@ -409,57 +474,194 @@ export const Modals: React.FC = () => {
         </div>
       )}
 
-      {/* 5. AUTH GATE MODAL */}
+      {/* 5. AUTH GATE MODAL (WITH PUBLIC SIGN UP) */}
       {isAuthGateOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none">
-          <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4">
+          <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4 relative overflow-hidden">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center shadow-lg text-white mb-1">
               <Gift className="w-7 h-7" />
             </div>
 
+            {/* Mode Switcher Tabs */}
+            <div className="flex bg-black/40 p-1 rounded-xl border border-white/10 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setGateError('');
+                  setRegError('');
+                  setRegSuccessMsg('');
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  authMode === 'login'
+                    ? 'bg-[var(--accent)] text-black font-extrabold shadow-md'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>{t('modal.signIn', 'Sign In')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setGateError('');
+                  setRegError('');
+                  setRegSuccessMsg('');
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  authMode === 'register'
+                    ? 'bg-[var(--accent)] text-black font-extrabold shadow-md'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Sign Up</span>
+              </button>
+            </div>
+
+            {authMode === 'login' ? (
+              <>
+                <div>
+                  <h3 className="font-black text-xl text-white">{t('modal.signInTitle', 'Sign In to MOUZIKETNA')}</h3>
+                  <p className="text-xs text-white/50 mt-1">
+                    {t('modal.signInDesc', 'Enter your username and password to access your cloud profile & playlists.')}
+                  </p>
+                </div>
+
+                <form onSubmit={handleGateLogin} className="w-full flex flex-col gap-3">
+                  <input
+                    type="text"
+                    placeholder={t('modal.username', 'Username')}
+                    value={gateUser}
+                    onChange={(e) => setGateUser(e.target.value)}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                  />
+                  <input
+                    type="password"
+                    placeholder={t('modal.password', 'Password')}
+                    value={gatePass}
+                    onChange={(e) => setGatePass(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                  />
+
+                  {gateError && (
+                    <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 text-left">
+                      {gateError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={gateLoading || !gateUser.trim() || !gatePass.trim()}
+                    className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1 cursor-pointer"
+                  >
+                    {gateLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <span>{t('modal.signIn', 'Sign In')}</span>
+                    )}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h3 className="font-black text-xl text-white">Create New Account</h3>
+                  <p className="text-xs text-white/50 mt-1">
+                    Sign up to stream tunes, create playlists, and save your offline music.
+                  </p>
+                </div>
+
+                <form onSubmit={handlePublicRegister} className="w-full flex flex-col gap-3">
+                  <input
+                    type="text"
+                    placeholder="Choose Username"
+                    value={regUser}
+                    onChange={(e) => setRegUser(e.target.value)}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Create Password"
+                    value={regPass}
+                    onChange={(e) => setRegPass(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                  />
+                  <input
+                    type="password"
+                    placeholder="Confirm Password"
+                    value={regConfirmPass}
+                    onChange={(e) => setRegConfirmPass(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                  />
+
+                  {regError && (
+                    <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 text-left">
+                      {regError}
+                    </p>
+                  )}
+
+                  {regSuccessMsg && (
+                    <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs text-left font-semibold flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                      <span>{regSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={regLoading || !regUser.trim() || !regPass.trim() || !regConfirmPass.trim()}
+                    className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1 cursor-pointer"
+                  >
+                    {regLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <span>Register Account</span>
+                    )}
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 6. ACCOUNT NOT ENABLED / RESTRICTED MODAL */}
+      {isAccountDisabledModalOpen && (
+        <div
+          onClick={() => setIsAccountDisabledModalOpen(false)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-[#18181b] glass-panel border border-amber-500/30 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shadow-lg">
+              <ShieldAlert className="w-7 h-7" />
+            </div>
+
             <div>
-              <h3 className="font-black text-2xl text-white">{t('modal.signInTitle', 'Sign In to MOUZIKETNA')}</h3>
-              <p className="text-xs text-white/50 mt-1">
-                {t('modal.signInDesc', 'Enter your username and password to access your cloud profile & playlists.')}
+              <h3 className="font-extrabold text-xl text-white">Account Not Enabled</h3>
+              <p className="text-xs text-white/60 mt-2 leading-relaxed">
+                Your account is currently pending administrator approval. You can browse public playlists and search, but track playback is restricted until an administrator enables your account.
               </p>
             </div>
 
-            <form onSubmit={handleGateLogin} className="w-full flex flex-col gap-3 mt-2">
-              <input
-                type="text"
-                placeholder={t('modal.username', 'Username')}
-                value={gateUser}
-                onChange={(e) => setGateUser(e.target.value)}
-                autoCapitalize="none"
-                autoCorrect="off"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
-              />
-              <input
-                type="password"
-                placeholder={t('modal.password', 'Password')}
-                value={gatePass}
-                onChange={(e) => setGatePass(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
-              />
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300/90 text-left font-medium w-full leading-snug">
+              ✓ Please contact an administrator to enable your account in real time.
+            </div>
 
-              {gateError && (
-                <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 text-left">
-                  {gateError}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={gateLoading || !gateUser.trim() || !gatePass.trim()}
-                className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1 cursor-pointer"
-              >
-                {gateLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <span>{t('modal.signIn', 'Sign In')}</span>
-                )}
-              </button>
-            </form>
+            <button
+              onClick={() => setIsAccountDisabledModalOpen(false)}
+              className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-xs rounded-xl shadow-lg hover:brightness-110 active:scale-95 transition-all cursor-pointer"
+            >
+              Understand & Close
+            </button>
           </div>
         </div>
       )}

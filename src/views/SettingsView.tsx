@@ -816,6 +816,59 @@ export const SettingsView: React.FC = () => {
             </h3>
           </div>
 
+          {/* Global Language Selector Card */}
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <div>
+                <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-[var(--accent)]" />
+                  <span>{t('settings.language', 'Language')}</span>
+                </h4>
+                <p className="text-xs text-white/50 mt-0.5">
+                  {t('settings.languageDesc', 'Choose application display language')}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              {[
+                { id: 'en', name: t('settings.english', 'English'), native: 'English', flag: '🇬🇧' },
+                { id: 'fr', name: t('settings.french', 'Français'), native: 'Français', flag: '🇫🇷' },
+                { id: 'ar', name: t('settings.arabic', 'العربية'), native: 'العربية', flag: '🇹🇳' },
+              ].map((langOption) => {
+                const isSelected = (userProfile.language || 'en') === langOption.id;
+                return (
+                  <button
+                    key={langOption.id}
+                    type="button"
+                    onClick={() => {
+                      setLanguage(langOption.id as any);
+                      showToast(`Language changed to ${langOption.native}`, true);
+                    }}
+                    className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                      isSelected
+                        ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-white font-extrabold shadow-lg scale-[1.02]'
+                        : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">{langOption.flag}</span>
+                      <div className="flex flex-col">
+                        <span className="text-xs font-bold text-white">{langOption.native}</span>
+                        <span className="text-[10px] text-white/40">{langOption.name}</span>
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div className="w-4 h-4 rounded-full bg-[var(--accent)] text-black flex items-center justify-center flex-shrink-0">
+                        <Check className="w-2.5 h-2.5 stroke-[3]" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Liquid Glass Blur (Clean 3-Box Selector) */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
             {/* Container with background element/graphic showcasing refractive blur */}

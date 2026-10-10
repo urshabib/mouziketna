@@ -58,11 +58,11 @@ export async function fetchWithTimeout(url: string, ms = 8000, options: RequestI
   });
 }
 
-export async function fetchJsonRetry<T>(url: string, tries = 3, delay = 500): Promise<T> {
+export async function fetchJsonRetry<T>(url: string, tries = 3, delay = 500, options?: RequestInit): Promise<T> {
   let lastErr: Error | null = null;
   for (let i = 1; i <= tries; i++) {
     try {
-      const res = await fetchWithTimeout(url, 7000);
+      const res = await fetchWithTimeout(url, 7000, options);
       if (res.ok) {
         const data = await res.json();
         return data as T;
@@ -1198,5 +1198,88 @@ export async function getTasteProfileRecommendations(
     return fallbackTrending.filter((t) => !excludeIds.has(t.id)).slice(0, limit);
   } catch {
     return [];
+  }
+}
+
+// =========================================================================
+// PUBLIC REGISTRATION & ADMIN MODERATION API HELPERS
+// =========================================================================
+
+export async function registerUser(username: string, password: string): Promise<{ success: boolean; enabled?: boolean; message?: string; error?: string }> {
+  try {
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/auth/register`, 9000, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && data.error)) {
+      return { success: false, error: data?.error || 'Registration failed' };
+    }
+    return {
+      success: true,
+      enabled: data.enabled !== false,
+      message: data.message || 'Registration successful',
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error during registration' };
+  }
+}
+
+export async function fetchAdminSettings(): Promise<{ autoEnable: boolean }> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/settings`, 7000, {
+      headers: {
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+    });
+    if (!res.ok) return { autoEnable: false };
+    const data = await res.json();
+    return { autoEnable: Boolean(data.autoEnable) };
+  } catch {
+    return { autoEnable: false };
+  }
+}
+
+export async function updateAdminSettings(autoEnable: boolean): Promise<{ success: boolean; autoEnable?: boolean; error?: string }> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/settings`, 7000, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ autoEnable }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && data.error)) {
+      return { success: false, error: data?.error || 'Failed to update admin settings' };
+    }
+    return { success: true, autoEnable: Boolean(data.autoEnable) };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error' };
+  }
+}
+
+export async function toggleUserEnabledStatus(username: string, enabled: boolean): Promise<{ success: boolean; enabled?: boolean; message?: string; error?: string }> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/toggle-enabled`, 7000, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ username, enabled }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && data.error)) {
+      return { success: false, error: data?.error || 'Failed to update user status' };
+    }
+    return { success: true, enabled: data.enabled !== false, message: data.message };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error' };
   }
 }

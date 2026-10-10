@@ -21,6 +21,7 @@ import { OfflineView } from './views/OfflineView';
 import { motion, AnimatePresence } from 'motion/react';
 import { checkForAppUpdates, forceAppUpdateAndRefresh } from './services/pwa';
 import { GeoBlockScreen } from './components/GeoBlockScreen';
+import { ShieldAlert } from 'lucide-react';
 
 const AppShell: React.FC = () => {
   const [isGeoBlocked, setIsGeoBlocked] = React.useState(false);
@@ -47,6 +48,7 @@ const AppShell: React.FC = () => {
     activePane,
     setActivePane,
     userProfile,
+    globalUser,
     toasts,
     showToast,
     isInstallModalOpen,
@@ -65,6 +67,8 @@ const AppShell: React.FC = () => {
     activeTrack,
     isMiniPlayerDismissed,
   } = useMusic();
+
+  const isUserAdmin = Boolean(userProfile?.isAdmin || (globalUser && globalUser.toLowerCase() === 'admin'));
 
   const hasActiveMiniPlayer = !!activeTrack && !isMiniPlayerDismissed;
 
@@ -401,7 +405,27 @@ const AppShell: React.FC = () => {
               {activePane === 'collection' && <CollectionView />}
               {activePane === 'settings' && <SettingsView />}
               {activePane === 'account' && <AccountView />}
-              {activePane === 'admin' && <AdminView />}
+              {activePane === 'admin' && (
+                isUserAdmin ? (
+                  <AdminView />
+                ) : (
+                  <div className="flex flex-col items-center justify-center min-h-[65vh] text-center px-4 animate-in fade-in select-none">
+                    <div className="w-16 h-16 rounded-3xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center mb-4 shadow-xl">
+                      <ShieldAlert className="w-8 h-8" />
+                    </div>
+                    <h2 className="text-2xl font-black text-white">404 - Page Not Found</h2>
+                    <p className="text-xs text-white/50 max-w-md mt-2 leading-relaxed font-medium">
+                      The requested admin route does not exist or requires administrator privileges.
+                    </p>
+                    <button
+                      onClick={() => setActivePane('home')}
+                      className="mt-6 px-6 py-2.5 rounded-xl bg-[var(--accent)] text-black font-extrabold text-xs shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                    >
+                      Return to Home
+                    </button>
+                  </div>
+                )
+              )}
               {activePane === 'offline' && <OfflineView />}
             </motion.div>
           </AnimatePresence>

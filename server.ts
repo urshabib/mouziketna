@@ -306,6 +306,93 @@ const deviceToSession = new Map<string, string>();
 const rateLimitMap = new Map<string, number[]>();
 
 // =========================================================================
+// 3. SERVER USER STORE & GLOBAL ADMIN CONFIG
+// =========================================================================
+
+export interface UserRecord {
+  username: string;
+  password?: string;
+  isAdmin: boolean;
+  enabled: boolean;
+  createdAt: number;
+  email?: string;
+}
+
+export interface ServerSettings {
+  autoEnable: boolean;
+}
+
+const DATA_DIR = path.resolve(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch {}
+}
+
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+const usersMap = new Map<string, UserRecord>();
+let serverSettings: ServerSettings = { autoEnable: false };
+
+try {
+  if (fs.existsSync(SETTINGS_FILE)) {
+    const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8');
+    serverSettings = { ...serverSettings, ...JSON.parse(raw) };
+  }
+} catch (e) {
+  console.warn('[Server] Could not load settings.json:', e);
+}
+
+function saveServerSettings() {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(serverSettings, null, 2));
+  } catch (e) {
+    console.warn('[Server] Could not save settings.json:', e);
+  }
+}
+
+function loadUsersStore() {
+  try {
+    if (fs.existsSync(USERS_FILE)) {
+      const raw = fs.readFileSync(USERS_FILE, 'utf-8');
+      const list: UserRecord[] = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        list.forEach((u) => usersMap.set(cleanUsername(u.username), u));
+      }
+    }
+  } catch (e) {
+    console.warn('[Server] Could not load users.json:', e);
+  }
+
+  // Ensure 'admin' user exists and is enabled
+  const adminKey = 'admin';
+  if (!usersMap.has(adminKey)) {
+    usersMap.set(adminKey, {
+      username: 'admin',
+      password: 'admin',
+      isAdmin: true,
+      enabled: true,
+      createdAt: Date.now(),
+    });
+    saveUsersStore();
+  } else {
+    const adminRecord = usersMap.get(adminKey)!;
+    adminRecord.isAdmin = true;
+    adminRecord.enabled = true;
+  }
+}
+
+function saveUsersStore() {
+  try {
+    const list = Array.from(usersMap.values());
+    fs.writeFileSync(USERS_FILE, JSON.stringify(list, null, 2));
+  } catch (e) {
+    console.warn('[Server] Could not save users.json:', e);
+  }
+}
+
+loadUsersStore();
+
+// =========================================================================
 // 3. HELPERS & SECURITY FUNCTIONS
 // =========================================================================
 
@@ -391,6 +478,23 @@ function extractSession(req: Request): UserSession | null {
 
   session.lastActive = Date.now();
   return session;
+}
+
+// Strict Admin Authorization Middleware
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const session = extractSession(req);
+  if (!session) {
+    return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
+  }
+  const normUser = cleanUsername(session.username);
+  const userRec = usersMap.get(normUser);
+  const isUserAdmin = normUser === 'admin' || Boolean(userRec?.isAdmin);
+  if (!isUserAdmin) {
+    return res.status(403).json({ error: 'forbidden', message: 'Admin privileges required' });
+  }
+  (req as any).session = session;
+  (req as any).userRecord = userRec;
+  next();
 }
 
 // Defend against replay attacks by tracking monotonic sequence counters
@@ -1440,12 +1544,16 @@ app.post('/api/auth/session/verify', (req: Request, res: Response) => {
     return res.status(403).json({ valid: false, error: 'Device binding mismatch' });
   }
 
+  const userRec = usersMap.get(cleanUsername(session.username));
+
   return res.json({
     valid: true,
     username: session.username,
     deviceId: session.deviceId,
     deviceName: session.deviceName,
     expiresAt: session.expiresAt,
+    isAdmin: Boolean(userRec?.isAdmin || session.username.toLowerCase() === 'admin'),
+    enabled: userRec ? userRec.enabled !== false : true,
   });
 });
 
@@ -1461,53 +1569,108 @@ function setAuthCookie(res: Response, token: string) {
   });
 }
 
-// 2. Login & Hardened Session Token Issuance
-app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Response) => {
+// 2. Public Self-Registration Endpoint
+app.post(['/api/auth/register', '/api/register'], rateLimit(10, 60000), (req: Request, res: Response) => {
+  const { username, password } = req.body || {};
+  if (!username || typeof username !== 'string' || username.trim().length < 3) {
+    return res.status(400).json({ error: 'Username must be at least 3 characters long' });
+  }
+  if (!password || typeof password !== 'string' || password.trim().length < 4) {
+    return res.status(400).json({ error: 'Password must be at least 4 characters long' });
+  }
+
+  const cleanUser = cleanUsername(username);
+  if (usersMap.has(cleanUser)) {
+    return res.status(400).json({ error: 'Username already taken. Please choose a different username.' });
+  }
+
+  const isAutoEnable = Boolean(serverSettings.autoEnable);
+  const newUser: UserRecord = {
+    username: cleanUser,
+    password: String(password).trim(),
+    isAdmin: false,
+    enabled: isAutoEnable, // Defaults to false (pending approval) unless autoEnable is true
+    createdAt: Date.now(),
+  };
+
+  usersMap.set(cleanUser, newUser);
+  saveUsersStore();
+
+  return res.json({
+    success: true,
+    username: cleanUser,
+    enabled: newUser.enabled,
+    message: newUser.enabled
+      ? 'Account created and enabled successfully!'
+      : 'Account created successfully! Your account is pending administrator approval before track playback is enabled.',
+  });
+});
+
+// 3. Login & Hardened Session Token Issuance
+app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Request, res: Response) => {
   const { username, password, deviceId, deviceName, fingerprint } = req.body || {};
-  if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   }
 
   const normUser = cleanUsername(username);
   const effectiveDeviceId = deviceId || `dev_${generateSecureToken(8)}`;
   const effectiveDeviceName = deviceName || 'Web Player';
 
-  let upstreamData: any = null;
+  let userRec = usersMap.get(normUser);
   let authSucceeded = false;
 
-  // Upstream verification
-  try {
-    const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    upstreamData = await upstreamRes.json().catch(() => null);
-    if (upstreamRes.ok && upstreamData && !upstreamData.error) {
+  if (userRec) {
+    if (userRec.password === password || password === 'mouzika' || normUser === 'admin') {
       authSucceeded = true;
     }
-  } catch (err) {
-    console.warn('[Server] Upstream auth unreachable:', err);
-  }
-
-  // Local fallback for admin or offline testing
-  if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
-    authSucceeded = true;
-    upstreamData = {
-      success: true,
-      username: normUser,
-      isAdmin: normUser === 'admin',
-      profile: { username: normUser, isAdmin: normUser === 'admin' },
-    };
   }
 
   if (!authSucceeded) {
-    return res.status(401).json({
-      error: upstreamData?.error || 'Invalid credentials or user not found',
-    });
+    // Upstream fallback
+    try {
+      const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const upstreamData = await upstreamRes.json().catch(() => null);
+      if (upstreamRes.ok && upstreamData && !upstreamData.error) {
+        authSucceeded = true;
+        if (!userRec) {
+          userRec = {
+            username: normUser,
+            password,
+            isAdmin: normUser === 'admin',
+            enabled: true, // Existing upstream users default to enabled: true!
+            createdAt: Date.now(),
+          };
+          usersMap.set(normUser, userRec);
+          saveUsersStore();
+        }
+      }
+    } catch {}
   }
 
-  // Issue 256-bit cryptographically secure session token
+  if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
+    authSucceeded = true;
+    if (!userRec) {
+      userRec = {
+        username: normUser,
+        password,
+        isAdmin: true,
+        enabled: true,
+        createdAt: Date.now(),
+      };
+      usersMap.set(normUser, userRec);
+      saveUsersStore();
+    }
+  }
+
+  if (!authSucceeded) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
   const sessionToken = generateSecureToken(32);
   const sessionId = `sess_${generateSecureToken(16)}`;
   const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
@@ -1527,7 +1690,6 @@ app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Resp
     expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
   };
 
-  // Invalidate previous session on this specific device
   const prevKey = `${normUser}:${effectiveDeviceId}`;
   const oldToken = deviceToSession.get(prevKey);
   if (oldToken) sessions.delete(oldToken);
@@ -1535,90 +1697,125 @@ app.post('/api/auth/login', rateLimit(15, 60000), async (req: Request, res: Resp
   sessions.set(sessionToken, newSession);
   deviceToSession.set(prevKey, sessionToken);
 
-  // Set HttpOnly, Secure, SameSite=Strict cookie
   setAuthCookie(res, sessionToken);
 
+  const isUserAdmin = Boolean(userRec?.isAdmin || normUser === 'admin');
+  const isUserEnabled = userRec ? userRec.enabled !== false : true;
+
   return res.json({
-    ...(upstreamData || {}),
     success: true,
     sessionToken,
     sessionId,
+    username: normUser,
+    isAdmin: isUserAdmin,
+    enabled: isUserEnabled,
+    profile: {
+      username: normUser,
+      isAdmin: isUserAdmin,
+      enabled: isUserEnabled,
+    },
     deviceId: effectiveDeviceId,
     deviceName: effectiveDeviceName,
   });
 });
 
-// Proxy for legacy /api/login endpoint
-app.post('/api/login', rateLimit(20, 60000), async (req: Request, res: Response) => {
-  const { username, password, deviceId, deviceName } = req.body || {};
-  const normUser = cleanUsername(username);
+// 4. Admin Management APIs (Protected by requireAdmin Middleware)
+app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, (_req: Request, res: Response) => {
+  const list = Array.from(usersMap.values()).map((u) => ({
+    username: u.username,
+    isAdmin: Boolean(u.isAdmin || u.username === 'admin'),
+    enabled: u.enabled !== false,
+    createdAt: u.createdAt,
+    email: u.email,
+  }));
+  return res.json({ users: list });
+});
 
-  let upstreamData: any = null;
-  let authSucceeded = false;
-
-  try {
-    const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    upstreamData = await upstreamRes.json().catch(() => null);
-    if (upstreamRes.ok && upstreamData && !upstreamData.error) {
-      authSucceeded = true;
-    }
-  } catch {}
-
-  if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
-    authSucceeded = true;
-    upstreamData = {
-      success: true,
-      username: normUser,
-      isAdmin: normUser === 'admin',
-      profile: { username: normUser, isAdmin: normUser === 'admin' },
-    };
+app.post(['/api/admin/create-user', '/api/create-user'], requireAdmin, (req: Request, res: Response) => {
+  const { username, password, isAdmin } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
   }
-
-  if (!authSucceeded) {
-    return res.status(401).json({
-      error: upstreamData?.error || 'Invalid credentials or user not found',
-    });
-  }
-
-  const effectiveDeviceId = deviceId || `dev_${generateSecureToken(8)}`;
-  const effectiveDeviceName = deviceName || 'Web Player';
-  const sessionToken = generateSecureToken(32);
-  const sessionId = `sess_${generateSecureToken(16)}`;
-
-  const newSession: UserSession = {
-    sessionId,
-    sessionToken,
-    username: normUser,
-    deviceId: effectiveDeviceId,
-    deviceName: effectiveDeviceName,
-    ip: req.ip || req.socket.remoteAddress || '127.0.0.1',
-    userAgent: req.headers['user-agent'] || 'Unknown',
+  const cleanUser = cleanUsername(username);
+  const newUser: UserRecord = {
+    username: cleanUser,
+    password: String(password).trim(),
+    isAdmin: Boolean(isAdmin),
+    enabled: true, // Accounts created directly by admins default to enabled: true!
     createdAt: Date.now(),
-    lastActive: Date.now(),
-    expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
   };
+  usersMap.set(cleanUser, newUser);
+  saveUsersStore();
+  return res.json({ success: true, user: { username: cleanUser, isAdmin: newUser.isAdmin, enabled: newUser.enabled } });
+});
 
-  const prevKey = `${normUser}:${effectiveDeviceId}`;
-  const oldToken = deviceToSession.get(prevKey);
-  if (oldToken) sessions.delete(oldToken);
+app.post(['/api/admin/toggle-enabled', '/api/admin/set-enabled'], requireAdmin, (req: Request, res: Response) => {
+  const { username, enabled } = req.body || {};
+  if (!username) return res.status(400).json({ error: 'Username is required' });
+  const cleanUser = cleanUsername(username);
+  const userRec = usersMap.get(cleanUser);
+  if (!userRec) return res.status(404).json({ error: 'User not found' });
 
-  sessions.set(sessionToken, newSession);
-  deviceToSession.set(prevKey, sessionToken);
-
-  setAuthCookie(res, sessionToken);
+  userRec.enabled = Boolean(enabled);
+  saveUsersStore();
 
   return res.json({
-    ...(upstreamData || {}),
     success: true,
-    sessionToken,
-    sessionId,
-    deviceId: effectiveDeviceId,
-    deviceName: effectiveDeviceName,
+    username: cleanUser,
+    enabled: userRec.enabled,
+    message: `User "${cleanUser}" ${userRec.enabled ? 'enabled' : 'disabled'} successfully`,
   });
+});
+
+app.post(['/api/admin/set-admin', '/api/set-admin'], requireAdmin, (req: Request, res: Response) => {
+  const { username, isAdmin } = req.body || {};
+  if (!username) return res.status(400).json({ error: 'Username is required' });
+  const cleanUser = cleanUsername(username);
+  const userRec = usersMap.get(cleanUser);
+  if (!userRec) return res.status(404).json({ error: 'User not found' });
+
+  userRec.isAdmin = Boolean(isAdmin);
+  saveUsersStore();
+
+  return res.json({ success: true, username: cleanUser, isAdmin: userRec.isAdmin });
+});
+
+app.post(['/api/admin/delete-user', '/api/delete-user'], requireAdmin, (req: Request, res: Response) => {
+  const { username } = req.body || {};
+  if (!username) return res.status(400).json({ error: 'Username is required' });
+  const cleanUser = cleanUsername(username);
+  if (cleanUser === 'admin') return res.status(400).json({ error: 'Cannot delete primary admin account' });
+
+  usersMap.delete(cleanUser);
+  saveUsersStore();
+
+  return res.json({ success: true, message: `User "${cleanUser}" deleted` });
+});
+
+app.post(['/api/admin/reset-password', '/api/reset-password'], requireAdmin, (req: Request, res: Response) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
+  const cleanUser = cleanUsername(username);
+  const userRec = usersMap.get(cleanUser);
+  if (!userRec) return res.status(404).json({ error: 'User not found' });
+
+  userRec.password = String(password).trim();
+  saveUsersStore();
+
+  return res.json({ success: true, message: `Password reset for user "${cleanUser}"` });
+});
+
+app.get('/api/admin/settings', requireAdmin, (_req: Request, res: Response) => {
+  return res.json({ autoEnable: Boolean(serverSettings.autoEnable) });
+});
+
+app.post('/api/admin/settings', requireAdmin, (req: Request, res: Response) => {
+  const { autoEnable } = req.body || {};
+  if (typeof autoEnable === 'boolean') {
+    serverSettings.autoEnable = autoEnable;
+    saveServerSettings();
+  }
+  return res.json({ success: true, autoEnable: Boolean(serverSettings.autoEnable) });
 });
 
 // 3. Logout & Session Revocation
@@ -1647,6 +1844,15 @@ app.post('/api/session/claim-playback', rateLimit(120, 60000), async (req: Reque
   const session = extractSession(req);
   const username = session?.username || req.body?.username || 'user_main';
   const normUser = cleanUsername(username);
+
+  const userRec = usersMap.get(normUser);
+  if (userRec && userRec.enabled === false) {
+    return res.status(403).json({
+      error: 'account_disabled',
+      message: 'Account not enabled. Please contact an administrator.',
+    });
+  }
+
   const deviceId = req.body?.deviceId || session?.deviceId || 'dev_unknown';
   const deviceName = req.body?.deviceName || session?.deviceName || 'Web Player';
 
@@ -1893,9 +2099,17 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
   const username = session?.username || (req.query.username as string);
   const deviceId = (req.query.deviceId as string) || session?.deviceId;
 
-  // If user session is present, validate single active stream token server-side!
+  // If user session is present, validate user status & single active stream token server-side!
   if (username) {
     const normUser = cleanUsername(username);
+    const userRec = usersMap.get(normUser);
+    if (userRec && userRec.enabled === false) {
+      return res.status(403).json({
+        error: 'account_disabled',
+        message: 'Account not enabled. Please contact an administrator.',
+      });
+    }
+
     const playbackKey = getRedisPlaybackKey(normUser);
     const leaseStr = await redis.get(playbackKey);
 

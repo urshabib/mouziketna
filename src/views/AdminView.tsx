@@ -26,11 +26,13 @@ import {
   X,
   Mail,
 } from 'lucide-react';
-import { NEW_HUB_BACKEND, fetchWithTimeout, fetchJsonRetry } from '../services/api';
+import { NEW_HUB_BACKEND, fetchWithTimeout, fetchJsonRetry, fetchAdminSettings, updateAdminSettings, toggleUserEnabledStatus } from '../services/api';
+import { sessionManager } from '../services/sessionManager';
 
 interface AdminUserRecord {
   username: string;
   isAdmin: boolean;
+  enabled?: boolean;
   likedCount?: number;
   playlistCount?: number;
   password?: string;
@@ -43,6 +45,10 @@ export const AdminView: React.FC = () => {
   const [users, setUsers] = useState<AdminUserRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Global Auto-Enable Setting state
+  const [autoEnable, setAutoEnable] = useState(false);
+  const [autoEnableLoading, setAutoEnableLoading] = useState(false);
 
   // New user form state
   const [newUsername, setNewUsername] = useState('');
@@ -62,17 +68,29 @@ export const AdminView: React.FC = () => {
   // Cloudflare guide modal state
   const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
 
-  const loadUsers = async () => {
+  const loadAdminData = async () => {
     setLoading(true);
     try {
-      const data = await fetchJsonRetry<any>(`${NEW_HUB_BACKEND}/api/list-users`, 3);
-      if (data && Array.isArray(data.users)) {
-        setUsers(data.users);
-      } else if (Array.isArray(data)) {
-        setUsers(data);
+      const sessionToken = sessionManager.getSessionToken();
+      const [usersData, settingsData] = await Promise.all([
+        fetchJsonRetry<any>(
+          `${NEW_HUB_BACKEND}/api/list-users`,
+          3,
+          500,
+          sessionToken ? { headers: { Authorization: `Bearer ${sessionToken}` } } : undefined
+        ).catch(() => ({ users: [] })),
+        fetchAdminSettings().catch(() => ({ autoEnable: false })),
+      ]);
+
+      if (usersData && Array.isArray(usersData.users)) {
+        setUsers(usersData.users);
+      } else if (Array.isArray(usersData)) {
+        setUsers(usersData);
       } else {
         setUsers([]);
       }
+
+      setAutoEnable(settingsData.autoEnable);
     } catch {
       showToast('Could not load users list from server', true);
     } finally {
@@ -81,8 +99,38 @@ export const AdminView: React.FC = () => {
   };
 
   useEffect(() => {
-    loadUsers();
+    loadAdminData();
   }, []);
+
+  const handleToggleAutoEnable = async () => {
+    const next = !autoEnable;
+    setAutoEnableLoading(true);
+    const res = await updateAdminSettings(next);
+    setAutoEnableLoading(false);
+    if (res.success) {
+      setAutoEnable(next);
+      showToast(next ? '✓ Auto-enable turned ON (New registrations will be active instantly)' : '✓ Auto-enable turned OFF (New registrations require manual admin approval)');
+    } else {
+      showToast(res.error || 'Failed to update setting', true);
+    }
+  };
+
+  const handleToggleUserEnabled = async (targetUsername: string, currentEnabled: boolean) => {
+    setUpdatingUser(targetUsername);
+    const next = !currentEnabled;
+    const res = await toggleUserEnabledStatus(targetUsername, next);
+    setUpdatingUser(null);
+
+    if (res.success) {
+      showToast(next ? `User "${targetUsername}" ENABLED for playback` : `User "${targetUsername}" DISABLED`);
+      setUsers((prev) =>
+        prev.map((u) => (u.username.toLowerCase() === targetUsername.toLowerCase() ? { ...u, enabled: next } : u))
+      );
+    } else {
+      showToast(res.error || 'Failed to update user status', true);
+      loadAdminData();
+    }
+  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,9 +143,13 @@ export const AdminView: React.FC = () => {
     setCreating(true);
 
     try {
+      const sessionToken = sessionManager.getSessionToken();
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/create-user`, 9000, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
         body: JSON.stringify({
           username: u,
           password: p,
@@ -115,7 +167,7 @@ export const AdminView: React.FC = () => {
       setNewUsername('');
       setNewPassword('');
       setNewIsAdmin(false);
-      loadUsers();
+      loadAdminData();
     } catch (err: any) {
       showToast(err.message || 'Error creating user', true);
     } finally {
@@ -127,9 +179,13 @@ export const AdminView: React.FC = () => {
     setUpdatingUser(targetUsername);
     const newStatus = !currentAdminStatus;
     try {
+      const sessionToken = sessionManager.getSessionToken();
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/set-admin`, 8000, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
         body: JSON.stringify({
           username: targetUsername,
           isAdmin: newStatus,
@@ -148,7 +204,7 @@ export const AdminView: React.FC = () => {
       );
     } catch (err: any) {
       showToast(err.message || 'Failed to change admin status', true);
-      loadUsers();
+      loadAdminData();
     } finally {
       setUpdatingUser(null);
     }
@@ -169,9 +225,13 @@ export const AdminView: React.FC = () => {
   const performDeleteUser = async (uName: string) => {
     setUpdatingUser(uName);
     try {
+      const sessionToken = sessionManager.getSessionToken();
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/delete-user`, 8000, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
         body: JSON.stringify({ username: uName }),
       });
       const resData = await res.json().catch(() => null);
@@ -182,7 +242,7 @@ export const AdminView: React.FC = () => {
       setUsers((prev) => prev.filter((u) => u.username.toLowerCase() !== uName.toLowerCase()));
     } catch (err: any) {
       showToast(err.message || 'Failed to delete user', true);
-      loadUsers();
+      loadAdminData();
     } finally {
       setUpdatingUser(null);
     }
@@ -211,7 +271,7 @@ export const AdminView: React.FC = () => {
         setUsers((prev) =>
           prev.map((u) => (u.username.toLowerCase() === target.toLowerCase() ? { ...u, password: newPass } : u))
         );
-        loadUsers();
+        loadAdminData();
       } else {
         showToast(res.error || 'Failed to update password', true);
       }
@@ -289,6 +349,45 @@ export const AdminView: React.FC = () => {
             <span className="text-xs font-bold text-[var(--accent)]">{totalAdmins} Admins</span>
           </div>
         </div>
+      </div>
+
+      {/* 0. Global Registration Moderation Control Card */}
+      <div className="p-6 sm:p-7 rounded-3xl bg-white/[0.03] glass-panel border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 shadow-xl">
+        <div className="flex items-start gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] flex-shrink-0 mt-0.5">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-extrabold text-base text-white">Auto-Enable New Registrations</h3>
+              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                autoEnable ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+              }`}>
+                {autoEnable ? 'Active (Instant)' : 'Inactive (Approval Required)'}
+              </span>
+            </div>
+            <p className="text-xs text-white/50 mt-1 leading-relaxed max-w-xl">
+              When active, new self-registered accounts are automatically approved for track playback. When inactive, new sign-ups default to pending approval until manually enabled by an administrator.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleToggleAutoEnable}
+          disabled={autoEnableLoading}
+          className={`px-5 py-2.5 rounded-2xl font-extrabold text-xs flex items-center gap-2 transition-all shadow-md cursor-pointer flex-shrink-0 ${
+            autoEnable
+              ? 'bg-emerald-500 text-black hover:brightness-110 active:scale-95'
+              : 'bg-white/10 hover:bg-white/20 text-white border border-white/15'
+          }`}
+        >
+          {autoEnableLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <span>{autoEnable ? 'Auto-Enable ON' : 'Turn Auto-Enable ON'}</span>
+          )}
+        </button>
       </div>
 
       {/* 1. Create User Card */}
@@ -370,7 +469,7 @@ export const AdminView: React.FC = () => {
 
             {/* Refresh Button */}
             <button
-              onClick={loadUsers}
+              onClick={loadAdminData}
               disabled={loading}
               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors disabled:opacity-50"
               title="Refresh users list"
@@ -432,6 +531,13 @@ export const AdminView: React.FC = () => {
                             Admin
                           </span>
                         )}
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider border ${
+                          u.enabled !== false
+                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                            : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                        }`}>
+                          {u.enabled !== false ? 'Enabled' : 'Pending Approval'}
+                        </span>
                       </div>
 
                       {/* Counts / stats / email / password */}
@@ -490,6 +596,33 @@ export const AdminView: React.FC = () => {
 
                   {/* Actions */}
                   <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+                    {/* Enable / Disable Status Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleUserEnabled(u.username, u.enabled !== false)}
+                      disabled={isBeingUpdated}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        u.enabled !== false
+                          ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30'
+                      } disabled:opacity-40`}
+                      title={u.enabled !== false ? 'Click to disable account' : 'Click to enable account for playback'}
+                    >
+                      {isBeingUpdated ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : u.enabled !== false ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>Enabled</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Approve & Enable</span>
+                        </>
+                      )}
+                    </button>
+
                     {/* Modify User Password Button */}
                     <button
                       type="button"
