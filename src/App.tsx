@@ -20,8 +20,27 @@ import { AdminView } from './views/AdminView';
 import { OfflineView } from './views/OfflineView';
 import { motion, AnimatePresence } from 'motion/react';
 import { checkForAppUpdates, forceAppUpdateAndRefresh } from './services/pwa';
+import { GeoBlockScreen } from './components/GeoBlockScreen';
 
 const AppShell: React.FC = () => {
+  const [isGeoBlocked, setIsGeoBlocked] = React.useState(false);
+  const [geoBlockMessage, setGeoBlockMessage] = React.useState('');
+
+  useEffect(() => {
+    fetch('/api/geo/check')
+      .then(async (res) => {
+        if (res.status === 403) {
+          const data = await res.json().catch(() => ({}));
+          setIsGeoBlocked(true);
+          setGeoBlockMessage(data.message || 'Access restricted: Tunisia only.');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  if (isGeoBlocked) {
+    return <GeoBlockScreen message={geoBlockMessage} />;
+  }
   const {
     activePane,
     setActivePane,
