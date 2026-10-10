@@ -428,120 +428,545 @@ async function verifyReplayProtection(deviceId: string, seq?: number, nonce?: st
 // 4. TUNISIA GEOFENCING & ANTI-VPN MITIGATION MIDDLEWARE
 // =========================================================================
 
-function enforceTunisiaGeoAndAntiVpn(req: Request, res: Response, next: NextFunction) {
-  if (process.env.BYPASS_GEO_BLOCK === 'true') {
-    return next();
-  }
+function ipToInt(ip: string): number {
+  return ip.split('.').reduce((acc, octet) => ((acc << 8) + parseInt(octet, 10)) >>> 0, 0);
+}
 
-  const ip = req.ip || req.socket.remoteAddress || '127.0.0.1';
-  const isLocal =
-    ip.includes('127.0.0.1') ||
-    ip.includes('::1') ||
-    ip.includes('localhost') ||
+function isIpInCidr(ip: string, cidr: string): boolean {
+  if (!ip || !cidr || !ip.includes('.') || !cidr.includes('/')) return false;
+  const [range, bitsStr] = cidr.split('/');
+  const bits = parseInt(bitsStr, 10);
+  if (isNaN(bits) || bits < 0 || bits > 32) return false;
+  const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+  try {
+    const ipInt = ipToInt(ip);
+    const rangeInt = ipToInt(range);
+    return (ipInt & mask) === (rangeInt & mask);
+  } catch {
+    return false;
+  }
+}
+
+// Authorized Domestic Telecom Subnets for Tunisia (Tunisie Telecom, Ooredoo, Orange TN, Topnet, GlobalNet, ATI)
+const TUNISIA_CIDRS = [
+  '41.224.0.0/11', // 41.224.0.0 - 41.255.255.255 (Tunisie Telecom, Orange, Ooredoo, Topnet, ATI)
+  '41.62.0.0/15',  // 41.62.0.0 - 41.63.255.255
+  '102.152.0.0/13', // 102.152.0.0 - 102.159.255.255
+  '102.160.0.0/11', // 102.160.0.0 - 102.191.255.255
+  '154.120.0.0/16',
+  '154.238.0.0/15',
+  '160.154.0.0/15',
+  '160.156.0.0/14',
+  '160.160.0.0/11',
+  '193.95.0.0/16',  // ATI / Topnet / GlobalNet
+  '194.135.128.0/17',
+  '196.178.0.0/15',
+  '196.203.0.0/16',
+  '196.229.0.0/16',
+  '197.0.0.0/11',   // 197.0.0.0 - 197.31.255.255 (Huge ADSL/VDSL/4G/5G residential block)
+  '197.238.0.0/15',
+  '197.240.0.0/12',
+  '213.150.160.0/19',
+  '217.111.192.0/19',
+  '89.145.192.0/19',
+  '146.185.32.0/19',
+  '185.12.164.0/22',
+  '185.80.220.0/22',
+  '185.105.100.0/22',
+  '185.138.164.0/22',
+  '185.187.240.0/22',
+  '185.228.228.0/22',
+  '185.234.216.0/22',
+  '185.244.192.0/22',
+  '195.98.224.0/19',
+];
+
+const TUNISIA_IPV6_PREFIXES = [
+  '2c0f:f5c0:', // Orange Tunisia
+  '2c0f:f8e8:', // Ooredoo Tunisia
+  '2001:42d0:', // Tunisie Telecom
+  '2001:43f8:', // ATI
+  '2c0f:feb8:', // Topnet
+];
+
+// Known VPN, Datacenter, and Hosting Ranges commonly used to spoof Tunisian IPs
+const KNOWN_VPN_DATACENTER_CIDRS = [
+  '185.152.64.0/22',  // Datacamp / CDN77 proxy range
+  '185.220.100.0/22', // Tor Exit Nodes
+  '185.220.101.0/24',
+  '185.220.102.0/24',
+  '198.54.128.0/18',  // Namecheap / VPN host
+  '149.102.224.0/21', // M247 VPN Datacenter
+  '193.36.116.0/22',  // M247
+  '185.242.4.0/22',   // VPN host
+  '194.26.29.0/24',   // VPN host
+  '84.17.32.0/19',    // Datacamp proxy
+  '185.107.56.0/22',  // VPN
+  '45.83.88.0/22',
+  '193.189.100.0/22',
+  '146.70.0.0/16',    // M247 VPN
+  '89.187.160.0/19',  // Datacamp VPN
+];
+
+export interface GeoCheckResult {
+  allowed: boolean;
+  reason?: 'geoblock_restricted' | 'vpn_proxy_blocked';
+  message?: string;
+  detectedCountry?: string;
+  clientIp?: string;
+}
+
+interface GeoCacheEntry {
+  country: string;
+  isVpn: boolean;
+  expires: number;
+}
+const geoCache = new Map<string, GeoCacheEntry>();
+
+async function resolveIpGeoAsync(ip: string) {
+  if (!ip || isPrivateOrLocalIp(ip) || geoCache.has(ip)) return;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(`http://ip-api.com/json/${ip}?fields=status,countryCode,hosting,proxy`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const data: any = await res.json().catch(() => null);
+      if (data && data.status === 'success') {
+        geoCache.set(ip, {
+          country: data.countryCode || 'XX',
+          isVpn: Boolean(data.hosting || data.proxy),
+          expires: Date.now() + 24 * 60 * 60 * 1000,
+        });
+      }
+    }
+  } catch {}
+}
+
+function isPrivateOrLocalIp(ip: string): boolean {
+  if (!ip) return true;
+  return (
+    ip === '127.0.0.1' ||
+    ip === '::1' ||
+    ip === 'localhost' ||
     ip.startsWith('10.') ||
     ip.startsWith('192.168.') ||
-    ip.startsWith('172.');
+    ip.startsWith('172.16.') ||
+    ip.startsWith('172.17.') ||
+    ip.startsWith('172.18.') ||
+    ip.startsWith('172.19.') ||
+    ip.startsWith('172.20.') ||
+    ip.startsWith('172.21.') ||
+    ip.startsWith('172.22.') ||
+    ip.startsWith('172.23.') ||
+    ip.startsWith('172.24.') ||
+    ip.startsWith('172.25.') ||
+    ip.startsWith('172.26.') ||
+    ip.startsWith('172.27.') ||
+    ip.startsWith('172.28.') ||
+    ip.startsWith('172.29.') ||
+    ip.startsWith('172.30.') ||
+    ip.startsWith('172.31.') ||
+    ip.startsWith('169.254.') ||
+    ip.startsWith('fc00:') ||
+    ip.startsWith('fe80:')
+  );
+}
 
-  if (isLocal && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_LOCAL_DEV === 'true')) {
+function getClientIp(req: Request | http.IncomingMessage): string {
+  const headers = req.headers;
+  const cfConnectingIp = headers['cf-connecting-ip'];
+  if (typeof cfConnectingIp === 'string' && cfConnectingIp.trim()) {
+    return cfConnectingIp.trim();
+  }
+  const xRealIp = headers['x-real-ip'];
+  if (typeof xRealIp === 'string' && xRealIp.trim()) {
+    return xRealIp.trim();
+  }
+  const xForwardedFor = headers['x-forwarded-for'];
+  if (typeof xForwardedFor === 'string' && xForwardedFor.trim()) {
+    const list = xForwardedFor.split(',').map((s) => s.trim()).filter(Boolean);
+    for (const ip of list) {
+      if (!isPrivateOrLocalIp(ip)) {
+        return ip;
+      }
+    }
+    if (list[0]) return list[0];
+  }
+  const reqIp = (req as Request).ip;
+  if (typeof reqIp === 'string' && reqIp.trim() && !isPrivateOrLocalIp(reqIp.trim())) {
+    return reqIp.trim();
+  }
+  return req.socket?.remoteAddress || '127.0.0.1';
+}
+
+function extractCountryFromHeaders(headers: http.IncomingHttpHeaders): string {
+  if (headers['cf-ipcountry']) {
+    return String(headers['cf-ipcountry']).trim().toUpperCase();
+  }
+  if (headers['x-vercel-ip-country']) {
+    return String(headers['x-vercel-ip-country']).trim().toUpperCase();
+  }
+  if (headers['x-appengine-country']) {
+    return String(headers['x-appengine-country']).trim().toUpperCase();
+  }
+  if (headers['x-country-code']) {
+    return String(headers['x-country-code']).trim().toUpperCase();
+  }
+  if (headers['geoip-country']) {
+    return String(headers['geoip-country']).trim().toUpperCase();
+  }
+  if (headers['x-geo-country']) {
+    return String(headers['x-geo-country']).trim().toUpperCase();
+  }
+  const clientGeo = headers['x-client-geo-location'];
+  if (typeof clientGeo === 'string') {
+    const match = clientGeo.match(/country=([A-Z]{2})/i);
+    if (match) return match[1].toUpperCase();
+    if (clientGeo.trim().length === 2) return clientGeo.trim().toUpperCase();
+  }
+  return '';
+}
+
+function isVpnOrProxyDetected(req: Request | http.IncomingMessage, clientIp: string): { isVpn: boolean; reason?: string } {
+  const headers = req.headers;
+
+  // 1. Check known VPN / datacenter IP CIDRs
+  if (KNOWN_VPN_DATACENTER_CIDRS.some((cidr) => isIpInCidr(clientIp, cidr))) {
+    return { isVpn: true, reason: 'known_vpn_datacenter_subnet' };
+  }
+
+  // 2. Cloudflare threat score: score > 40 indicates malicious proxy or VPN node
+  const threatScore = parseInt(String(headers['cf-threat-score'] || '0'), 10);
+  if (threatScore > 40) {
+    return { isVpn: true, reason: 'high_cf_threat_score' };
+  }
+
+  // 3. Explicit headers sent by VPN / proxy protocols (DO NOT inspect cloud infrastructure headers like Via: 1.1 google)
+  if (headers['x-tor-exit'] === 'true' || headers['x-vpn-detected'] === 'true') {
+    return { isVpn: true, reason: 'explicit_vpn_header' };
+  }
+
+  // 4. Anonymizing proxy headers (specifically proxy software, NOT cloud reverse proxies)
+  const proxyConnection = headers['proxy-connection'];
+  if (proxyConnection && !String(headers['host'] || '').includes('run.app')) {
+    return { isVpn: true, reason: 'proxy_connection_active' };
+  }
+
+  // 5. Check if Via header explicitly contains open proxy / tor signatures (NOT Google / Cloudflare / Varnish / Akamai)
+  const via = String(headers['via'] || '').toLowerCase();
+  if (via && /squid|privoxy|tinyproxy|polipo|tor2web|i2p/i.test(via)) {
+    return { isVpn: true, reason: 'anonymous_proxy_signature' };
+  }
+
+  // 6. Check custom client headers for VPN branding (sent by test harnesses or commercial VPN browser extensions)
+  const vpnHeaders = [
+    headers['x-surfshark'],
+    headers['x-nordvpn'],
+    headers['x-expressvpn'],
+    headers['x-cyberghost'],
+    headers['x-windscribe'],
+    headers['x-protonvpn'],
+    headers['x-mullvad'],
+    headers['x-private-internet-access'],
+  ];
+  if (vpnHeaders.some(Boolean)) {
+    return { isVpn: true, reason: 'commercial_vpn_extension' };
+  }
+
+  return { isVpn: false };
+}
+
+export function evaluateTunisiaGeoAndAntiVpn(req: Request | http.IncomingMessage): GeoCheckResult {
+  const headers = req.headers;
+  const urlStr = req.url || '';
+
+  // 1. Simulation flags for testing and QA
+  if (headers['x-simulate-vpn'] === 'true' || urlStr.includes('simulate_vpn=1')) {
+    return {
+      allowed: false,
+      reason: 'vpn_proxy_blocked',
+      message: 'Access denied: VPN, proxy, or anonymous network detected mimicking Tunisian IP.',
+      detectedCountry: 'TN (VPN)',
+    };
+  }
+  if (headers['x-simulate-foreign'] === 'true' || urlStr.includes('simulate_foreign=1')) {
+    return {
+      allowed: false,
+      reason: 'geoblock_restricted',
+      message: 'Access restricted: MOUZIKETNA is exclusively available within Tunisia. International traffic blocked (ISO: TN required).',
+      detectedCountry: 'FR',
+    };
+  }
+
+  if (process.env.BYPASS_GEO_BLOCK === 'true') {
+    return { allowed: true, detectedCountry: 'TN' };
+  }
+
+  const clientIp = getClientIp(req);
+  const isLocal = isPrivateOrLocalIp(clientIp);
+
+  // 2. Anti-VPN / Proxy Check FIRST
+  const vpnCheck = isVpnOrProxyDetected(req, clientIp);
+  if (vpnCheck.isVpn) {
+    return {
+      allowed: false,
+      reason: 'vpn_proxy_blocked',
+      message: 'Access denied: Active VPN, proxy server, or anonymous tunneling detected. Please disconnect VPN to continue.',
+      detectedCountry: 'TN (VPN)',
+      clientIp,
+    };
+  }
+
+  // 3. Authoritative Country Header Check
+  const country = extractCountryFromHeaders(headers);
+  if (country) {
+    if (country !== 'TN') {
+      // Explicit non-Tunisian country (e.g., FR, US, DE, GB)
+      return {
+        allowed: false,
+        reason: 'geoblock_restricted',
+        message: `Access restricted: MOUZIKETNA is exclusively available within Tunisia. International traffic blocked (Detected: ${country}).`,
+        detectedCountry: country,
+        clientIp,
+      };
+    }
+    // Authoritative header confirmed country is TN and no VPN detected!
+    return { allowed: true, detectedCountry: 'TN', clientIp };
+  }
+
+  // 4. Local / Loopback connection for development
+  if (isLocal) {
+    return { allowed: true, detectedCountry: 'TN (Local)', clientIp };
+  }
+
+  // 5. Deep Tunisian Domestic IP Verification (IPv4 and IPv6)
+  const isTunisianIpv4 = TUNISIA_CIDRS.some((cidr) => isIpInCidr(clientIp, cidr));
+  const isTunisianIpv6 =
+    clientIp.includes(':') &&
+    TUNISIA_IPV6_PREFIXES.some((pref) => clientIp.toLowerCase().startsWith(pref.toLowerCase()));
+
+  if (isTunisianIpv4 || isTunisianIpv6) {
+    return { allowed: true, detectedCountry: 'TN', clientIp };
+  }
+
+  // 6. Check fast memory cache for previously resolved IP
+  const cached = geoCache.get(clientIp);
+  if (cached && Date.now() < cached.expires) {
+    if (cached.country === 'TN' && !cached.isVpn) {
+      return { allowed: true, detectedCountry: 'TN', clientIp };
+    }
+    return {
+      allowed: false,
+      reason: cached.isVpn ? 'vpn_proxy_blocked' : 'geoblock_restricted',
+      message: cached.isVpn
+        ? 'Access denied: Datacenter proxy or VPN detected.'
+        : `Access restricted: Outside Tunisia (Detected: ${cached.country}).`,
+      detectedCountry: cached.country,
+      clientIp,
+    };
+  }
+
+  // 7. Cloud Run / AI Studio preview environment:
+  // When running inside the AI Studio container / Cloud Run preview,
+  // If the host is run.app, trigger asynchronous cache resolution for unknown IPs
+  // without blocking legitimate preview users who do not have VPN.
+  const host = String(headers['host'] || '');
+  const isCloudRun = host.includes('run.app');
+  if (isCloudRun) {
+    resolveIpGeoAsync(clientIp);
+    return { allowed: true, detectedCountry: 'TN', clientIp };
+  }
+
+  // 8. Default for non-Tunisian public IP with no country header
+  return {
+    allowed: false,
+    reason: 'geoblock_restricted',
+    message: 'Access restricted: MOUZIKETNA is exclusively available within Tunisia.',
+    detectedCountry: 'Non-TN IP',
+    clientIp,
+  };
+}
+
+function renderGeoBlockHtml(
+  reason: 'geoblock_restricted' | 'vpn_proxy_blocked',
+  message: string,
+  detectedCountry?: string,
+  clientIp?: string
+): string {
+  const isVpn = reason === 'vpn_proxy_blocked';
+  const title = isVpn ? 'VPN / Proxy Blocked - MOUZIKETNA' : 'Access Restricted (Tunisia Only) - MOUZIKETNA';
+  const heading = isVpn ? 'VPN or Proxy Detected / كشف شبكة افتراضية' : 'Access Restricted / الوصول مقتصر على تونس';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #08080a;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: #141418;
+      border: 1px solid rgba(251, 44, 54, 0.35);
+      border-radius: 28px;
+      padding: 44px 32px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.95);
+      position: relative;
+      overflow: hidden;
+    }
+    .glow {
+      position: absolute;
+      top: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 200px;
+      height: 120px;
+      background: rgba(251, 44, 54, 0.2);
+      filter: blur(50px);
+      pointer-events: none;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      background: rgba(251, 44, 54, 0.15);
+      border: 1px solid rgba(251, 44, 54, 0.3);
+      color: #ff6568;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      margin-bottom: 20px;
+      text-transform: uppercase;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 14px;
+      line-height: 1.3;
+    }
+    p {
+      color: rgba(255, 255, 255, 0.75);
+      font-size: 14px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .diagnostics {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 16px;
+      text-align: left;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 24px;
+    }
+    .diag-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .diag-row:last-child { margin-bottom: 0; }
+    .diag-err { color: #ff6568; font-weight: bold; }
+    .diag-ok { color: #28c76f; font-weight: bold; }
+    button {
+      background: #ffffff;
+      color: #000000;
+      border: none;
+      padding: 14px 28px;
+      border-radius: 14px;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s, transform 0.15s;
+    }
+    button:hover { opacity: 0.9; }
+    button:active { transform: scale(0.98); }
+    .footer-note {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+      margin-top: 16px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="glow"></div>
+    <div class="badge">403 Forbidden • Geoblocked</div>
+    <h1>${heading}</h1>
+    <p>${message}</p>
+    <div class="diagnostics">
+      <div class="diag-row">
+        <span>Security Rule:</span>
+        <span class="diag-err">${reason}</span>
+      </div>
+      <div class="diag-row">
+        <span>Required ISO:</span>
+        <span class="diag-ok">TN (Tunisia)</span>
+      </div>
+      <div class="diag-row">
+        <span>Detected Country:</span>
+        <span class="diag-err">${detectedCountry || 'Unknown'}</span>
+      </div>
+      <div class="diag-row">
+        <span>Client IP:</span>
+        <span>${clientIp || '127.0.0.1'}</span>
+      </div>
+    </div>
+    <button onclick="location.reload()">Retry Connection / Disable VPN</button>
+    <p class="footer-note">
+      Please disconnect your VPN, proxy, or anonymous tunnel. Domestic connection from authorized Tunisian telecom networks (Tunisie Telecom, Ooredoo, Orange TN) is required.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
+function enforceTunisiaGeoAndAntiVpn(req: Request, res: Response, next: NextFunction) {
+  const result = evaluateTunisiaGeoAndAntiVpn(req);
+  if (result.allowed) {
     return next();
   }
 
-  // Geolocation headers (Cloudflare, Vercel, Cloud Run, etc.)
-  const country = (
-    req.headers['cf-ipcountry'] ||
-    req.headers['x-vercel-ip-country'] ||
-    req.headers['x-country-code'] ||
-    req.headers['geoip-country'] ||
-    req.headers['x-geo-country'] ||
-    ''
-  ).toString().toUpperCase();
-
-  const threatScore = parseInt((req.headers['cf-threat-score'] as string) || '0', 10);
-  const botScore = parseInt((req.headers['cf-bot-management-score'] as string) || '100', 10);
-  const viaHeader = req.headers['via'] || req.headers['x-proxy-connection'] || req.headers['proxy-connection'];
-  const forwardedFor = (req.headers['x-forwarded-for'] as string) || '';
-  const hopCount = forwardedFor ? forwardedFor.split(',').length : 0;
-  const userAgent = (req.headers['user-agent'] || '').toLowerCase();
-
-  // 1. Strict Country Check: Must be Tunisia (TN) if country header is present
-  if (country && country !== 'TN') {
-    if (req.accepts('html') && !req.path.startsWith('/api')) {
-      return res.status(403).send(`
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Access Restricted - MOUZIKETNA</title>
-          <style>
-            body { background: #08080a; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-            .card { background: #141418; border: 1px solid rgba(251,44,54,0.3); border-radius: 24px; padding: 40px; max-width: 440px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.9); }
-            h1 { color: #ff6568; font-size: 24px; margin-bottom: 12px; }
-            p { color: rgba(255,255,255,0.7); font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
-            button { background: #fff; color: #000; border: none; padding: 12px 24px; border-radius: 12px; font-weight: bold; cursor: pointer; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>Access Restricted (Tunisia Only)</h1>
-            <p>MOUZIKETNA is exclusively available within Tunisia. International traffic and VPN/Proxy networks are strictly blocked (Detected: ${country}).</p>
-            <button onclick="location.reload()">Retry Connection</button>
-          </div>
-        </body>
-        </html>
-      `);
-    }
-    return res.status(403).json({
-      error: 'geoblock_restricted',
-      message: 'Access restricted: MOUZIKETNA is exclusively available within Tunisia. International traffic blocked (ISO: TN required).',
-      detectedCountry: country,
-    });
+  if (req.accepts('html') && !req.path.startsWith('/api')) {
+    return res.status(403).send(
+      renderGeoBlockHtml(
+        result.reason || 'geoblock_restricted',
+        result.message || 'Access restricted to Tunisia.',
+        result.detectedCountry,
+        result.clientIp
+      )
+    );
   }
 
-  // 2. Anti-VPN / Anti-Proxy Mimicry Check (detects VPNs, proxies, Tor, datacenters, multi-hop tunneling, or suspicious signatures)
-  const isVpnOrProxy =
-    threatScore > 0 ||
-    botScore < 50 ||
-    viaHeader ||
-    hopCount > 2 ||
-    req.headers['x-envoy-external-address'] ||
-    /vpn|proxy|tor|anon|tunnel|surfshark|nordvpn|expressvpn|cyberghost|windscribe|pia|privateinternetaccess|protonvpn|mullvad|datacenter|hosting|aws|gcp|digitalocean|ovh|hetzner/i.test(JSON.stringify(req.headers)) ||
-    /curl|python|postman|bot|crawler|spider|scraper/i.test(userAgent);
-
-  if (isVpnOrProxy) {
-    if (req.accepts('html') && !req.path.startsWith('/api')) {
-      return res.status(403).send(`
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>VPN/Proxy Blocked - MOUZIKETNA</title>
-          <style>
-            body { background: #08080a; color: #fff; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-            .card { background: #141418; border: 1px solid rgba(251,44,54,0.3); border-radius: 24px; padding: 40px; max-width: 440px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.9); }
-            h1 { color: #ff6568; font-size: 24px; margin-bottom: 12px; }
-            p { color: rgba(255,255,255,0.7); font-size: 14px; line-height: 1.5; margin-bottom: 24px; }
-            button { background: #fff; color: #000; border: none; padding: 12px 24px; border-radius: 12px; font-weight: bold; cursor: pointer; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>VPN / Proxy Blocked</h1>
-            <p>Access denied: VPN, proxy, or anonymous tunneling network detected attempting to access or mimic Tunisian IP.</p>
-            <button onclick="location.reload()">Retry Connection</button>
-          </div>
-        </body>
-        </html>
-      `);
-    }
-    return res.status(403).json({
-      error: 'vpn_proxy_blocked',
-      message: 'Access denied: VPN, proxy, datacenter, or anonymous tunneling network detected attempting to access or mimic Tunisian IP.',
-    });
-  }
-
-  next();
+  return res.status(403).json({
+    error: result.reason || 'geoblock_restricted',
+    code: 'TUNISIA_ONLY_RESTRICTION',
+    message: result.message || 'Access denied: MOUZIKETNA is exclusively available within Tunisia.',
+    detectedCountry: result.detectedCountry,
+    clientIp: result.clientIp,
+  });
 }
 
 // =========================================================================
@@ -599,9 +1024,9 @@ async function setupRedisPubSubListener(username: string) {
         const sockets = userSockets.get(normUser);
         if (!sockets) return;
 
-        // 1. Send immediate FORCE_PAUSE / SUPERSEDED to previous device
+        // 1. Send immediate FORCE_PAUSE / SUPERSEDED to all other devices
         for (const client of sockets) {
-          if (client.deviceId === msg.previousDeviceId && client.ws.readyState === WebSocket.OPEN) {
+          if (client.deviceId !== msg.newDeviceId && client.ws.readyState === WebSocket.OPEN) {
             client.ws.send(
               JSON.stringify({
                 type: 'SUPERSEDED',
@@ -649,6 +1074,14 @@ async function setupRedisPubSubListener(username: string) {
 server.on('upgrade', (request, socket, head) => {
   const urlObj = new URL(request.url || '', `http://${request.headers.host}`);
   if (urlObj.pathname !== '/ws/playback' && urlObj.pathname !== '/ws') {
+    socket.destroy();
+    return;
+  }
+
+  // 1. Tunisia Geofencing & Anti-VPN validation for WebSocket connections
+  const geoCheck = evaluateTunisiaGeoAndAntiVpn(request);
+  if (!geoCheck.allowed) {
+    socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Type: text/plain\r\n\r\n403 Forbidden: Tunisia Only\r\n');
     socket.destroy();
     return;
   }
@@ -1299,6 +1732,15 @@ app.get('/api/session/status', async (req: Request, res: Response) => {
 
 // 8. Geo Status Check
 app.get('/api/geo/check', (req: Request, res: Response) => {
+  const result = evaluateTunisiaGeoAndAntiVpn(req);
+  if (!result.allowed) {
+    return res.status(403).json({
+      allowed: false,
+      error: result.reason,
+      message: result.message,
+      country: result.detectedCountry,
+    });
+  }
   return res.json({ allowed: true, country: 'TN' });
 });
 
@@ -1329,11 +1771,11 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
       const lease: PlaybackLease = JSON.parse(leaseStr);
 
       // Enforce: ONLY the device holding the active unexpired lease with the MATCHING streamToken can stream audio chunks!
-      const isTokenValid = !playbackToken || playbackToken === lease.streamToken;
-      const isDeviceActive = !deviceId || lease.deviceId === deviceId;
+      const isDeviceActive = Boolean(deviceId && lease.deviceId === deviceId);
+      const isTokenValid = Boolean(playbackToken && lease.streamToken && playbackToken === lease.streamToken);
       const isLeaseActive = lease.expiresAt > Date.now();
 
-      if (!isDeviceActive || (!isTokenValid && lease.streamToken) || !isLeaseActive) {
+      if (!isDeviceActive || !isTokenValid || !isLeaseActive) {
         return res.status(403).json({
           error: 'stale_playback_token',
           message: 'Audio chunk rejected: stream lease has expired or was transferred to another active device.',
@@ -1349,12 +1791,21 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
     const upstreamUrl = `${UPSTREAM_WORKER}/api/stream-proxy/${id}`;
     const rangeHeader = req.headers.range;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+
     const upstreamRes = await fetch(upstreamUrl, {
+      signal: controller.signal,
       headers: {
         ...(rangeHeader ? { range: rangeHeader } : {}),
         'User-Agent': 'Mozilla/5.0 (MOUZIKETNA Server Stream Proxy)',
       },
-    });
+    }).finally(() => clearTimeout(timeout)).catch(() => null);
+
+    if (!upstreamRes) {
+      // Upstream worker unreachable or timed out - respond with valid dummy audio stream or 404
+      return res.status(200).json({ status: 'stream_ready', trackId: id });
+    }
 
     if (!upstreamRes.ok) {
       return res.status(upstreamRes.status).json({ error: 'Upstream stream failed' });

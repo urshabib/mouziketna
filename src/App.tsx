@@ -25,6 +25,7 @@ import { GeoBlockScreen } from './components/GeoBlockScreen';
 const AppShell: React.FC = () => {
   const [isGeoBlocked, setIsGeoBlocked] = React.useState(false);
   const [geoBlockMessage, setGeoBlockMessage] = React.useState('');
+  const [geoBlockReason, setGeoBlockReason] = React.useState('geoblock_restricted');
 
   useEffect(() => {
     fetch('/api/geo/check')
@@ -33,13 +34,14 @@ const AppShell: React.FC = () => {
           const data = await res.json().catch(() => ({}));
           setIsGeoBlocked(true);
           setGeoBlockMessage(data.message || 'Access restricted: Tunisia only.');
+          setGeoBlockReason(data.error || 'geoblock_restricted');
         }
       })
       .catch(() => {});
   }, []);
 
   if (isGeoBlocked) {
-    return <GeoBlockScreen message={geoBlockMessage} />;
+    return <GeoBlockScreen message={geoBlockMessage} errorType={geoBlockReason} />;
   }
   const {
     activePane,

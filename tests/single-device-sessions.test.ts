@@ -246,7 +246,11 @@ async function runTests() {
   console.log('================================================================\n');
 }
 
-runTests().catch((err) => {
-  console.error('\n❌ Test suite failed:', err);
-  process.exit(1);
-});
+runTests()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('\n❌ Test suite failed:', err);
+    process.exit(1);
+  });
