@@ -1065,22 +1065,39 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const login = async (user: string, pass: string) => {
     try {
-      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 9000, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: user, password: pass }),
-      });
-      const data = await res.json();
+      let data: any = null;
+      try {
+        const localRes = await fetchWithTimeout('/api/auth/login', 5000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: user,
+            password: pass,
+            deviceId: sessionManager.getDeviceId(),
+            deviceName: sessionManager.getDeviceName(),
+          }),
+        });
+        if (localRes.ok) {
+          data = await localRes.json().catch(() => null);
+        }
+      } catch {}
+
+      if (!data) {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 9000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: user, password: pass }),
+        });
+        data = await res.json().catch(() => ({}));
+      }
+
       if (data.error) {
         return { success: false, error: data.error };
       }
       setGlobalUser(user);
       setGlobalPass(pass);
-      if (data.sessionToken) {
-        sessionManager.setSession(data.sessionToken, user);
-      } else {
-        sessionManager.setSession(`sess_${Date.now()}`, user);
-      }
+      const sessionToken = data.sessionToken || `sess_${user}_${Date.now()}`;
+      sessionManager.setSession(sessionToken, user);
       try {
         localStorage.setItem('hub_active_user', user);
         localStorage.setItem('hub_active_pass', pass);
@@ -2658,12 +2675,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setSupersededNotice(null);
       setIsRemotePlaybackActive(false);
       setRemoteDeviceName(null);
-      const leaseClaim = await sessionManager.claimPlaybackLease(activeTrack || undefined, currentTime);
-      if (!leaseClaim.active) {
-        setIsPlaying(false);
-        return;
-      }
+      setIsPlaying(true);
+
+      // Claim lease asynchronously without blocking audio play
+      sessionManager.claimPlaybackLease(activeTrack || undefined, currentTime).catch(() => {});
       resumeAudioContext();
+
       if (audio.error || !audio.src || audio.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
         if (activeTrack) {
           const resumePos = currentTime;
@@ -2677,7 +2694,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       const playPromise = audio.play();
       if (playPromise !== undefined) {
-        playPromise.catch(() => {
+        playPromise.catch((err) => {
+          console.warn('Audio play() error, reloading track:', err);
           if (activeTrack) {
             const resumePos = currentTime;
             playTrack(activeTrack, true).then((ok) => {
@@ -2690,6 +2708,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } else {
       audio.pause();
+      setIsPlaying(false);
       sessionManager.releasePlaybackLease();
     }
   };
@@ -3435,32 +3454,34 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSupersededNotice(null);
     setIsRemotePlaybackActive(false);
     setRemoteDeviceName(null);
-    const lease = await sessionManager.claimPlaybackLease(activeTrack || undefined, currentTime);
-    if (lease.active) {
-      if (audioRef.current) {
-        resumeAudioContext();
-        if (audioRef.current.error || !audioRef.current.src || audioRef.current.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
-          if (activeTrack) {
-            playTrack(activeTrack, true);
-          }
-        } else {
-          const playPromise = audioRef.current.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                setIsPlaying(true);
-                showToast(`Playback transferred to ${sessionManager.getDeviceName()}`);
-              })
-              .catch(() => {
-                if (activeTrack) {
-                  playTrack(activeTrack, true);
-                }
-              });
-          }
+    setIsPlaying(true);
+    showToast(`Playback transferred to ${sessionManager.getDeviceName()}`);
+
+    // Claim lease to notify remote device to stop immediately
+    sessionManager.claimPlaybackLease(activeTrack || undefined, currentTime).catch(() => {});
+
+    if (audioRef.current) {
+      resumeAudioContext();
+      if (audioRef.current.error || !audioRef.current.src || audioRef.current.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) {
+        if (activeTrack) {
+          playTrack(activeTrack, true);
         }
-      } else if (activeTrack) {
-        playTrack(activeTrack, true);
+      } else {
+        const playPromise = audioRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch(() => {
+              if (activeTrack) {
+                playTrack(activeTrack, true);
+              }
+            });
+        }
       }
+    } else if (activeTrack) {
+      playTrack(activeTrack, true);
     }
   }, [activeTrack, currentTime, playTrack, showToast]);
 

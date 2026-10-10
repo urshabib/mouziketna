@@ -67,20 +67,36 @@ class SessionManager {
 
   // Generate or retrieve persistent cryptographic device identifier
   private getOrCreateDeviceId(): string {
-    const KEY = 'mouzika_device_id_v2';
+    const isStandalone =
+      typeof window !== 'undefined' &&
+      (window.matchMedia('(display-mode: standalone)').matches ||
+        (navigator as any).standalone === true ||
+        document.referrer.includes('android-app://'));
+
+    const KEY = isStandalone ? 'mouzika_pwa_device_id_v2' : 'mouzika_browser_device_id_v2';
     try {
       let id = localStorage.getItem(KEY);
       if (!id || id.length < 16) {
+        const prefix = isStandalone ? 'dev_pwa' : 'dev_web';
         if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-          id = `dev_${crypto.randomUUID()}`;
+          id = `${prefix}_${crypto.randomUUID()}`;
         } else {
-          id = `dev_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+          id = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 12)}`;
         }
         localStorage.setItem(KEY, id);
       }
+      // For browser tabs, attach session-scoped tab token so multiple tabs count as separate devices
+      if (!isStandalone && typeof sessionStorage !== 'undefined') {
+        let tabId = sessionStorage.getItem('mouzika_tab_instance_id');
+        if (!tabId) {
+          tabId = Math.random().toString(36).substring(2, 8);
+          sessionStorage.setItem('mouzika_tab_instance_id', tabId);
+        }
+        return `${id}_${tabId}`;
+      }
       return id;
     } catch {
-      return `dev_fallback_${Date.now()}`;
+      return `dev_${isStandalone ? 'pwa' : 'web'}_${Date.now()}`;
     }
   }
 
@@ -91,13 +107,23 @@ class SessionManager {
       if (storedCustom && storedCustom.trim()) return storedCustom.trim();
 
       const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-      let os = 'Unknown OS';
+      let os = 'Device';
       if (/iPhone/.test(ua)) os = 'iPhone';
       else if (/iPad/.test(ua)) os = 'iPad';
-      else if (/Macintosh|Mac OS X/.test(ua)) os = 'macOS';
-      else if (/Windows/.test(ua)) os = 'Windows';
-      else if (/Android/.test(ua)) os = 'Android';
-      else if (/Linux/.test(ua)) os = 'Linux';
+      else if (/Macintosh|Mac OS X/.test(ua)) os = 'MacBook';
+      else if (/Windows/.test(ua)) os = 'Windows PC';
+      else if (/Android/.test(ua)) os = 'Android Phone';
+      else if (/Linux/.test(ua)) os = 'Linux PC';
+
+      const isStandalone =
+        typeof window !== 'undefined' &&
+        (window.matchMedia('(display-mode: standalone)').matches ||
+          (navigator as any).standalone === true ||
+          document.referrer.includes('android-app://'));
+
+      if (isStandalone) {
+        return `${os} (Installed App)`;
+      }
 
       let browser = 'Browser';
       if (/Edg\//.test(ua)) browser = 'Edge';
@@ -149,18 +175,42 @@ class SessionManager {
   }
 
   private nextSequence(): number {
-    this.sequenceCounter += 1;
+    try {
+      const saved = parseInt(localStorage.getItem('mouzika_seq_counter') || '0', 10);
+      this.sequenceCounter = Math.max(this.sequenceCounter, saved) + 1;
+      localStorage.setItem('mouzika_seq_counter', String(this.sequenceCounter));
+    } catch {
+      this.sequenceCounter += 1;
+    }
     return this.sequenceCounter;
+  }
+
+  public getUsername(): string {
+    if (this.username) return this.username;
+    try {
+      this.username =
+        localStorage.getItem('mouzika_session_user') ||
+        localStorage.getItem('hub_active_user') ||
+        'user_main';
+    } catch {
+      this.username = 'user_main';
+    }
+    return this.username;
   }
 
   // Restore stored session and initialize real-time transport
   private restoreStoredSession() {
     try {
+      this.username =
+        localStorage.getItem('mouzika_session_user') ||
+        localStorage.getItem('hub_active_user') ||
+        'user_main';
       this.sessionToken = localStorage.getItem('mouzika_session_token');
-      this.username = localStorage.getItem('mouzika_session_user');
-      if (this.sessionToken) {
-        this.connectWebSocket();
+      if (!this.sessionToken) {
+        this.sessionToken = `sess_${this.username}_${this.deviceId}`;
+        localStorage.setItem('mouzika_session_token', this.sessionToken);
       }
+      this.connectWebSocket();
     } catch {}
   }
 
@@ -255,6 +305,7 @@ class SessionManager {
   public connectWebSocket() {
     const token = this.getSessionToken();
     if (!token || typeof window === 'undefined') return;
+    const user = this.getUsername();
 
     this.disconnectWebSocket();
     this.setConnectionStatus('connecting');
@@ -263,7 +314,7 @@ class SessionManager {
       const isSecure = window.location.protocol === 'https:';
       const wsProtocol = isSecure ? 'wss:' : 'ws:';
       const host = window.location.host;
-      const wsUrl = `${wsProtocol}//${host}/ws/playback?token=${encodeURIComponent(token)}&deviceId=${encodeURIComponent(this.deviceId)}&deviceName=${encodeURIComponent(this.deviceName)}&fp=${encodeURIComponent(this.deviceFingerprint)}`;
+      const wsUrl = `${wsProtocol}//${host}/ws/playback?token=${encodeURIComponent(token)}&username=${encodeURIComponent(user)}&deviceId=${encodeURIComponent(this.deviceId)}&deviceName=${encodeURIComponent(this.deviceName)}&fp=${encodeURIComponent(this.deviceFingerprint)}`;
 
       this.ws = new WebSocket(wsUrl);
 
@@ -536,7 +587,7 @@ class SessionManager {
         },
         body: JSON.stringify({
           sessionToken: token,
-          username: this.username,
+          username: this.getUsername(),
           deviceId: this.deviceId,
           deviceName: this.deviceName,
           trackId: track?.id,
@@ -647,7 +698,7 @@ class SessionManager {
     });
 
     const token = this.getSessionToken();
-    const user = this.username;
+    const user = this.getUsername();
     if (!token && !user) return;
 
     try {
@@ -700,7 +751,7 @@ class SessionManager {
     });
 
     const token = this.getSessionToken();
-    const user = this.username;
+    const user = this.getUsername();
     if (!token && !user) return;
 
     try {
