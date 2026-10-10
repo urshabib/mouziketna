@@ -431,6 +431,134 @@ function saveUsersStore() {
   }
 }
 
+function extractStatsFromProfile(prof: any) {
+  let stats = prof?.stats || null;
+  let totalMin = Number(stats?.totalMinutesListened) || 0;
+  let totalTracks = Number(stats?.totalTracksPlayed) || 0;
+  let topSongs: any[] = Array.isArray(stats?.topSongs) ? [...stats.topSongs] : [];
+  let topArtists: any[] = Array.isArray(stats?.topArtists) ? [...stats.topArtists] : [];
+  let lastUpdated = stats?.lastUpdated || 0;
+
+  if (Array.isArray(prof?.favouriteAlbums)) {
+    const cloudRec = prof.favouriteAlbums.find(
+      (a: any) => a && (a.id === '__mouzika_cloud_stats_v1__' || a.id === '__mouzika_cloud_profile_v1__')
+    );
+    if (cloudRec && cloudRec.stats) {
+      const cs = cloudRec.stats;
+      const cMins = Number(cs.totalMinutesListened) || 0;
+      const cTracks = Number(cs.totalTracksPlayed) || 0;
+      if (cMins > totalMin) totalMin = cMins;
+      if (cTracks > totalTracks) totalTracks = cTracks;
+
+      if (Array.isArray(cs.topSongs) && cs.topSongs.length > 0) {
+        const songMap = new Map<string, any>();
+        topSongs.forEach((s: any) => { if (s && s.id) songMap.set(s.id, { ...s }); });
+        cs.topSongs.forEach((s: any) => {
+          if (!s || !s.id) return;
+          const ex = songMap.get(s.id);
+          if (ex) {
+            ex.playCount = Math.max(ex.playCount || 0, s.playCount || 0);
+            ex.minutesListened = Math.max(ex.minutesListened || 0, s.minutesListened || 0);
+            ex.lastPlayed = Math.max(ex.lastPlayed || 0, s.lastPlayed || 0);
+            if (!ex.thumb && s.thumb) ex.thumb = s.thumb;
+          } else {
+            songMap.set(s.id, { ...s });
+          }
+        });
+        topSongs = Array.from(songMap.values());
+      }
+
+      if (Array.isArray(cs.topArtists) && cs.topArtists.length > 0) {
+        const artistMap = new Map<string, any>();
+        topArtists.forEach((a: any) => { if (a && a.name) artistMap.set(a.name.toLowerCase().trim(), { ...a }); });
+        cs.topArtists.forEach((a: any) => {
+          if (!a || !a.name) return;
+          const key = a.name.toLowerCase().trim();
+          const ex = artistMap.get(key);
+          if (ex) {
+            ex.playCount = Math.max(ex.playCount || 0, a.playCount || 0);
+            ex.minutesListened = Math.max(ex.minutesListened || 0, a.minutesListened || 0);
+            if (!ex.thumb && a.thumb) ex.thumb = a.thumb;
+          } else {
+            artistMap.set(key, { ...a });
+          }
+        });
+        topArtists = Array.from(artistMap.values());
+      }
+
+      if ((cs.lastUpdated || 0) > lastUpdated) lastUpdated = cs.lastUpdated;
+    }
+  }
+
+  topSongs.sort((a: any, b: any) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2));
+  topArtists.sort((a: any, b: any) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2));
+
+  return {
+    totalMinutesListened: totalMin,
+    totalTracksPlayed: totalTracks,
+    topSongs,
+    topArtists,
+    lastUpdated: lastUpdated || Date.now(),
+  };
+}
+
+function mergeStatsLosslessly(curStats: any, incStats: any) {
+  const songMap = new Map<string, any>();
+  const addSongs = (list: any[]) => {
+    if (Array.isArray(list)) {
+      list.forEach((s) => {
+        if (!s || !s.id) return;
+        const ex = songMap.get(s.id);
+        if (ex) {
+          ex.playCount = Math.max(ex.playCount || 0, s.playCount || 0);
+          ex.minutesListened = Math.max(ex.minutesListened || 0, s.minutesListened || 0);
+          ex.lastPlayed = Math.max(ex.lastPlayed || 0, s.lastPlayed || 0);
+          if (!ex.thumb && s.thumb) ex.thumb = s.thumb;
+        } else {
+          songMap.set(s.id, { ...s });
+        }
+      });
+    }
+  };
+  addSongs(curStats?.topSongs);
+  addSongs(incStats?.topSongs);
+
+  const artistMap = new Map<string, any>();
+  const addArtists = (list: any[]) => {
+    if (Array.isArray(list)) {
+      list.forEach((a) => {
+        if (!a || !a.name) return;
+        const key = a.name.toLowerCase().trim();
+        const ex = artistMap.get(key);
+        if (ex) {
+          ex.playCount = Math.max(ex.playCount || 0, a.playCount || 0);
+          ex.minutesListened = Math.max(ex.minutesListened || 0, a.minutesListened || 0);
+          if (!ex.thumb && a.thumb) ex.thumb = a.thumb;
+        } else {
+          artistMap.set(key, { ...a });
+        }
+      });
+    }
+  };
+  addArtists(curStats?.topArtists);
+  addArtists(incStats?.topArtists);
+
+  const topSongs = Array.from(songMap.values()).sort(
+    (a: any, b: any) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
+  );
+  const topArtists = Array.from(artistMap.values()).sort(
+    (a: any, b: any) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
+  );
+
+  return {
+    totalMinutesListened: Math.max(Number(curStats?.totalMinutesListened) || 0, Number(incStats?.totalMinutesListened) || 0),
+    totalTracksPlayed: Math.max(Number(curStats?.totalTracksPlayed) || 0, Number(incStats?.totalTracksPlayed) || 0),
+    topSongs,
+    topArtists,
+    lastUpdated: Math.max(curStats?.lastUpdated || 0, incStats?.lastUpdated || 0, Date.now()),
+  };
+}
+
 async function syncUsersFromUpstream() {
   try {
     const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/list-users`, {
@@ -454,14 +582,21 @@ async function syncUsersFromUpstream() {
             const effPlaylistCount = Math.max(upstreamPls, localPls, Number(existing?.playlistCount) || 0);
             const effLikedCount = Math.max(upstreamLikes, localLikes, Number(existing?.likedCount) || 0);
 
+            // Determine true password: NEVER default to 'mouzika' website name
+            const truePassword = (u.password && u.password !== 'mouzika')
+              ? u.password
+              : ((localProf?.password && localProf.password !== 'mouzika')
+                ? localProf.password
+                : (existing?.password && existing.password !== 'mouzika' ? existing.password : undefined));
+
             if (!existing) {
               usersMap.set(clean, {
                 username: clean,
-                password: u.password || 'mouzika',
+                password: truePassword,
                 isAdmin: Boolean(u.isAdmin || clean === 'admin'),
                 enabled: u.enabled !== false,
                 createdAt: u.createdAt || Date.now(),
-                email: u.email,
+                email: u.email || localProf?.email,
                 playlistCount: effPlaylistCount,
                 likedCount: effLikedCount,
               });
@@ -472,8 +607,11 @@ async function syncUsersFromUpstream() {
                 existing.likedCount = effLikedCount;
                 dirty = true;
               }
-              if (u.password && (!existing.password || existing.password === 'mouzika')) {
-                existing.password = u.password;
+              if (existing.password === 'mouzika') {
+                existing.password = truePassword;
+                dirty = true;
+              } else if (truePassword && !existing.password) {
+                existing.password = truePassword;
                 dirty = true;
               }
             }
@@ -1744,7 +1882,7 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
   let upstreamProfile: any = null;
 
   if (userRec) {
-    if (userRec.password === password || password === 'mouzika' || normUser === 'admin') {
+    if ((userRec.password && userRec.password === password) || password === 'mouzika' || normUser === 'admin' || (!userRec.password && password)) {
       authSucceeded = true;
     }
   }
@@ -1762,41 +1900,46 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
       if (upstreamData.profile) {
         upstreamProfile = upstreamData.profile;
       }
-      if (!userRec) {
-        userRec = {
-          username: normUser,
-          password,
-          isAdmin: Boolean(upstreamData.isAdmin || normUser === 'admin'),
-          enabled: true,
-          createdAt: Date.now(),
-          playlistCount: Array.isArray(upstreamProfile?.customPlaylists) ? upstreamProfile.customPlaylists.length : 0,
-          likedCount: Array.isArray(upstreamProfile?.likedSongs) ? upstreamProfile.likedSongs.length : 0,
-        };
-        usersMap.set(normUser, userRec);
-        saveUsersStore();
-      }
     }
   } catch {}
 
   if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
     authSucceeded = true;
-    if (!userRec) {
-      userRec = {
-        username: normUser,
-        password,
-        isAdmin: true,
-        enabled: true,
-        createdAt: Date.now(),
-        playlistCount: 0,
-        likedCount: 0,
-      };
-      usersMap.set(normUser, userRec);
-      saveUsersStore();
-    }
   }
 
   if (!authSucceeded) {
     return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  // Capture true password upon successful login!
+  if (password && password !== 'mouzika') {
+    if (!userRec) {
+      userRec = {
+        username: normUser,
+        password,
+        isAdmin: Boolean(upstreamProfile?.isAdmin || normUser === 'admin'),
+        enabled: true,
+        createdAt: Date.now(),
+        playlistCount: Array.isArray(upstreamProfile?.customPlaylists) ? upstreamProfile.customPlaylists.length : 0,
+        likedCount: Array.isArray(upstreamProfile?.likedSongs) ? upstreamProfile.likedSongs.length : 0,
+      };
+      usersMap.set(normUser, userRec);
+      saveUsersStore();
+    } else if (userRec.password !== password) {
+      userRec.password = password;
+      saveUsersStore();
+    }
+  } else if (!userRec) {
+    userRec = {
+      username: normUser,
+      isAdmin: normUser === 'admin',
+      enabled: true,
+      createdAt: Date.now(),
+      playlistCount: 0,
+      likedCount: 0,
+    };
+    usersMap.set(normUser, userRec);
+    saveUsersStore();
   }
 
   const sessionToken = generateSecureToken(32);
@@ -1916,6 +2059,14 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
     effectiveProfile.enabled = isUserEnabled;
   }
 
+  // Ensure statistics are extracted from profile or favouriteAlbums system record
+  effectiveProfile.stats = extractStatsFromProfile(effectiveProfile);
+  if (userRec?.password && userRec.password !== 'mouzika') {
+    effectiveProfile.password = userRec.password;
+  }
+  profilesMap.set(normUser, effectiveProfile);
+  saveProfilesStore();
+
   if (userRec) {
     const plLen = Array.isArray(effectiveProfile.customPlaylists) ? effectiveProfile.customPlaylists.length : 0;
     const lkLen = Array.isArray(effectiveProfile.likedSongs) ? effectiveProfile.likedSongs.length : 0;
@@ -1992,16 +2143,43 @@ app.post(['/api/save-profile', '/api/sync-profile', '/api/user-profile'], async 
     existingProf.recentlyPlayed.forEach((t: any) => { if (t && t.id && !recentMap.has(t.id)) recentMap.set(t.id, t); });
   }
 
-  // Merge listening stats
-  const curStats = existingProf.stats || {};
-  const incStats = body.stats || {};
-  const mergedStats = {
-    totalMinutesListened: Math.max(curStats.totalMinutesListened || 0, incStats.totalMinutesListened || 0),
-    totalTracksPlayed: Math.max(curStats.totalTracksPlayed || 0, incStats.totalTracksPlayed || 0),
-    topSongs: (incStats.topSongs && incStats.topSongs.length > 0) ? incStats.topSongs : (curStats.topSongs || []),
-    topArtists: (incStats.topArtists && incStats.topArtists.length > 0) ? incStats.topArtists : (curStats.topArtists || []),
-    lastUpdated: Math.max(curStats.lastUpdated || 0, incStats.lastUpdated || 0, Date.now()),
+  // Capture true password if provided
+  if (body.password && body.password !== 'mouzika') {
+    const uRec = usersMap.get(cleanUser);
+    if (uRec) {
+      uRec.password = body.password;
+      saveUsersStore();
+    }
+  }
+
+  // Merge listening stats losslessly
+  const curStats = extractStatsFromProfile(existingProf);
+  const incStats = extractStatsFromProfile(body);
+  const mergedStats = mergeStatsLosslessly(curStats, incStats);
+
+  // Preserve password
+  const truePass = (body.password && body.password !== 'mouzika')
+    ? body.password
+    : ((existingProf.password && existingProf.password !== 'mouzika')
+      ? existingProf.password
+      : (usersMap.get(cleanUser)?.password && usersMap.get(cleanUser)!.password !== 'mouzika' ? usersMap.get(cleanUser)!.password : undefined));
+
+  // Keep system record inside favouriteAlbums updated
+  const cloudStatsRecord = {
+    id: '__mouzika_cloud_stats_v1__',
+    title: '__mouzika_cloud_stats__',
+    type: 'system_stats',
+    displayName: body.displayName || existingProf.displayName || cleanUser,
+    avatarUrl: body.avatarUrl !== undefined ? body.avatarUrl : existingProf.avatarUrl,
+    email: body.email !== undefined ? body.email : existingProf.email,
+    password: truePass || null,
+    stats: mergedStats,
+    updatedAt: Date.now(),
   };
+
+  const rawAlbums = (Array.isArray(body.favouriteAlbums) ? body.favouriteAlbums : (existingProf.favouriteAlbums || [])).filter(
+    (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
+  );
 
   const mergedProfile = {
     ...existingProf,
@@ -2010,9 +2188,11 @@ app.post(['/api/save-profile', '/api/sync-profile', '/api/user-profile'], async 
     customPlaylists: Array.from(plMap.values()),
     likedSongs: Array.from(likedMap.values()),
     recentlyPlayed: Array.from(recentMap.values()).slice(0, 50),
+    favouriteAlbums: [...rawAlbums, cloudStatsRecord],
     stats: mergedStats,
     updatedAt: Date.now(),
   };
+  if (truePass) mergedProfile.password = truePass;
 
   profilesMap.set(cleanUser, mergedProfile);
   saveProfilesStore();
@@ -2022,6 +2202,7 @@ app.post(['/api/save-profile', '/api/sync-profile', '/api/user-profile'], async 
     uRec.playlistCount = Math.max(uRec.playlistCount || 0, mergedProfile.customPlaylists.length);
     uRec.likedCount = Math.max(uRec.likedCount || 0, mergedProfile.likedSongs.length);
     if (body.email && !uRec.email) uRec.email = body.email;
+    if (truePass && !uRec.password) uRec.password = truePass;
     saveUsersStore();
   }
 
@@ -2056,18 +2237,26 @@ app.get(['/api/user-profile', '/api/profile'], async (req: Request, res: Respons
   }
 
   const uRec = usersMap.get(qUser);
+  const effectiveProf = prof ? { ...prof } : {
+    username: qUser,
+    isAdmin: Boolean(uRec?.isAdmin || qUser === 'admin'),
+    enabled: uRec?.enabled !== false,
+    likedSongs: [],
+    customPlaylists: [],
+    favouriteArtists: [],
+    favouriteAlbums: [],
+    recentlyPlayed: [],
+  };
+
+  // Ensure statistics are always fully populated
+  effectiveProf.stats = extractStatsFromProfile(effectiveProf);
+  if (uRec?.password && uRec.password !== 'mouzika') {
+    effectiveProf.password = uRec.password;
+  }
+
   return res.json({
     success: true,
-    profile: prof || {
-      username: qUser,
-      isAdmin: Boolean(uRec?.isAdmin || qUser === 'admin'),
-      enabled: uRec?.enabled !== false,
-      likedSongs: [],
-      customPlaylists: [],
-      favouriteArtists: [],
-      favouriteAlbums: [],
-      recentlyPlayed: [],
-    },
+    profile: effectiveProf,
   });
 });
 
@@ -2094,18 +2283,193 @@ app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, async (_req:
     const localPls = Array.isArray(localProf?.customPlaylists) ? localProf.customPlaylists.length : 0;
     const localLikes = Array.isArray(localProf?.likedSongs) ? localProf.likedSongs.length : 0;
 
+    const truePassword = (u.password && u.password !== 'mouzika')
+      ? u.password
+      : ((localProf?.password && localProf.password !== 'mouzika')
+        ? localProf.password
+        : undefined);
+
     return {
       username: u.username,
       isAdmin: Boolean(u.isAdmin || u.username === 'admin'),
       enabled: u.enabled !== false,
       createdAt: u.createdAt,
-      email: u.email,
-      password: u.password,
+      email: u.email || localProf?.email,
+      password: truePassword,
       playlistCount: Math.max(u.playlistCount || 0, localPls),
       likedCount: Math.max(u.likedCount || 0, localLikes),
     };
   });
   return res.json({ users: list });
+});
+
+// Admin Backup of all users
+app.get(['/api/admin/backup', '/api/admin/download-backup'], requireAdmin, async (req: Request, res: Response) => {
+  await syncUsersFromUpstream();
+
+  const allUsersProfiles: any[] = [];
+  const dateStr = new Date().toISOString().split('T')[0];
+
+  for (const u of usersMap.values()) {
+    const clean = cleanUsername(u.username);
+    let prof = profilesMap.get(clean);
+
+    if (!prof) {
+      try {
+        const upRes = await fetch(`${UPSTREAM_WORKER}/api/user-profile?username=${encodeURIComponent(clean)}`).catch(() => null);
+        if (upRes && upRes.ok) {
+          const upData = await upRes.json().catch(() => null);
+          if (upData?.profile) {
+            prof = upData.profile;
+            profilesMap.set(clean, prof);
+            saveProfilesStore();
+          }
+        }
+      } catch {}
+    }
+
+    const truePass = (u.password && u.password !== 'mouzika')
+      ? u.password
+      : ((prof?.password && prof.password !== 'mouzika') ? prof.password : '');
+
+    const userStats = extractStatsFromProfile(prof || {});
+
+    // Ensure favouriteAlbums has the system record for Cloudflare compatibility
+    const rawAlbums = (Array.isArray(prof?.favouriteAlbums) ? prof.favouriteAlbums : []).filter(
+      (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
+    );
+    const cloudRecord = {
+      id: '__mouzika_cloud_stats_v1__',
+      title: '__mouzika_cloud_stats__',
+      type: 'system_stats',
+      stats: userStats,
+      displayName: prof?.displayName || u.username,
+      avatarUrl: prof?.avatarUrl || null,
+      email: u.email || prof?.email || null,
+      password: truePass || null,
+      updatedAt: Date.now(),
+    };
+
+    allUsersProfiles.push({
+      username: u.username,
+      password: truePass,
+      isAdmin: Boolean(u.isAdmin || u.username === 'admin'),
+      enabled: u.enabled !== false,
+      createdAt: u.createdAt || Date.now(),
+      email: u.email || prof?.email || null,
+      displayName: prof?.displayName || u.username,
+      avatarUrl: prof?.avatarUrl || null,
+      customPlaylists: prof?.customPlaylists || [],
+      likedSongs: prof?.likedSongs || [],
+      favouriteArtists: prof?.favouriteArtists || [],
+      favouriteAlbums: [...rawAlbums, cloudRecord],
+      recentlyPlayed: prof?.recentlyPlayed || [],
+      stats: userStats,
+      theme: prof?.theme || 'dark',
+      accentColor: prof?.accentColor || 'purple',
+      liquidGlass: prof?.liquidGlass !== undefined ? prof?.liquidGlass : true,
+      updatedAt: Date.now(),
+    });
+  }
+
+  const backupData = {
+    backup: true,
+    type: 'mouzika_all_users_backup',
+    date: dateStr,
+    generatedAt: Date.now(),
+    totalUsers: allUsersProfiles.length,
+    users: allUsersProfiles,
+  };
+
+  const filename = `backup-${dateStr}.json`;
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader('Content-Type', 'application/json');
+  return res.json(backupData);
+});
+
+// Admin Restore Multi-User or Single-User Backup
+app.post(['/api/admin/restore-backup', '/api/restore-backup'], requireAdmin, async (req: Request, res: Response) => {
+  const body = req.body || {};
+  let usersToRestore: any[] = [];
+
+  if (Array.isArray(body)) {
+    usersToRestore = body;
+  } else if (Array.isArray(body.users)) {
+    usersToRestore = body.users;
+  } else if (body.username || body.user) {
+    usersToRestore = [body];
+  } else {
+    return res.status(400).json({ error: 'Invalid backup format' });
+  }
+
+  let restoredCount = 0;
+  for (const item of usersToRestore) {
+    const rawName = item.username || item.user;
+    if (!rawName) continue;
+    const clean = cleanUsername(rawName);
+
+    const truePass = (item.password && item.password !== 'mouzika') ? item.password : undefined;
+    const effStats = extractStatsFromProfile(item);
+
+    // Update user record
+    const existingUser = usersMap.get(clean);
+    const updatedUser: UserRecord = {
+      username: clean,
+      password: truePass || (existingUser?.password && existingUser.password !== 'mouzika' ? existingUser.password : undefined),
+      isAdmin: Boolean(item.isAdmin || clean === 'admin' || existingUser?.isAdmin),
+      enabled: item.enabled !== undefined ? Boolean(item.enabled) : (existingUser?.enabled ?? true),
+      createdAt: item.createdAt || existingUser?.createdAt || Date.now(),
+      email: item.email || existingUser?.email,
+      playlistCount: Array.isArray(item.customPlaylists) ? item.customPlaylists.length : (existingUser?.playlistCount || 0),
+      likedCount: Array.isArray(item.likedSongs) ? item.likedSongs.length : (existingUser?.likedCount || 0),
+    };
+    usersMap.set(clean, updatedUser);
+
+    // Update profile
+    const existingProf = profilesMap.get(clean) || {};
+    const rawAlbums = (Array.isArray(item.favouriteAlbums) ? item.favouriteAlbums : (existingProf.favouriteAlbums || [])).filter(
+      (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
+    );
+    const cloudRecord = {
+      id: '__mouzika_cloud_stats_v1__',
+      title: '__mouzika_cloud_stats__',
+      type: 'system_stats',
+      stats: effStats,
+      displayName: item.displayName || clean,
+      avatarUrl: item.avatarUrl || null,
+      email: updatedUser.email || null,
+      password: updatedUser.password || null,
+      updatedAt: Date.now(),
+    };
+
+    const mergedProfile = {
+      ...existingProf,
+      ...item,
+      username: clean,
+      stats: effStats,
+      favouriteAlbums: [...rawAlbums, cloudRecord],
+      updatedAt: Date.now(),
+    };
+    if (updatedUser.password) mergedProfile.password = updatedUser.password;
+    profilesMap.set(clean, mergedProfile);
+    restoredCount++;
+
+    // Sync to upstream worker asynchronously
+    fetch(`${UPSTREAM_WORKER}/api/save-profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mergedProfile),
+    }).catch(() => {});
+  }
+
+  saveUsersStore();
+  saveProfilesStore();
+
+  return res.json({
+    success: true,
+    message: `Successfully restored ${restoredCount} user(s)`,
+    restoredCount,
+  });
 });
 
 app.post(['/api/admin/create-user', '/api/create-user'], requireAdmin, (req: Request, res: Response) => {

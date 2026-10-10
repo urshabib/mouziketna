@@ -35,12 +35,13 @@ export interface UserStats {
 
 export interface UserProfile {
   username: string;
+  password?: string;
   displayName?: string;
   email?: string;
   likedSongs: Track[];
   customPlaylists: CustomPlaylist[];
   favouriteArtists: Track[];
-  favouriteAlbums: Track[];
+  favouriteAlbums: any[];
   recentlyPlayed: Track[];
   hiddenStatsSongs?: SongPlayStat[];
   stats?: UserStats;

@@ -14,5 +14,1308 @@
       }
     ],
     "username": "doudou"
+  },
+  "haitham": {
+    "username": "haitham",
+    "password": "123",
+    "isAdmin": false,
+    "surprise": false,
+    "likedSongs": [],
+    "customPlaylists": [
+      {
+        "id": "pl_1789562382246",
+        "name": "Chilling",
+        "tracks": [
+          {
+            "id": "1wq47tabJh0",
+            "title": "Mood (Lofi)",
+            "artist": "Yagih Mael",
+            "thumb": "https://yt.omada.cafe/vi/1wq47tabJh0/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "XDjB9E3YtUE",
+            "title": "Heat Waves",
+            "artist": "Glass Animals",
+            "thumb": "https://yt.omada.cafe/vi/XDjB9E3YtUE/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "UNOtbkQxECI",
+            "title": "Mood",
+            "artist": "24kGoldn",
+            "thumb": "https://yt.omada.cafe/vi/UNOtbkQxECI/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "LIY7F-ld8bU",
+            "title": "Ordinary",
+            "artist": "Alex Warren",
+            "thumb": "https://yt.omada.cafe/vi/LIY7F-ld8bU/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "Tk7WFyHUr1E",
+            "title": "Without Me",
+            "artist": "Halsey",
+            "thumb": "https://yt.omada.cafe/vi/Tk7WFyHUr1E/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "pbDKb311Zrg",
+            "title": "Tattoo",
+            "artist": "Loreen",
+            "thumb": "https://yt.omada.cafe/vi/pbDKb311Zrg/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "WeI4KZ3JWrY",
+            "title": "Love Me Like You Do",
+            "artist": "Ellie Goulding",
+            "thumb": "https://yt.omada.cafe/vi/WeI4KZ3JWrY/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "zmGVTxBy70A",
+            "title": "Die With A Smile",
+            "artist": "Lady Gaga",
+            "thumb": "https://yt.omada.cafe/vi/zmGVTxBy70A/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "Y1gswBe-DjM",
+            "title": "Daylight",
+            "artist": "David Kushner",
+            "thumb": "https://yt.omada.cafe/vi/Y1gswBe-DjM/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "tthafU1Ao40",
+            "title": "Royalty",
+            "artist": "Egzod",
+            "thumb": "https://yt.omada.cafe/vi/tthafU1Ao40/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "nyuo9-OjNNg",
+            "title": "I Wanna Be Yours",
+            "artist": "Official Arctic Monkeys",
+            "thumb": "https://yt.omada.cafe/vi/nyuo9-OjNNg/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "_QtN6qocpKU",
+            "title": "greedy",
+            "artist": "Tate McRae",
+            "thumb": "https://yt.omada.cafe/vi/_QtN6qocpKU/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "XfEMj-z3TtA",
+            "title": "STAY",
+            "artist": "The Kid LAROI.",
+            "thumb": "https://yt.omada.cafe/vi/XfEMj-z3TtA/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "vTMAa6zZ7jY",
+            "title": "7 Years",
+            "artist": "Lukas Graham",
+            "thumb": "https://yt.omada.cafe/vi/vTMAa6zZ7jY/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "vVwF2qacw3I",
+            "title": "Runaway",
+            "artist": "AURORA",
+            "thumb": "https://yt.omada.cafe/vi/vVwF2qacw3I/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "ciwx8yJPX54",
+            "title": "Alone, Pt. II",
+            "artist": "Ava Max",
+            "thumb": "https://yt.omada.cafe/vi/ciwx8yJPX54/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "hHtv2XMZlKs",
+            "title": "Lucid Dreams",
+            "artist": "Juice WRLD",
+            "thumb": "https://yt.omada.cafe/vi/hHtv2XMZlKs/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "H3Kzh6RrnMc",
+            "title": "Hymn for the Weekend",
+            "artist": "Coldplay",
+            "thumb": "https://yt.omada.cafe/vi/H3Kzh6RrnMc/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "6evX1aqDgWc",
+            "title": "The Spectre",
+            "artist": "Alan Walker",
+            "thumb": "https://yt.omada.cafe/vi/6evX1aqDgWc/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "T4l33dsNwVk",
+            "title": "Beautiful Things",
+            "artist": "Benson Boone",
+            "thumb": "https://yt.omada.cafe/vi/T4l33dsNwVk/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "RT3W0cUnTmI",
+            "title": "Let Me Down Slowly",
+            "artist": "Alec Benjamin",
+            "thumb": "https://yt.omada.cafe/vi/RT3W0cUnTmI/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "Ztdc7TcPdAA",
+            "title": "There's Nothing Holdin' Me Back",
+            "artist": "Shawn Mendes",
+            "thumb": "https://yt.omada.cafe/vi/Ztdc7TcPdAA/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "WMK3JXG3Fx0",
+            "title": "Infinity",
+            "artist": "Jaymes Young",
+            "thumb": "https://yt.omada.cafe/vi/WMK3JXG3Fx0/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "jgHYgDFD0xo",
+            "title": "Summertime Sadness (Lana Del Rey Vs. Cedric Gervais)",
+            "artist": "Lana Del Rey",
+            "thumb": "https://yt.omada.cafe/vi/jgHYgDFD0xo/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "hK59OMfBN8E",
+            "title": "Past Lives",
+            "artist": "sapientdream",
+            "thumb": "https://yt.omada.cafe/vi/hK59OMfBN8E/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "W4C-NEWrnSQ",
+            "title": "The Nights",
+            "artist": "Avicii",
+            "thumb": "https://yt.omada.cafe/vi/W4C-NEWrnSQ/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "T6jIAyWzESA",
+            "title": "Somewhere Only We Know",
+            "artist": "Gustixa",
+            "thumb": "https://yt.omada.cafe/vi/T6jIAyWzESA/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "jkZyZxbXmn4",
+            "title": "Dynasty",
+            "artist": "MIIA",
+            "thumb": "https://yt.omada.cafe/vi/jkZyZxbXmn4/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "f2CBuG3iLrs",
+            "title": "In The Stars",
+            "artist": "Benson Boone",
+            "thumb": "https://yt.omada.cafe/vi/f2CBuG3iLrs/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "6uVrP0Qj1cU",
+            "title": "Rise Up",
+            "artist": "TheFatRat",
+            "thumb": "https://yt.omada.cafe/vi/6uVrP0Qj1cU/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "CpTr4USXjQw",
+            "title": "Don't Let Me Down",
+            "artist": "The Chainsmokers",
+            "thumb": "https://yt.omada.cafe/vi/CpTr4USXjQw/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "0GybADAGNfE",
+            "title": "Halo",
+            "artist": "Beyoncé",
+            "thumb": "https://yt.omada.cafe/vi/0GybADAGNfE/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "-SomNSTu1Tc",
+            "title": "See You Again (feat. Charlie Puth)",
+            "artist": "Wiz Khalifa",
+            "thumb": "https://yt.omada.cafe/vi/-SomNSTu1Tc/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "XeUYMrGmLPw",
+            "title": "a thousand years",
+            "artist": "Christina Perri",
+            "thumb": "https://yt.omada.cafe/vi/XeUYMrGmLPw/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "7nVctvQVz0U",
+            "title": "The Fate of Ophelia",
+            "artist": "Taylor Swift",
+            "thumb": "https://yt.omada.cafe/vi/7nVctvQVz0U/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "oFrvRiixXcA",
+            "title": "Arcade",
+            "artist": "Duncan Laurence",
+            "thumb": "https://yt.omada.cafe/vi/oFrvRiixXcA/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "OLlh4fkXu5M",
+            "title": "Am I Wrong",
+            "artist": "Nico & Vinz",
+            "thumb": "https://yt.omada.cafe/vi/OLlh4fkXu5M/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "QX1KRphxnQc",
+            "title": "Headlights (feat. KIDDO)",
+            "artist": "Alok",
+            "thumb": "https://yt.omada.cafe/vi/QX1KRphxnQc/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "fAGzK-iSk-Q",
+            "title": "Sugar & Brownies",
+            "artist": "DHARIA",
+            "thumb": "https://yt.omada.cafe/vi/fAGzK-iSk-Q/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "wjbqL1WLa14",
+            "title": "Lean On",
+            "artist": "Major Lazer Official",
+            "thumb": "https://yt.omada.cafe/vi/wjbqL1WLa14/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "arYQrVEFwHI",
+            "title": "Shower",
+            "artist": "Becky G",
+            "thumb": "https://yt.omada.cafe/vi/arYQrVEFwHI/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "3_g2un5M350",
+            "title": "Starboy",
+            "artist": "The Weeknd",
+            "thumb": "https://yt.omada.cafe/vi/3_g2un5M350/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "lAJazaLrHfQ",
+            "title": "Dancing With Your Ghost",
+            "artist": "Sasha Alex Sloan",
+            "thumb": "https://yt.omada.cafe/vi/lAJazaLrHfQ/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "Ro0vTEuSUuo",
+            "title": "Beanie",
+            "artist": "Chezile ",
+            "thumb": "https://yt.omada.cafe/vi/Ro0vTEuSUuo/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "KyAcMpQUY5s",
+            "title": "Hope",
+            "artist": "XXXTENTACION",
+            "thumb": "https://yt.omada.cafe/vi/KyAcMpQUY5s/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "mjcX-5lKdeg",
+            "title": "Young And Beautiful",
+            "artist": "Lana Del Rey",
+            "thumb": "https://yt.omada.cafe/vi/mjcX-5lKdeg/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "DCYmJDO2_IE",
+            "title": "Cinnamon Girl",
+            "artist": "Lana Del Rey",
+            "thumb": "https://yt.omada.cafe/vi/DCYmJDO2_IE/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "X3Mlo_VG1gk",
+            "title": "Cold",
+            "artist": "Maroon 5",
+            "thumb": "https://yt.omada.cafe/vi/X3Mlo_VG1gk/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "ErFyeO-MppU",
+            "title": "Est-ce que tu m'aimes ? (Pilule bleue)",
+            "artist": "GIMS",
+            "thumb": "https://yt.omada.cafe/vi/ErFyeO-MppU/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "I-CMtScCtc8",
+            "title": "Ignite",
+            "artist": "K-391",
+            "thumb": "https://yt.omada.cafe/vi/I-CMtScCtc8/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "DOGva5C1-5U",
+            "title": "Ava",
+            "artist": "famyboys",
+            "thumb": "https://yt.omada.cafe/vi/DOGva5C1-5U/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "EsxBeOiFlZE",
+            "title": "Safari",
+            "artist": "Serena",
+            "thumb": "https://yt.omada.cafe/vi/EsxBeOiFlZE/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "NdSJ1pyaAH8",
+            "title": "Him & I",
+            "artist": "G-Eazy",
+            "thumb": "https://yt.omada.cafe/vi/NdSJ1pyaAH8/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "abZQ45GwKDs",
+            "title": "Hurts So Good",
+            "artist": "Astrid S",
+            "thumb": "https://yt.omada.cafe/vi/abZQ45GwKDs/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "3IUqoyTxEU8",
+            "title": "ocean eyes",
+            "artist": "Billie Eilish",
+            "thumb": "https://yt.omada.cafe/vi/3IUqoyTxEU8/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "90DKXLbzLto",
+            "title": "The Night We Met",
+            "artist": "Lord Huron",
+            "thumb": "https://yt.omada.cafe/vi/90DKXLbzLto/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "CtnR6ayIEpk",
+            "title": "If We Have Each Other",
+            "artist": "Alec Benjamin",
+            "thumb": "https://yt.omada.cafe/vi/CtnR6ayIEpk/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "TI9w3sLjrqo",
+            "title": "On & On",
+            "artist": "CARTOON",
+            "thumb": "https://yt.omada.cafe/vi/TI9w3sLjrqo/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "DmlkcUkXDC4",
+            "title": "Self Aware",
+            "artist": "LUM!X",
+            "thumb": "https://yt.omada.cafe/vi/DmlkcUkXDC4/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "AbQpe4ngxTE",
+            "title": "In My Mind",
+            "artist": "May Zoean (@maymusic)",
+            "thumb": "https://yt.omada.cafe/vi/AbQpe4ngxTE/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "ZjODWsHFo5Y",
+            "title": "Trap Queen",
+            "artist": "Harlem Fetty",
+            "thumb": "https://yt.omada.cafe/vi/ZjODWsHFo5Y/3.jpg",
+            "type": "song"
+          },
+          {
+            "id": "qzDz7a-dGJY",
+            "title": "Camila Cabello - Shameless",
+            "artist": "LatinHype",
+            "thumb": "https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/qzDz7a-dGJY/mqdefault.webp",
+            "type": "song"
+          },
+          {
+            "id": "2ljKgfeDi-c",
+            "title": "Katy Perry - The One That Got Away (Lyrics)",
+            "artist": "7clouds",
+            "thumb": "https://wsrv.nl/?url=https://i.ytimg.com/vi/2ljKgfeDi-c/maxresdefault.jpg&default=https://i.ytimg.com/vi/2ljKgfeDi-c/hqdefault.jpg&w=800&h=800&fit=cover&q=90&output=webp",
+            "type": "song"
+          }
+        ],
+        "source": "YouTube Music",
+        "thumb": "https://yt.omada.cafe/vi/XDjB9E3YtUE/3.jpg"
+      }
+    ],
+    "favouriteArtists": [],
+    "favouriteAlbums": [
+      {
+        "id": "__mouzika_cloud_stats_v1__",
+        "title": "__mouzika_cloud_stats__",
+        "type": "system_stats",
+        "stats": {
+          "totalMinutesListened": 307,
+          "totalTracksPlayed": 114,
+          "topSongs": [
+            {
+              "id": "WeI4KZ3JWrY",
+              "title": "Love Me Like You Do",
+              "artist": "Ellie Goulding",
+              "thumb": "https://yt.omada.cafe/vi/WeI4KZ3JWrY/3.jpg",
+              "playCount": 5,
+              "minutesListened": 6,
+              "lastPlayed": 1791067172965
+            },
+            {
+              "id": "Tk7WFyHUr1E",
+              "title": "Without Me",
+              "artist": "Halsey",
+              "thumb": "https://yt.omada.cafe/vi/Tk7WFyHUr1E/3.jpg",
+              "playCount": 5,
+              "minutesListened": 5,
+              "lastPlayed": 1791067171969
+            },
+            {
+              "id": "abZQ45GwKDs",
+              "title": "Hurts So Good",
+              "artist": "Astrid S",
+              "thumb": "https://yt.omada.cafe/vi/abZQ45GwKDs/3.jpg",
+              "playCount": 2,
+              "minutesListened": 11,
+              "lastPlayed": 1791455415054
+            },
+            {
+              "id": "90DKXLbzLto",
+              "title": "The Night We Met",
+              "artist": "Lord Huron",
+              "thumb": "https://yt.omada.cafe/vi/90DKXLbzLto/3.jpg",
+              "playCount": 2,
+              "minutesListened": 11,
+              "lastPlayed": 1791455777710
+            },
+            {
+              "id": "TI9w3sLjrqo",
+              "title": "On & On",
+              "artist": "CARTOON",
+              "thumb": "https://yt.omada.cafe/vi/TI9w3sLjrqo/3.jpg",
+              "playCount": 2,
+              "minutesListened": 11,
+              "lastPlayed": 1791456184848
+            },
+            {
+              "id": "NdSJ1pyaAH8",
+              "title": "Him & I",
+              "artist": "G-Eazy",
+              "thumb": "https://yt.omada.cafe/vi/NdSJ1pyaAH8/3.jpg",
+              "playCount": 3,
+              "minutesListened": 7,
+              "lastPlayed": 1791455188225
+            },
+            {
+              "id": "CtnR6ayIEpk",
+              "title": "If We Have Each Other",
+              "artist": "Alec Benjamin",
+              "thumb": "https://yt.omada.cafe/vi/CtnR6ayIEpk/3.jpg",
+              "playCount": 2,
+              "minutesListened": 9,
+              "lastPlayed": 1791455959025
+            },
+            {
+              "id": "3IUqoyTxEU8",
+              "title": "ocean eyes",
+              "artist": "Billie Eilish",
+              "thumb": "https://yt.omada.cafe/vi/3IUqoyTxEU8/3.jpg",
+              "playCount": 2,
+              "minutesListened": 8,
+              "lastPlayed": 1791455551336
+            },
+            {
+              "id": "DCYmJDO2_IE",
+              "title": "Cinnamon Girl",
+              "artist": "Lana Del Rey",
+              "thumb": "https://yt.omada.cafe/vi/DCYmJDO2_IE/3.jpg",
+              "playCount": 2,
+              "minutesListened": 8,
+              "lastPlayed": 1791061796093
+            },
+            {
+              "id": "OLlh4fkXu5M",
+              "title": "Am I Wrong",
+              "artist": "Nico & Vinz",
+              "thumb": "https://yt.omada.cafe/vi/OLlh4fkXu5M/3.jpg",
+              "playCount": 1,
+              "minutesListened": 7,
+              "lastPlayed": 1791059811255
+            },
+            {
+              "id": "0GybADAGNfE",
+              "title": "Halo",
+              "artist": "Beyoncé",
+              "thumb": "https://yt.omada.cafe/vi/0GybADAGNfE/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791058565940
+            },
+            {
+              "id": "-SomNSTu1Tc",
+              "title": "See You Again (feat. Charlie Puth)",
+              "artist": "Wiz Khalifa",
+              "thumb": "https://yt.omada.cafe/vi/-SomNSTu1Tc/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791058791064
+            },
+            {
+              "id": "XeUYMrGmLPw",
+              "title": "a thousand years",
+              "artist": "Christina Perri",
+              "thumb": "https://yt.omada.cafe/vi/XeUYMrGmLPw/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791059016641
+            },
+            {
+              "id": "7nVctvQVz0U",
+              "title": "The Fate of Ophelia",
+              "artist": "Taylor Swift",
+              "thumb": "https://yt.omada.cafe/vi/7nVctvQVz0U/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791059360912
+            },
+            {
+              "id": "fAGzK-iSk-Q",
+              "title": "Sugar & Brownies",
+              "artist": "DHARIA",
+              "thumb": "https://yt.omada.cafe/vi/fAGzK-iSk-Q/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791060172567
+            },
+            {
+              "id": "arYQrVEFwHI",
+              "title": "Shower",
+              "artist": "Becky G",
+              "thumb": "https://yt.omada.cafe/vi/arYQrVEFwHI/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791060534015
+            },
+            {
+              "id": "3_g2un5M350",
+              "title": "Starboy",
+              "artist": "The Weeknd",
+              "thumb": "https://yt.omada.cafe/vi/3_g2un5M350/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791060803300
+            },
+            {
+              "id": "lAJazaLrHfQ",
+              "title": "Dancing With Your Ghost",
+              "artist": "Sasha Alex Sloan",
+              "thumb": "https://yt.omada.cafe/vi/lAJazaLrHfQ/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791061028896
+            },
+            {
+              "id": "mjcX-5lKdeg",
+              "title": "Young And Beautiful",
+              "artist": "Lana Del Rey",
+              "thumb": "https://yt.omada.cafe/vi/mjcX-5lKdeg/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791061480812
+            },
+            {
+              "id": "X3Mlo_VG1gk",
+              "title": "Cold",
+              "artist": "Maroon 5",
+              "thumb": "https://yt.omada.cafe/vi/X3Mlo_VG1gk/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791062021646
+            },
+            {
+              "id": "ErFyeO-MppU",
+              "title": "Est-ce que tu m'aimes ? (Pilule bleue)",
+              "artist": "GIMS",
+              "thumb": "https://yt.omada.cafe/vi/ErFyeO-MppU/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791062274008
+            },
+            {
+              "id": "I-CMtScCtc8",
+              "title": "Ignite",
+              "artist": "K-391",
+              "thumb": "https://yt.omada.cafe/vi/I-CMtScCtc8/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791062499171
+            },
+            {
+              "id": "DOGva5C1-5U",
+              "title": "Ava",
+              "artist": "famyboys",
+              "thumb": "https://yt.omada.cafe/vi/DOGva5C1-5U/3.jpg",
+              "playCount": 1,
+              "minutesListened": 6,
+              "lastPlayed": 1791062724645
+            },
+            {
+              "id": "6uVrP0Qj1cU",
+              "title": "Rise Up",
+              "artist": "TheFatRat",
+              "thumb": "https://yt.omada.cafe/vi/6uVrP0Qj1cU/3.jpg",
+              "playCount": 1,
+              "minutesListened": 5,
+              "lastPlayed": 1791058339877
+            },
+            {
+              "id": "oFrvRiixXcA",
+              "title": "Arcade",
+              "artist": "Duncan Laurence",
+              "thumb": "https://yt.omada.cafe/vi/oFrvRiixXcA/3.jpg",
+              "playCount": 1,
+              "minutesListened": 5,
+              "lastPlayed": 1791059541086
+            },
+            {
+              "id": "EsxBeOiFlZE",
+              "title": "Safari",
+              "artist": "Serena",
+              "thumb": "https://yt.omada.cafe/vi/EsxBeOiFlZE/3.jpg",
+              "playCount": 1,
+              "minutesListened": 5,
+              "lastPlayed": 1791062904749
+            },
+            {
+              "id": "QX1KRphxnQc",
+              "title": "Headlights (feat. KIDDO)",
+              "artist": "Alok",
+              "thumb": "https://yt.omada.cafe/vi/QX1KRphxnQc/3.jpg",
+              "playCount": 1,
+              "minutesListened": 4,
+              "lastPlayed": 1791059947188
+            },
+            {
+              "id": "wjbqL1WLa14",
+              "title": "Lean On",
+              "artist": "Major Lazer Official",
+              "thumb": "https://yt.omada.cafe/vi/wjbqL1WLa14/3.jpg",
+              "playCount": 1,
+              "minutesListened": 4,
+              "lastPlayed": 1791060308283
+            },
+            {
+              "id": "Ro0vTEuSUuo",
+              "title": "Beanie",
+              "artist": "Chezile ",
+              "thumb": "https://yt.omada.cafe/vi/Ro0vTEuSUuo/3.jpg",
+              "playCount": 1,
+              "minutesListened": 4,
+              "lastPlayed": 1791061164641
+            },
+            {
+              "id": "KyAcMpQUY5s",
+              "title": "Hope",
+              "artist": "XXXTENTACION",
+              "thumb": "https://yt.omada.cafe/vi/KyAcMpQUY5s/3.jpg",
+              "playCount": 1,
+              "minutesListened": 3,
+              "lastPlayed": 1791061254859
+            }
+          ],
+          "topArtists": [
+            {
+              "name": "Lana Del Rey",
+              "playCount": 2,
+              "minutesListened": 14,
+              "thumb": "https://yt.omada.cafe/vi/DCYmJDO2_IE/3.jpg"
+            },
+            {
+              "name": "Astrid S",
+              "playCount": 2,
+              "minutesListened": 11,
+              "thumb": "https://yt.omada.cafe/vi/abZQ45GwKDs/3.jpg"
+            },
+            {
+              "name": "Lord Huron",
+              "playCount": 2,
+              "minutesListened": 11,
+              "thumb": "https://yt.omada.cafe/vi/90DKXLbzLto/3.jpg"
+            },
+            {
+              "name": "CARTOON",
+              "playCount": 2,
+              "minutesListened": 11,
+              "thumb": "https://yt.omada.cafe/vi/TI9w3sLjrqo/3.jpg"
+            },
+            {
+              "name": "Alec Benjamin",
+              "playCount": 2,
+              "minutesListened": 9,
+              "thumb": "https://yt.omada.cafe/vi/CtnR6ayIEpk/3.jpg"
+            },
+            {
+              "name": "Ellie Goulding",
+              "playCount": 5,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/WeI4KZ3JWrY/3.jpg"
+            },
+            {
+              "name": "Billie Eilish",
+              "playCount": 2,
+              "minutesListened": 8,
+              "thumb": "https://yt.omada.cafe/vi/3IUqoyTxEU8/3.jpg"
+            },
+            {
+              "name": "G-Eazy",
+              "playCount": 3,
+              "minutesListened": 7,
+              "thumb": "https://yt.omada.cafe/vi/NdSJ1pyaAH8/3.jpg"
+            },
+            {
+              "name": "Halsey",
+              "playCount": 5,
+              "minutesListened": 5,
+              "thumb": "https://yt.omada.cafe/vi/Tk7WFyHUr1E/3.jpg"
+            },
+            {
+              "name": "Nico & Vinz",
+              "playCount": 1,
+              "minutesListened": 7,
+              "thumb": "https://yt.omada.cafe/vi/OLlh4fkXu5M/3.jpg"
+            },
+            {
+              "name": "Beyoncé",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/0GybADAGNfE/3.jpg"
+            },
+            {
+              "name": "Wiz Khalifa",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/-SomNSTu1Tc/3.jpg"
+            },
+            {
+              "name": "Christina Perri",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/XeUYMrGmLPw/3.jpg"
+            },
+            {
+              "name": "Taylor Swift",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/7nVctvQVz0U/3.jpg"
+            },
+            {
+              "name": "DHARIA",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/fAGzK-iSk-Q/3.jpg"
+            },
+            {
+              "name": "Becky G",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/arYQrVEFwHI/3.jpg"
+            },
+            {
+              "name": "The Weeknd",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/3_g2un5M350/3.jpg"
+            },
+            {
+              "name": "Sasha Alex Sloan",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/lAJazaLrHfQ/3.jpg"
+            },
+            {
+              "name": "Maroon 5",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/X3Mlo_VG1gk/3.jpg"
+            },
+            {
+              "name": "GIMS",
+              "playCount": 1,
+              "minutesListened": 6,
+              "thumb": "https://yt.omada.cafe/vi/ErFyeO-MppU/3.jpg"
+            }
+          ],
+          "lastUpdated": 1791456593412
+        },
+        "explicitInterested": [],
+        "explicitNotInterested": [],
+        "updatedAt": 1791456598725
+      }
+    ],
+    "recentlyPlayed": [
+      {
+        "id": "qzDz7a-dGJY",
+        "title": "Camila Cabello - Shameless",
+        "artist": "LatinHype",
+        "thumb": "https://wsrv.nl/?url=https://i.ytimg.com/vi_webp/qzDz7a-dGJY/mqdefault.webp",
+        "type": "song"
+      }
+    ],
+    "dataSaver": false,
+    "dataSaverLevel": "off",
+    "downloadLyricsOffline": false,
+    "liquidGlass": true,
+    "theme": "dark",
+    "accentColor": "purple",
+    "lyricsColor": "purple",
+    "presetTint": "purple",
+    "activePreset": "violet",
+    "stats": {
+      "totalMinutesListened": 307,
+      "totalTracksPlayed": 114,
+      "topSongs": [
+        {
+          "id": "WeI4KZ3JWrY",
+          "title": "Love Me Like You Do",
+          "artist": "Ellie Goulding",
+          "thumb": "https://yt.omada.cafe/vi/WeI4KZ3JWrY/3.jpg",
+          "playCount": 5,
+          "minutesListened": 6,
+          "lastPlayed": 1791067172965
+        },
+        {
+          "id": "Tk7WFyHUr1E",
+          "title": "Without Me",
+          "artist": "Halsey",
+          "thumb": "https://yt.omada.cafe/vi/Tk7WFyHUr1E/3.jpg",
+          "playCount": 5,
+          "minutesListened": 5,
+          "lastPlayed": 1791067171969
+        },
+        {
+          "id": "abZQ45GwKDs",
+          "title": "Hurts So Good",
+          "artist": "Astrid S",
+          "thumb": "https://yt.omada.cafe/vi/abZQ45GwKDs/3.jpg",
+          "playCount": 2,
+          "minutesListened": 11,
+          "lastPlayed": 1791455415054
+        },
+        {
+          "id": "90DKXLbzLto",
+          "title": "The Night We Met",
+          "artist": "Lord Huron",
+          "thumb": "https://yt.omada.cafe/vi/90DKXLbzLto/3.jpg",
+          "playCount": 2,
+          "minutesListened": 11,
+          "lastPlayed": 1791455777710
+        },
+        {
+          "id": "TI9w3sLjrqo",
+          "title": "On & On",
+          "artist": "CARTOON",
+          "thumb": "https://yt.omada.cafe/vi/TI9w3sLjrqo/3.jpg",
+          "playCount": 2,
+          "minutesListened": 11,
+          "lastPlayed": 1791456184848
+        },
+        {
+          "id": "NdSJ1pyaAH8",
+          "title": "Him & I",
+          "artist": "G-Eazy",
+          "thumb": "https://yt.omada.cafe/vi/NdSJ1pyaAH8/3.jpg",
+          "playCount": 3,
+          "minutesListened": 7,
+          "lastPlayed": 1791455188225
+        },
+        {
+          "id": "CtnR6ayIEpk",
+          "title": "If We Have Each Other",
+          "artist": "Alec Benjamin",
+          "thumb": "https://yt.omada.cafe/vi/CtnR6ayIEpk/3.jpg",
+          "playCount": 2,
+          "minutesListened": 9,
+          "lastPlayed": 1791455959025
+        },
+        {
+          "id": "3IUqoyTxEU8",
+          "title": "ocean eyes",
+          "artist": "Billie Eilish",
+          "thumb": "https://yt.omada.cafe/vi/3IUqoyTxEU8/3.jpg",
+          "playCount": 2,
+          "minutesListened": 8,
+          "lastPlayed": 1791455551336
+        },
+        {
+          "id": "DCYmJDO2_IE",
+          "title": "Cinnamon Girl",
+          "artist": "Lana Del Rey",
+          "thumb": "https://yt.omada.cafe/vi/DCYmJDO2_IE/3.jpg",
+          "playCount": 2,
+          "minutesListened": 8,
+          "lastPlayed": 1791061796093
+        },
+        {
+          "id": "OLlh4fkXu5M",
+          "title": "Am I Wrong",
+          "artist": "Nico & Vinz",
+          "thumb": "https://yt.omada.cafe/vi/OLlh4fkXu5M/3.jpg",
+          "playCount": 1,
+          "minutesListened": 7,
+          "lastPlayed": 1791059811255
+        },
+        {
+          "id": "0GybADAGNfE",
+          "title": "Halo",
+          "artist": "Beyoncé",
+          "thumb": "https://yt.omada.cafe/vi/0GybADAGNfE/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791058565940
+        },
+        {
+          "id": "-SomNSTu1Tc",
+          "title": "See You Again (feat. Charlie Puth)",
+          "artist": "Wiz Khalifa",
+          "thumb": "https://yt.omada.cafe/vi/-SomNSTu1Tc/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791058791064
+        },
+        {
+          "id": "XeUYMrGmLPw",
+          "title": "a thousand years",
+          "artist": "Christina Perri",
+          "thumb": "https://yt.omada.cafe/vi/XeUYMrGmLPw/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791059016641
+        },
+        {
+          "id": "7nVctvQVz0U",
+          "title": "The Fate of Ophelia",
+          "artist": "Taylor Swift",
+          "thumb": "https://yt.omada.cafe/vi/7nVctvQVz0U/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791059360912
+        },
+        {
+          "id": "fAGzK-iSk-Q",
+          "title": "Sugar & Brownies",
+          "artist": "DHARIA",
+          "thumb": "https://yt.omada.cafe/vi/fAGzK-iSk-Q/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791060172567
+        },
+        {
+          "id": "arYQrVEFwHI",
+          "title": "Shower",
+          "artist": "Becky G",
+          "thumb": "https://yt.omada.cafe/vi/arYQrVEFwHI/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791060534015
+        },
+        {
+          "id": "3_g2un5M350",
+          "title": "Starboy",
+          "artist": "The Weeknd",
+          "thumb": "https://yt.omada.cafe/vi/3_g2un5M350/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791060803300
+        },
+        {
+          "id": "lAJazaLrHfQ",
+          "title": "Dancing With Your Ghost",
+          "artist": "Sasha Alex Sloan",
+          "thumb": "https://yt.omada.cafe/vi/lAJazaLrHfQ/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791061028896
+        },
+        {
+          "id": "mjcX-5lKdeg",
+          "title": "Young And Beautiful",
+          "artist": "Lana Del Rey",
+          "thumb": "https://yt.omada.cafe/vi/mjcX-5lKdeg/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791061480812
+        },
+        {
+          "id": "X3Mlo_VG1gk",
+          "title": "Cold",
+          "artist": "Maroon 5",
+          "thumb": "https://yt.omada.cafe/vi/X3Mlo_VG1gk/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791062021646
+        },
+        {
+          "id": "ErFyeO-MppU",
+          "title": "Est-ce que tu m'aimes ? (Pilule bleue)",
+          "artist": "GIMS",
+          "thumb": "https://yt.omada.cafe/vi/ErFyeO-MppU/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791062274008
+        },
+        {
+          "id": "I-CMtScCtc8",
+          "title": "Ignite",
+          "artist": "K-391",
+          "thumb": "https://yt.omada.cafe/vi/I-CMtScCtc8/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791062499171
+        },
+        {
+          "id": "DOGva5C1-5U",
+          "title": "Ava",
+          "artist": "famyboys",
+          "thumb": "https://yt.omada.cafe/vi/DOGva5C1-5U/3.jpg",
+          "playCount": 1,
+          "minutesListened": 6,
+          "lastPlayed": 1791062724645
+        },
+        {
+          "id": "6uVrP0Qj1cU",
+          "title": "Rise Up",
+          "artist": "TheFatRat",
+          "thumb": "https://yt.omada.cafe/vi/6uVrP0Qj1cU/3.jpg",
+          "playCount": 1,
+          "minutesListened": 5,
+          "lastPlayed": 1791058339877
+        },
+        {
+          "id": "oFrvRiixXcA",
+          "title": "Arcade",
+          "artist": "Duncan Laurence",
+          "thumb": "https://yt.omada.cafe/vi/oFrvRiixXcA/3.jpg",
+          "playCount": 1,
+          "minutesListened": 5,
+          "lastPlayed": 1791059541086
+        },
+        {
+          "id": "EsxBeOiFlZE",
+          "title": "Safari",
+          "artist": "Serena",
+          "thumb": "https://yt.omada.cafe/vi/EsxBeOiFlZE/3.jpg",
+          "playCount": 1,
+          "minutesListened": 5,
+          "lastPlayed": 1791062904749
+        },
+        {
+          "id": "QX1KRphxnQc",
+          "title": "Headlights (feat. KIDDO)",
+          "artist": "Alok",
+          "thumb": "https://yt.omada.cafe/vi/QX1KRphxnQc/3.jpg",
+          "playCount": 1,
+          "minutesListened": 4,
+          "lastPlayed": 1791059947188
+        },
+        {
+          "id": "wjbqL1WLa14",
+          "title": "Lean On",
+          "artist": "Major Lazer Official",
+          "thumb": "https://yt.omada.cafe/vi/wjbqL1WLa14/3.jpg",
+          "playCount": 1,
+          "minutesListened": 4,
+          "lastPlayed": 1791060308283
+        },
+        {
+          "id": "Ro0vTEuSUuo",
+          "title": "Beanie",
+          "artist": "Chezile ",
+          "thumb": "https://yt.omada.cafe/vi/Ro0vTEuSUuo/3.jpg",
+          "playCount": 1,
+          "minutesListened": 4,
+          "lastPlayed": 1791061164641
+        },
+        {
+          "id": "KyAcMpQUY5s",
+          "title": "Hope",
+          "artist": "XXXTENTACION",
+          "thumb": "https://yt.omada.cafe/vi/KyAcMpQUY5s/3.jpg",
+          "playCount": 1,
+          "minutesListened": 3,
+          "lastPlayed": 1791061254859
+        }
+      ],
+      "topArtists": [
+        {
+          "name": "Lana Del Rey",
+          "playCount": 2,
+          "minutesListened": 14,
+          "thumb": "https://yt.omada.cafe/vi/DCYmJDO2_IE/3.jpg"
+        },
+        {
+          "name": "Astrid S",
+          "playCount": 2,
+          "minutesListened": 11,
+          "thumb": "https://yt.omada.cafe/vi/abZQ45GwKDs/3.jpg"
+        },
+        {
+          "name": "Lord Huron",
+          "playCount": 2,
+          "minutesListened": 11,
+          "thumb": "https://yt.omada.cafe/vi/90DKXLbzLto/3.jpg"
+        },
+        {
+          "name": "CARTOON",
+          "playCount": 2,
+          "minutesListened": 11,
+          "thumb": "https://yt.omada.cafe/vi/TI9w3sLjrqo/3.jpg"
+        },
+        {
+          "name": "Alec Benjamin",
+          "playCount": 2,
+          "minutesListened": 9,
+          "thumb": "https://yt.omada.cafe/vi/CtnR6ayIEpk/3.jpg"
+        },
+        {
+          "name": "Ellie Goulding",
+          "playCount": 5,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/WeI4KZ3JWrY/3.jpg"
+        },
+        {
+          "name": "Billie Eilish",
+          "playCount": 2,
+          "minutesListened": 8,
+          "thumb": "https://yt.omada.cafe/vi/3IUqoyTxEU8/3.jpg"
+        },
+        {
+          "name": "G-Eazy",
+          "playCount": 3,
+          "minutesListened": 7,
+          "thumb": "https://yt.omada.cafe/vi/NdSJ1pyaAH8/3.jpg"
+        },
+        {
+          "name": "Halsey",
+          "playCount": 5,
+          "minutesListened": 5,
+          "thumb": "https://yt.omada.cafe/vi/Tk7WFyHUr1E/3.jpg"
+        },
+        {
+          "name": "Nico & Vinz",
+          "playCount": 1,
+          "minutesListened": 7,
+          "thumb": "https://yt.omada.cafe/vi/OLlh4fkXu5M/3.jpg"
+        },
+        {
+          "name": "Beyoncé",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/0GybADAGNfE/3.jpg"
+        },
+        {
+          "name": "Wiz Khalifa",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/-SomNSTu1Tc/3.jpg"
+        },
+        {
+          "name": "Christina Perri",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/XeUYMrGmLPw/3.jpg"
+        },
+        {
+          "name": "Taylor Swift",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/7nVctvQVz0U/3.jpg"
+        },
+        {
+          "name": "DHARIA",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/fAGzK-iSk-Q/3.jpg"
+        },
+        {
+          "name": "Becky G",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/arYQrVEFwHI/3.jpg"
+        },
+        {
+          "name": "The Weeknd",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/3_g2un5M350/3.jpg"
+        },
+        {
+          "name": "Sasha Alex Sloan",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/lAJazaLrHfQ/3.jpg"
+        },
+        {
+          "name": "Maroon 5",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/X3Mlo_VG1gk/3.jpg"
+        },
+        {
+          "name": "GIMS",
+          "playCount": 1,
+          "minutesListened": 6,
+          "thumb": "https://yt.omada.cafe/vi/ErFyeO-MppU/3.jpg"
+        }
+      ],
+      "lastUpdated": 1791456593412
+    }
+  },
+  "admin": {
+    "username": "admin",
+    "isAdmin": true,
+    "enabled": true,
+    "likedSongs": [],
+    "customPlaylists": [],
+    "favouriteArtists": [],
+    "favouriteAlbums": [],
+    "recentlyPlayed": [],
+    "stats": {
+      "totalMinutesListened": 0,
+      "totalTracksPlayed": 0,
+      "topSongs": [],
+      "topArtists": [],
+      "lastUpdated": 1791664739313
+    },
+    "password": "admin"
   }
 }

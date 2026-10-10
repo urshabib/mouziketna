@@ -1,4 +1,4 @@
-import { DownloadRecord, LyricsData, Track, UserProfile, UserStats } from '../types';
+import { DownloadRecord, LyricsData, Track, UserProfile, UserStats, SongPlayStat, ArtistPlayStat } from '../types';
 import { generateLyricsPlusPlan } from './aiLyricsReel';
 
 const DL_DB_NAME = 'mouzika-downloads';
@@ -439,6 +439,78 @@ export function clearGuestProfile() {
   } catch {}
 }
 
+export function extractStatsFromProfile(data: any): UserStats {
+  const st = (data?.stats || {}) as Partial<UserStats>;
+  let totalMin = Number(st.totalMinutesListened) || 0;
+  let totalTracks = Number(st.totalTracksPlayed) || 0;
+  let topSongs = Array.isArray(st.topSongs) ? [...st.topSongs] : [];
+  let topArtists = Array.isArray(st.topArtists) ? [...st.topArtists] : [];
+  let lastUpdated = st.lastUpdated || 0;
+
+  // Extract from favouriteAlbums embedded system record if present
+  if (Array.isArray(data?.favouriteAlbums)) {
+    const cloudRecord = data.favouriteAlbums.find(
+      (a: any) => a && (a.id === '__mouzika_cloud_stats_v1__' || a.id === '__mouzika_cloud_profile_v1__')
+    );
+    if (cloudRecord && cloudRecord.stats) {
+      const cs = cloudRecord.stats;
+      const cMins = Number(cs.totalMinutesListened) || 0;
+      const cTracks = Number(cs.totalTracksPlayed) || 0;
+      if (cMins > totalMin) totalMin = cMins;
+      if (cTracks > totalTracks) totalTracks = cTracks;
+
+      if (Array.isArray(cs.topSongs) && cs.topSongs.length > 0) {
+        const songMap = new Map<string, SongPlayStat>();
+        topSongs.forEach((s) => { if (s && s.id) songMap.set(s.id, { ...s }); });
+        cs.topSongs.forEach((s: any) => {
+          if (!s || !s.id) return;
+          const ex = songMap.get(s.id);
+          if (ex) {
+            ex.playCount = Math.max(ex.playCount || 0, s.playCount || 0);
+            ex.minutesListened = Math.max(ex.minutesListened || 0, s.minutesListened || 0);
+            ex.lastPlayed = Math.max(ex.lastPlayed || 0, s.lastPlayed || 0);
+            if (!ex.thumb && s.thumb) ex.thumb = s.thumb;
+          } else {
+            songMap.set(s.id, { ...s });
+          }
+        });
+        topSongs = Array.from(songMap.values());
+      }
+
+      if (Array.isArray(cs.topArtists) && cs.topArtists.length > 0) {
+        const artistMap = new Map<string, ArtistPlayStat>();
+        topArtists.forEach((a) => { if (a && a.name) artistMap.set(a.name.toLowerCase().trim(), { ...a }); });
+        cs.topArtists.forEach((a: any) => {
+          if (!a || !a.name) return;
+          const key = a.name.toLowerCase().trim();
+          const ex = artistMap.get(key);
+          if (ex) {
+            ex.playCount = Math.max(ex.playCount || 0, a.playCount || 0);
+            ex.minutesListened = Math.max(ex.minutesListened || 0, a.minutesListened || 0);
+            if (!ex.thumb && a.thumb) ex.thumb = a.thumb;
+          } else {
+            artistMap.set(key, { ...a });
+          }
+        });
+        topArtists = Array.from(artistMap.values());
+      }
+
+      if ((cs.lastUpdated || 0) > lastUpdated) lastUpdated = cs.lastUpdated;
+    }
+  }
+
+  topSongs.sort((a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2));
+  topArtists.sort((a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2));
+
+  return {
+    totalMinutesListened: totalMin,
+    totalTracksPlayed: totalTracks,
+    topSongs,
+    topArtists,
+    lastUpdated: lastUpdated || Date.now(),
+  };
+}
+
 /**
  * Losslessly merges user profile data across all available sources:
  * - Server incoming data
@@ -543,15 +615,63 @@ export function mergeProfilesSafely(
   addAlbums(currentMemory?.favouriteAlbums);
   addAlbums(serverData?.favouriteAlbums);
 
-  // 5. Merge listening stats
-  const cStats = (cachedData?.stats || {}) as Partial<UserStats>;
-  const sStats = (serverData?.stats || {}) as Partial<UserStats>;
-  const mStats = (currentMemory?.stats || {}) as Partial<UserStats>;
+  // 5. Merge listening stats losslessly (never delete previously listened songs or minutes)
+  const cStats = extractStatsFromProfile(cachedData);
+  const sStats = extractStatsFromProfile(serverData);
+  const mStats = extractStatsFromProfile(currentMemory);
+  const gStats = extractStatsFromProfile(guestData);
+
+  // Union merge topSongs by song id across all profiles
+  const songMap = new Map<string, SongPlayStat>();
+  [mStats.topSongs, cStats.topSongs, sStats.topSongs, gStats.topSongs].forEach((list) => {
+    if (Array.isArray(list)) {
+      list.forEach((s) => {
+        if (!s || !s.id) return;
+        const ex = songMap.get(s.id);
+        if (ex) {
+          ex.playCount = Math.max(ex.playCount || 0, s.playCount || 0);
+          ex.minutesListened = Math.max(ex.minutesListened || 0, s.minutesListened || 0);
+          ex.lastPlayed = Math.max(ex.lastPlayed || 0, s.lastPlayed || 0);
+          if (!ex.thumb && s.thumb) ex.thumb = s.thumb;
+        } else {
+          songMap.set(s.id, { ...s });
+        }
+      });
+    }
+  });
+
+  const mergedTopSongs = Array.from(songMap.values()).sort(
+    (a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
+  );
+
+  // Union merge topArtists by name across all profiles
+  const artistMap = new Map<string, ArtistPlayStat>();
+  [mStats.topArtists, cStats.topArtists, sStats.topArtists, gStats.topArtists].forEach((list) => {
+    if (Array.isArray(list)) {
+      list.forEach((a) => {
+        if (!a || !a.name) return;
+        const key = a.name.toLowerCase().trim();
+        const ex = artistMap.get(key);
+        if (ex) {
+          ex.playCount = Math.max(ex.playCount || 0, a.playCount || 0);
+          ex.minutesListened = Math.max(ex.minutesListened || 0, a.minutesListened || 0);
+          if (!ex.thumb && a.thumb) ex.thumb = a.thumb;
+        } else {
+          artistMap.set(key, { ...a });
+        }
+      });
+    }
+  });
+
+  const mergedTopArtists = Array.from(artistMap.values()).sort(
+    (a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
+  );
+
   const mergedStats: UserStats = {
-    totalMinutesListened: Math.max(sStats.totalMinutesListened || 0, cStats.totalMinutesListened || 0, mStats.totalMinutesListened || 0),
-    totalTracksPlayed: Math.max(sStats.totalTracksPlayed || 0, cStats.totalTracksPlayed || 0, mStats.totalTracksPlayed || 0),
-    topSongs: (sStats.topSongs && sStats.topSongs.length > 0) ? sStats.topSongs : (cStats.topSongs && cStats.topSongs.length > 0 ? cStats.topSongs : mStats.topSongs || []),
-    topArtists: (sStats.topArtists && sStats.topArtists.length > 0) ? sStats.topArtists : (cStats.topArtists && cStats.topArtists.length > 0 ? cStats.topArtists : mStats.topArtists || []),
+    totalMinutesListened: Math.max(sStats.totalMinutesListened || 0, cStats.totalMinutesListened || 0, mStats.totalMinutesListened || 0, gStats.totalMinutesListened || 0),
+    totalTracksPlayed: Math.max(sStats.totalTracksPlayed || 0, cStats.totalTracksPlayed || 0, mStats.totalTracksPlayed || 0, gStats.totalTracksPlayed || 0),
+    topSongs: mergedTopSongs,
+    topArtists: mergedTopArtists,
     lastUpdated: Math.max(sStats.lastUpdated || 0, cStats.lastUpdated || 0, mStats.lastUpdated || 0, Date.now()),
   };
 
@@ -579,6 +699,7 @@ export function mergeProfilesSafely(
     username,
     displayName: resolvedDisplayName,
     avatarUrl: resolvedAvatarUrl,
+    password: (serverData?.password && serverData.password !== 'mouzika') ? serverData.password : ((cachedData?.password && cachedData.password !== 'mouzika') ? cachedData.password : (currentMemory?.password && currentMemory.password !== 'mouzika' ? currentMemory.password : undefined)),
     customPlaylists: Array.from(plMap.values()),
     likedSongs: Array.from(likedMap.values()),
     recentlyPlayed: Array.from(recentMap.values()).slice(0, 50),

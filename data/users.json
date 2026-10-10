@@ -10,7 +10,6 @@
   },
   {
     "username": "a",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -19,7 +18,6 @@
   },
   {
     "username": "doudou",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -28,7 +26,6 @@
   },
   {
     "username": "habib",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -37,7 +34,7 @@
   },
   {
     "username": "haitham",
-    "password": "mouzika",
+    "password": "123",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -46,7 +43,6 @@
   },
   {
     "username": "hedi",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -55,7 +51,6 @@
   },
   {
     "username": "karim",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -64,7 +59,6 @@
   },
   {
     "username": "manel",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -73,7 +67,6 @@
   },
   {
     "username": "mariem",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -82,7 +75,6 @@
   },
   {
     "username": "mariemm",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -91,7 +83,6 @@
   },
   {
     "username": "o",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -100,7 +91,6 @@
   },
   {
     "username": "rhayma",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -109,7 +99,6 @@
   },
   {
     "username": "saousen",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -118,7 +107,6 @@
   },
   {
     "username": "test",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -127,7 +115,6 @@
   },
   {
     "username": "test_1791566326567",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -136,7 +123,6 @@
   },
   {
     "username": "test_1791566334178",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -145,7 +131,6 @@
   },
   {
     "username": "test_1791566859303",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -154,7 +139,6 @@
   },
   {
     "username": "test_1791566866323",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -163,7 +147,6 @@
   },
   {
     "username": "test_check_123",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -172,7 +155,6 @@
   },
   {
     "username": "test_session_sync",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -181,7 +163,6 @@
   },
   {
     "username": "test_user",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,
@@ -190,7 +171,6 @@
   },
   {
     "username": "zouari",
-    "password": "mouzika",
     "isAdmin": false,
     "enabled": true,
     "createdAt": 1791661367504,

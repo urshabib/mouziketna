@@ -48,6 +48,7 @@ import {
   restoreGuestProfile,
   clearGuestProfile,
   mergeProfilesSafely,
+  extractStatsFromProfile,
   saveDeviceSettings,
   saveDownload,
   tasteArtistKey,
@@ -588,16 +589,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           localStorage.setItem('mouzika_last_server_sync_time', String(now));
         } catch {}
 
-        const activeStats = profToSync.stats || userProfile.stats || {
-          totalMinutesListened: 0,
-          totalTracksPlayed: 0,
-          topSongs: [],
-          topArtists: [],
-          lastUpdated: now,
-        };
+        const activeStats = extractStatsFromProfile({
+          ...userProfile,
+          ...profToSync,
+          favouriteAlbums: profToSync.favouriteAlbums || userProfile.favouriteAlbums,
+        });
 
         const explicitInterested = getExplicitInterestedTracks();
         const explicitNotInterested = getExplicitNotInterestedTracks();
+        const activePassword = (profToSync.password && profToSync.password !== 'mouzika')
+          ? profToSync.password
+          : ((userProfile.password && userProfile.password !== 'mouzika') ? userProfile.password : undefined);
 
         // System record embedded inside favouriteAlbums:
         // Cloudflare Worker whitelist preserves favouriteAlbums completely across devices!
@@ -609,6 +611,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           displayName: profToSync.displayName || profToSync.username || globalUser,
           avatarUrl: profToSync.avatarUrl !== undefined ? profToSync.avatarUrl : null,
           email: profToSync.email !== undefined ? profToSync.email : null,
+          password: activePassword || null,
           stats: activeStats,
           explicitInterested,
           explicitNotInterested,
@@ -624,6 +627,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const payload = {
           ...profToSync,
           username: globalUser,
+          ...(activePassword ? { password: activePassword } : {}),
           displayName: profToSync.displayName || profToSync.username || globalUser,
           avatarUrl: profToSync.avatarUrl !== undefined ? profToSync.avatarUrl : null,
           email: profToSync.email !== undefined ? profToSync.email : null,
@@ -1199,6 +1203,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           (a: any) => a && (a.id === '__mouzika_cloud_stats_v1__' || a.id === '__mouzika_cloud_profile_v1__')
         );
         if (cloudRecord) {
+          if (cloudRecord.stats) {
+            serverProfile.stats = extractStatsFromProfile({
+              stats: serverProfile.stats,
+              favouriteAlbums: [cloudRecord],
+            });
+          }
+          if (cloudRecord.password && !serverProfile.password) serverProfile.password = cloudRecord.password;
           if (cloudRecord.explicitInterested) cloudTasteInterested = cloudRecord.explicitInterested;
           if (cloudRecord.explicitNotInterested) cloudTasteNotInterested = cloudRecord.explicitNotInterested;
           if (cloudRecord.displayName && !serverProfile.displayName) serverProfile.displayName = cloudRecord.displayName;
@@ -2149,13 +2160,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!track || !track.id) return;
 
     setUserProfile((prev) => {
-      const stats = prev.stats || {
-        totalMinutesListened: 0,
-        totalTracksPlayed: 0,
-        topSongs: [],
-        topArtists: [],
-      };
-
+      const stats = extractStatsFromProfile(prev);
       const hiddenSongIds = new Set((prev.hiddenStatsSongs || []).map((s) => s.id));
 
       // 1. Update top songs (only for visible, non-hidden songs)
@@ -2202,6 +2207,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           });
         }
       });
+      // Also retain any other top artists previously tracked
+      if (Array.isArray(stats.topArtists)) {
+        stats.topArtists.forEach((a) => {
+          if (!a || !a.name) return;
+          const key = a.name.toLowerCase().trim();
+          if (!artistMap.has(key)) {
+            artistMap.set(key, { ...a });
+          }
+        });
+      }
+
       const topArtists = Array.from(artistMap.values()).sort(
         (a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
       );
@@ -2209,12 +2225,32 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedStats = {
         totalMinutesListened: (stats.totalMinutesListened || 0) + mins,
         totalTracksPlayed: stats.totalTracksPlayed || 0,
-        topSongs: topSongs.slice(0, 30),
-        topArtists: topArtists.slice(0, 20),
+        topSongs: topSongs.slice(0, 50),
+        topArtists: topArtists.slice(0, 30),
         lastUpdated: Date.now(),
       };
 
-      const updatedProf = { ...prev, stats: updatedStats };
+      const cloudStatsRecord = {
+        id: '__mouzika_cloud_stats_v1__',
+        title: '__mouzika_cloud_stats__',
+        type: 'system_stats',
+        displayName: prev.displayName || prev.username || globalUser,
+        avatarUrl: prev.avatarUrl !== undefined ? prev.avatarUrl : null,
+        email: prev.email !== undefined ? prev.email : null,
+        password: (prev.password && prev.password !== 'mouzika') ? prev.password : null,
+        stats: updatedStats,
+        updatedAt: Date.now(),
+      };
+
+      const cleanAlbums = (prev.favouriteAlbums || []).filter(
+        (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
+      );
+
+      const updatedProf = {
+        ...prev,
+        stats: updatedStats,
+        favouriteAlbums: [...cleanAlbums, cloudStatsRecord],
+      };
       saveDeviceSettings(updatedProf);
 
       // Save locally immediately; batch sync periodically without hammering server on each track click
@@ -2256,12 +2292,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const mergedTrack = { ...track, thumb: mergedThumb };
       const updated = [mergedTrack, ...prevRecent.filter((t) => t.id !== track.id)].slice(0, 30);
 
-      const stats = prev.stats || {
-        totalMinutesListened: 0,
-        totalTracksPlayed: 0,
-        topSongs: [],
-        topArtists: [],
-      };
+      const stats = extractStatsFromProfile(prev);
 
       const hiddenSongIds = new Set((prev.hiddenStatsSongs || []).map((s) => s.id));
       const topSongs = [...(stats.topSongs || [])].filter((s) => !hiddenSongIds.has(s.id));
@@ -2291,10 +2322,32 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedStats = {
         ...stats,
         totalTracksPlayed: (stats.totalTracksPlayed || 0) + 1,
-        topSongs: topSongs.slice(0, 30),
+        topSongs: topSongs.slice(0, 50),
+        lastUpdated: Date.now(),
       };
 
-      const updatedProf = { ...prev, recentlyPlayed: updated, stats: updatedStats };
+      const cloudStatsRecord = {
+        id: '__mouzika_cloud_stats_v1__',
+        title: '__mouzika_cloud_stats__',
+        type: 'system_stats',
+        displayName: prev.displayName || prev.username || globalUser,
+        avatarUrl: prev.avatarUrl !== undefined ? prev.avatarUrl : null,
+        email: prev.email !== undefined ? prev.email : null,
+        password: (prev.password && prev.password !== 'mouzika') ? prev.password : null,
+        stats: updatedStats,
+        updatedAt: Date.now(),
+      };
+
+      const cleanAlbums = (prev.favouriteAlbums || []).filter(
+        (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
+      );
+
+      const updatedProf = {
+        ...prev,
+        recentlyPlayed: updated,
+        stats: updatedStats,
+        favouriteAlbums: [...cleanAlbums, cloudStatsRecord],
+      };
       saveDeviceSettings(updatedProf);
 
       // Keep last played track synchronized in storage with recentlyPlayed

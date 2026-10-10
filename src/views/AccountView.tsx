@@ -37,6 +37,7 @@ import { Track, SongPlayStat } from '../types';
 import { AvatarCropperModal } from '../components/AvatarCropperModal';
 import { AccountSettingsModal } from '../components/AccountSettingsModal';
 import { normalizeImageFile } from '../services/imageUtils';
+import { extractStatsFromProfile } from '../services/storage';
 
 export const AccountView: React.FC = () => {
   const {
@@ -127,12 +128,9 @@ export const AccountView: React.FC = () => {
   const displayName = userProfile.displayName || username;
   const isAdmin = userProfile.isAdmin || globalUser === 'habib' || false;
 
-  const stats = userProfile.stats || {
-    totalMinutesListened: 0,
-    totalTracksPlayed: 0,
-    topSongs: [],
-    topArtists: [],
-  };
+  const stats = useMemo(() => {
+    return extractStatsFromProfile(userProfile);
+  }, [userProfile]);
 
   const hiddenSongs = userProfile.hiddenStatsSongs || [];
   const hiddenSongIds = useMemo(() => new Set(hiddenSongs.map((s) => s.id)), [hiddenSongs]);
@@ -148,10 +146,10 @@ export const AccountView: React.FC = () => {
 
   // Strictly filter out hidden songs from top songs
   const topSongs = useMemo(() => {
-    return (stats.topSongs || []).filter((s) => !hiddenSongIds.has(s.id));
+    return (stats.topSongs || []).filter((s: SongPlayStat) => !hiddenSongIds.has(s.id));
   }, [stats.topSongs, hiddenSongIds]);
 
-  // Derive top artists strictly from visible (non-hidden) songs so hiding top song never leaves old artist stuck
+  // Derive top artists strictly from visible (non-hidden) songs and recorded artist stats
   const topArtists = useMemo(() => {
     const artistMap = new Map<string, { name: string; playCount: number; minutesListened: number; thumb?: string | null }>();
     topSongs.forEach((song: SongPlayStat) => {
@@ -173,11 +171,31 @@ export const AccountView: React.FC = () => {
       }
     });
 
+    if (Array.isArray(stats.topArtists)) {
+      stats.topArtists.forEach((a: any) => {
+        if (!a || !a.name) return;
+        const key = a.name.toLowerCase().trim();
+        const existing = artistMap.get(key);
+        if (existing) {
+          existing.playCount = Math.max(existing.playCount, a.playCount || 0);
+          existing.minutesListened = Math.max(existing.minutesListened, a.minutesListened || 0);
+          if (!existing.thumb && a.thumb) existing.thumb = a.thumb;
+        } else {
+          artistMap.set(key, {
+            name: a.name,
+            playCount: a.playCount || 1,
+            minutesListened: a.minutesListened || 0,
+            thumb: a.thumb,
+          });
+        }
+      });
+    }
+
     const list = Array.from(artistMap.values()).sort(
       (a, b) => ((b.minutesListened || 0) * 3 + (b.playCount || 0) * 2) - ((a.minutesListened || 0) * 3 + (a.playCount || 0) * 2)
     );
     return list;
-  }, [topSongs]);
+  }, [topSongs, stats.topArtists]);
 
   const topSong = topSongs[0];
   const topArtist = topArtists[0];

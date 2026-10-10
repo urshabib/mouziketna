@@ -27,6 +27,8 @@ import {
   Mail,
   UploadCloud,
   FileUp,
+  Download,
+  FileText,
 } from 'lucide-react';
 import { NEW_HUB_BACKEND, fetchWithTimeout, fetchJsonRetry, fetchAdminSettings, updateAdminSettings, toggleUserEnabledStatus } from '../services/api';
 import { sessionManager } from '../services/sessionManager';
@@ -71,6 +73,105 @@ export const AdminView: React.FC = () => {
   const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
   const [restoringBackup, setRestoringBackup] = useState(false);
 
+  const [downloadingBackup, setDownloadingBackup] = useState(false);
+
+  const handleDownloadAllBackup = async (fileExt: 'json' | 'txt' = 'json') => {
+    setDownloadingBackup(true);
+    try {
+      const sessionToken = sessionManager.getSessionToken();
+      const today = new Date().toISOString().split('T')[0]; // "2026-10-10"
+      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/backup`, 15000, {
+        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+      }).catch(() => null);
+
+      let backupJson: any = null;
+      if (res && res.ok) {
+        backupJson = await res.json().catch(() => null);
+      }
+
+      if (!backupJson || !Array.isArray(backupJson.users)) {
+        // Build fallback client-side backup from loaded accounts
+        backupJson = {
+          backup: true,
+          type: 'mouzika_all_users_backup',
+          date: today,
+          generatedAt: Date.now(),
+          totalUsers: users.length,
+          users: users.map((u) => ({
+            username: u.username,
+            password: (u.password && u.password !== 'mouzika') ? u.password : '',
+            isAdmin: Boolean(u.isAdmin),
+            enabled: u.enabled !== false,
+            email: u.email || null,
+            playlistCount: u.playlistCount || 0,
+            likedCount: u.likedCount || 0,
+          })),
+        };
+      }
+
+      const content = JSON.stringify(backupJson, null, 2);
+      const filename = `backup-${today}.${fileExt}`;
+      const blob = new Blob([content], { type: fileExt === 'json' ? 'application/json' : 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const count = backupJson.totalUsers || backupJson.users?.length || users.length;
+      showToast(`✓ Downloaded ${filename} (${count} users backed up)`);
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to download backup', true);
+    } finally {
+      setDownloadingBackup(false);
+    }
+  };
+
+  const handleDownloadUserBackup = async (targetUser: AdminUserRecord, fileExt: 'json' | 'txt' = 'json') => {
+    try {
+      const sessionToken = sessionManager.getSessionToken();
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/user-profile?username=${encodeURIComponent(targetUser.username)}`, 8000, {
+        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+      }).catch(() => null);
+      let profData: any = null;
+      if (res && res.ok) {
+        const d = await res.json().catch(() => null);
+        profData = d?.profile || null;
+      }
+      if (!profData) {
+        profData = {
+          username: targetUser.username,
+          password: (targetUser.password && targetUser.password !== 'mouzika') ? targetUser.password : '',
+          isAdmin: targetUser.isAdmin,
+          enabled: targetUser.enabled,
+        };
+      }
+      if (targetUser.password && targetUser.password !== 'mouzika' && !profData.password) {
+        profData.password = targetUser.password;
+      }
+
+      const content = JSON.stringify(profData, null, 2);
+      const filename = `backup_${targetUser.username}_${today}.${fileExt}`;
+      const blob = new Blob([content], { type: fileExt === 'json' ? 'application/json' : 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast(`✓ Downloaded backup for @${targetUser.username}`);
+    } catch {
+      showToast(`Failed to download backup for @${targetUser.username}`, true);
+    }
+  };
+
   const handleRestoreBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -85,13 +186,35 @@ export const AdminView: React.FC = () => {
         throw new Error('Selected backup file is not valid JSON text');
       }
 
-      const rawName = data.username || data.user || file.name.replace(/^user_/, '').replace(/\.(txt|json)$/i, '');
+      const sessionToken = sessionManager.getSessionToken();
+
+      // Check if this is an all-users backup file ({ users: [...] } or array)
+      if (Array.isArray(data) || Array.isArray(data.users)) {
+        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/restore-backup`, 25000, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+          },
+          body: JSON.stringify(data),
+        }).catch(() => null);
+
+        const resData = await res?.json().catch(() => null);
+        if (res && res.ok) {
+          const count = resData?.restoredCount || (data.users?.length || data.length);
+          showToast(`✓ Full backup restored successfully! (${count} user accounts updated)`);
+          loadAdminData();
+          return;
+        }
+      }
+
+      // Single user backup file
+      const rawName = data.username || data.user || file.name.replace(/^backup_|^user_/, '').replace(/\.(txt|json)$/i, '');
       const targetUser = String(rawName).trim().toLowerCase();
       if (!targetUser) {
         throw new Error('Could not determine user account from backup file');
       }
 
-      const sessionToken = sessionManager.getSessionToken();
       const payload = {
         ...data,
         username: targetUser,
@@ -117,7 +240,7 @@ export const AdminView: React.FC = () => {
         }).catch(() => null);
       }
 
-      showToast(`✓ Backup for user "@${targetUser}" successfully uploaded to Cloudflare!`);
+      showToast(`✓ Backup for user "@${targetUser}" successfully uploaded & restored!`);
       loadAdminData();
     } catch (err: any) {
       showToast(err.message || 'Failed to parse or restore backup file', true);
@@ -388,8 +511,23 @@ export const AdminView: React.FC = () => {
           </p>
         </div>
 
-        {/* Stats Badges & Cloudflare DB button */}
+        {/* Stats Badges & Actions */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => handleDownloadAllBackup('json')}
+            disabled={downloadingBackup}
+            className="px-4 py-2 rounded-2xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 flex items-center gap-2 text-xs font-black transition-all cursor-pointer shadow-lg shadow-emerald-950/20 active:scale-95 disabled:opacity-50"
+            title="Download full backup with all users with today's date (backup-YYYY-MM-DD.json)"
+          >
+            {downloadingBackup ? (
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+            ) : (
+              <Download className="w-4 h-4 text-emerald-400" />
+            )}
+            <span>Download Backup</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowCloudflareGuide(true)}
@@ -621,7 +759,7 @@ export const AdminView: React.FC = () => {
                           </>
                         )}
 
-                        {u.password && (
+                        {u.password && u.password !== 'mouzika' ? (
                           <>
                             <span>•</span>
                             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/70">
@@ -646,6 +784,28 @@ export const AdminView: React.FC = () => {
                                   <Eye className="w-3 h-3" />
                                 )}
                               </button>
+                              {revealedPasswords[u.username] && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopy(u.password!, `pass_${u.username}`)}
+                                  className="text-white/40 hover:text-white ml-0.5"
+                                  title="Copy password"
+                                >
+                                  {copiedKey === `pass_${u.username}` ? (
+                                    <Check className="w-2.5 h-2.5 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="w-2.5 h-2.5" />
+                                  )}
+                                </button>
+                              )}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span>•</span>
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/40 text-[10px] italic">
+                              <Lock className="w-2.5 h-2.5 text-white/30" />
+                              <span>Password not captured</span>
                             </span>
                           </>
                         )}
@@ -698,6 +858,16 @@ export const AdminView: React.FC = () => {
                       <span>Set Password</span>
                     </button>
 
+                    {/* Export Individual User Backup */}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadUserBackup(u, 'json')}
+                      className="p-2 rounded-xl bg-white/5 hover:bg-emerald-500/20 text-white/50 hover:text-emerald-400 transition-colors cursor-pointer"
+                      title={`Download backup file for ${u.username}`}
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+
                     {/* Toggle Admin Button */}
                     <button
                       onClick={() => handleToggleAdmin(u.username, u.isAdmin)}
@@ -741,6 +911,54 @@ export const AdminView: React.FC = () => {
             })}
           </div>
         )}
+      </div>
+
+      {/* DOWNLOAD ALL USERS BACKUP CARD */}
+      <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-500/[0.08] to-teal-500/[0.04] border border-emerald-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 flex-shrink-0 shadow-lg shadow-emerald-950/30">
+            <Download className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-sm text-white flex items-center gap-2">
+              <span>Download Full Website Backup</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">
+                {new Date().toISOString().split('T')[0]}
+              </span>
+            </h4>
+            <p className="text-xs text-white/60 mt-0.5 max-w-xl">
+              Export and download a complete backup of all users on your website, including true passwords, custom playlists, liked tracks, listening time, and statistics with today's date.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-auto">
+          <button
+            type="button"
+            onClick={() => handleDownloadAllBackup('json')}
+            disabled={downloadingBackup}
+            className="px-4 py-2.5 rounded-xl bg-emerald-500 text-black hover:bg-emerald-400 font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/20 active:scale-95 disabled:opacity-50"
+            title={`Download backup-${new Date().toISOString().split('T')[0]}.json`}
+          >
+            {downloadingBackup ? (
+              <Loader2 className="w-4 h-4 animate-spin text-black" />
+            ) : (
+              <Download className="w-4 h-4 text-black" />
+            )}
+            <span>Download Backup (.JSON)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleDownloadAllBackup('txt')}
+            disabled={downloadingBackup}
+            className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-white/80 hover:text-white font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            title={`Download backup-${new Date().toISOString().split('T')[0]}.txt`}
+          >
+            <FileText className="w-3.5 h-3.5 text-white/60" />
+            <span>.TXT</span>
+          </button>
+        </div>
       </div>
 
       {/* RESTORE CLOUDFLARE BACKUP FILE CARD */}
