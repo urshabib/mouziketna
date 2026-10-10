@@ -394,11 +394,11 @@ function extractSession(req: Request): UserSession | null {
 }
 
 // Defend against replay attacks by tracking monotonic sequence counters
-async function verifyReplayProtection(deviceId: string, seq?: number, nonce?: string): Promise<boolean> {
+async function verifyReplayProtection(deviceId: string, seq?: number, nonce?: string, isStrict = false): Promise<boolean> {
   if (!deviceId) return true;
 
-  // Check Nonce uniqueness via SET NX EX 60
-  if (nonce) {
+  // Check Nonce uniqueness via SET NX EX 60 only for strict security endpoints
+  if (nonce && isStrict) {
     const nonceKey = `mouzika:nonce:${nonce}`;
     const acquired = await redis.set(nonceKey, '1', 'NX', 'EX', 60);
     if (!acquired) {
@@ -407,8 +407,8 @@ async function verifyReplayProtection(deviceId: string, seq?: number, nonce?: st
     }
   }
 
-  // Monotonic sequence counter check
-  if (seq !== undefined && typeof seq === 'number') {
+  // Monotonic sequence counter check for strict endpoints (e.g. claim-playback)
+  if (isStrict && seq !== undefined && typeof seq === 'number') {
     const seqKey = getRedisSeqKey(deviceId);
     const lastSeqStr = await redis.get(seqKey);
     const lastSeq = lastSeqStr ? parseInt(lastSeqStr, 10) : 0;
@@ -1150,8 +1150,9 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
     } catch {}
   }
 
-  if (currentLease && currentLease.expiresAt > Date.now()) {
+  if (currentLease && currentLease.trackId) {
     const isCurrentActive = currentLease.deviceId === deviceId;
+    const isLive = Boolean(currentLease.expiresAt && currentLease.expiresAt > Date.now());
     ws.send(
       JSON.stringify({
         type: 'INITIAL_SYNC',
@@ -1164,9 +1165,9 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
           artist: currentLease.trackArtist,
           thumb: currentLease.trackThumb,
         },
-        currentTime: currentLease.currentTime,
-        duration: currentLease.duration,
-        state: currentLease.state,
+        currentTime: currentLease.currentTime || 0,
+        duration: currentLease.duration || 0,
+        state: isLive ? currentLease.state : 'paused',
         streamToken: isCurrentActive ? currentLease.streamToken : null,
         timestamp: Date.now(),
       })
@@ -1194,11 +1195,54 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
       const msg = JSON.parse(data.toString());
       clientSocket.lastActive = Date.now();
 
-      // Nonce / Sequence verification for security
-      const isValid = await verifyReplayProtection(deviceId, msg.seq, msg.nonce);
-      if (!isValid) return;
-
       switch (msg.type) {
+        case 'REQUEST_INITIAL_SYNC': {
+          const freshLeaseStr = await redis.get(playbackKey);
+          let freshLease: PlaybackLease | null = null;
+          if (freshLeaseStr) {
+            try { freshLease = JSON.parse(freshLeaseStr); } catch {}
+          }
+          if (freshLease && freshLease.trackId) {
+            const isCurrentActive = freshLease.deviceId === deviceId;
+            const isLive = Boolean(freshLease.expiresAt && freshLease.expiresAt > Date.now());
+            ws.send(
+              JSON.stringify({
+                type: 'INITIAL_SYNC',
+                activeDeviceId: freshLease.deviceId,
+                activeDeviceName: freshLease.deviceName,
+                leaseEpoch: freshLease.leaseEpoch,
+                track: {
+                  id: freshLease.trackId,
+                  title: freshLease.trackTitle,
+                  artist: freshLease.trackArtist,
+                  thumb: freshLease.trackThumb,
+                },
+                currentTime: freshLease.currentTime || 0,
+                duration: freshLease.duration || 0,
+                state: isLive ? freshLease.state : 'paused',
+                streamToken: isCurrentActive ? freshLease.streamToken : null,
+                timestamp: Date.now(),
+              })
+            );
+          } else {
+            ws.send(
+              JSON.stringify({
+                type: 'INITIAL_SYNC',
+                activeDeviceId: null,
+                activeDeviceName: null,
+                leaseEpoch: 0,
+                track: null,
+                currentTime: 0,
+                duration: 0,
+                state: 'paused',
+                streamToken: null,
+                timestamp: Date.now(),
+              })
+            );
+          }
+          break;
+        }
+
         case 'CLAIM_PLAYBACK': {
           // Atomic takeover via Lua script
           const newStreamToken = `stk_${generateSecureToken(24)}`;
@@ -1242,23 +1286,27 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
           const currentLeaseStr = await redis.get(playbackKey);
           if (currentLeaseStr) {
             const lease: PlaybackLease = JSON.parse(currentLeaseStr);
-            if (lease.deviceId === deviceId) {
-              lease.currentTime = msg.currentTime;
+            if (lease.deviceId === deviceId || (msg.leaseEpoch && msg.leaseEpoch >= lease.leaseEpoch)) {
+              lease.currentTime = typeof msg.currentTime === 'number' ? msg.currentTime : lease.currentTime;
               lease.duration = msg.duration || lease.duration;
               lease.state = msg.isPlaying ? 'playing' : 'paused';
               lease.lastHeartbeat = Date.now();
               lease.expiresAt = Date.now() + 35000;
               lease.updatedAt = Date.now();
+              if (msg.trackId) lease.trackId = msg.trackId;
+              if (msg.trackTitle) lease.trackTitle = msg.trackTitle;
+              if (msg.trackArtist) lease.trackArtist = msg.trackArtist;
+              if (msg.trackThumb) lease.trackThumb = msg.trackThumb;
 
-              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 86400);
 
               // Broadcast update to all secondary devices for cross-device UI sync
               broadcastToUser(
                 normUser,
                 {
                   type: 'SYNC_UPDATE',
-                  activeDeviceId: deviceId,
-                  activeDeviceName: deviceName,
+                  activeDeviceId: lease.deviceId,
+                  activeDeviceName: lease.deviceName,
                   leaseEpoch: lease.leaseEpoch,
                   track: {
                     id: lease.trackId,
@@ -1278,6 +1326,47 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
           break;
         }
 
+        case 'REMOTE_PAUSE': {
+          const currentLeaseStr = await redis.get(playbackKey);
+          if (currentLeaseStr) {
+            const lease: PlaybackLease = JSON.parse(currentLeaseStr);
+            lease.state = 'paused';
+            lease.updatedAt = Date.now();
+            await redis.set(playbackKey, JSON.stringify(lease), 'EX', 86400);
+
+            // Broadcast pause command across ALL devices of this user
+            broadcastToUser(normUser, {
+              type: 'STATE_SYNC',
+              state: 'paused',
+              activeDeviceId: lease.deviceId,
+              activeDeviceName: lease.deviceName,
+              leaseEpoch: lease.leaseEpoch,
+              track: {
+                id: lease.trackId,
+                title: lease.trackTitle,
+                artist: lease.trackArtist,
+                thumb: lease.trackThumb,
+              },
+              currentTime: lease.currentTime,
+              duration: lease.duration,
+              timestamp: Date.now(),
+            });
+
+            // Also publish to Redis PubSub channel
+            const channelKey = getRedisChannelKey(normUser);
+            await redis.publish(
+              channelKey,
+              JSON.stringify({
+                type: 'PLAYBACK_PAUSED_BY_HANDOVER',
+                state: 'paused',
+                leaseEpoch: lease.leaseEpoch,
+                timestamp: Date.now(),
+              })
+            );
+          }
+          break;
+        }
+
         case 'HEARTBEAT': {
           // Touch active lease TTL
           const currentLeaseStr = await redis.get(playbackKey);
@@ -1286,7 +1375,7 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
             if (lease.deviceId === deviceId) {
               lease.lastHeartbeat = Date.now();
               lease.expiresAt = Date.now() + 35000;
-              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 86400);
               ws.send(JSON.stringify({ type: 'PONG', expiresAt: lease.expiresAt }));
             } else {
               // Superseded!
@@ -1308,7 +1397,7 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
             const lease: PlaybackLease = JSON.parse(currentLeaseStr);
             if (lease.deviceId === deviceId) {
               lease.state = 'paused';
-              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+              await redis.set(playbackKey, JSON.stringify(lease), 'EX', 86400);
               broadcastToUser(normUser, {
                 type: 'SYNC_UPDATE',
                 activeDeviceId: deviceId,
@@ -1562,7 +1651,7 @@ app.post('/api/session/claim-playback', rateLimit(120, 60000), async (req: Reque
   const deviceName = req.body?.deviceName || session?.deviceName || 'Web Player';
 
   // Anti-replay check
-  const isValid = await verifyReplayProtection(deviceId, req.body?.seq, req.body?.nonce);
+  const isValid = await verifyReplayProtection(deviceId, req.body?.seq, req.body?.nonce, true);
   if (!isValid) {
     return res.status(400).json({ error: 'replay_detected', message: 'Invalid or replayed packet' });
   }
@@ -1708,11 +1797,13 @@ app.get('/api/session/status', async (req: Request, res: Response) => {
   if (!leaseStr) return res.json({ active: false, hasActivePlayback: false });
 
   const lease: PlaybackLease = JSON.parse(leaseStr);
-  const isActive = Boolean(lease && lease.deviceId === deviceId && lease.expiresAt > Date.now());
+  const isHeartbeatLive = Boolean(lease && lease.expiresAt > Date.now());
+  const isActive = Boolean(lease && lease.deviceId === deviceId && isHeartbeatLive);
+  const hasActivePlayback = Boolean(lease && lease.trackId && (isHeartbeatLive || Date.now() - lease.updatedAt < 86400000));
 
   return res.json({
     active: isActive,
-    hasActivePlayback: Boolean(lease && lease.expiresAt > Date.now()),
+    hasActivePlayback,
     isCurrentDeviceActive: isActive,
     supersededBy: lease && !isActive ? lease.deviceName : null,
     leaseEpoch: lease.leaseEpoch,
@@ -1730,10 +1821,45 @@ app.get('/api/session/status', async (req: Request, res: Response) => {
         : null,
       currentTime: lease.currentTime,
       duration: lease.duration,
-      state: lease.state,
+      state: isHeartbeatLive ? lease.state : 'paused',
       updatedAt: lease.updatedAt,
     },
   });
+});
+
+// 7b. Remote Pause Command
+app.post('/api/session/pause', async (req: Request, res: Response) => {
+  const session = extractSession(req);
+  const username = (req.body?.username as string) || session?.username || 'user_main';
+  const normUser = cleanUsername(username);
+  const playbackKey = getRedisPlaybackKey(normUser);
+  const leaseStr = await redis.get(playbackKey);
+
+  if (leaseStr) {
+    const lease: PlaybackLease = JSON.parse(leaseStr);
+    lease.state = 'paused';
+    lease.updatedAt = Date.now();
+    await redis.set(playbackKey, JSON.stringify(lease), 'EX', 86400);
+
+    broadcastToUser(normUser, {
+      type: 'STATE_SYNC',
+      state: 'paused',
+      activeDeviceId: lease.deviceId,
+      activeDeviceName: lease.deviceName,
+      leaseEpoch: lease.leaseEpoch,
+      track: {
+        id: lease.trackId,
+        title: lease.trackTitle,
+        artist: lease.trackArtist,
+        thumb: lease.trackThumb,
+      },
+      currentTime: lease.currentTime,
+      duration: lease.duration,
+      timestamp: Date.now(),
+    });
+  }
+
+  return res.json({ success: true, message: 'Playback paused across account' });
 });
 
 // 8. Geo Status Check

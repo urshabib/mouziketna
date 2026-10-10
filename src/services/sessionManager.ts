@@ -285,6 +285,22 @@ class SessionManager {
       localStorage.setItem('mouzika_session_user', username);
     } catch {}
     this.connectWebSocket();
+    this.getSessionStatus().then((data) => {
+      if (data && data.hasActivePlayback && data.lease) {
+        const isCurrent = data.lease.activeDeviceId === this.deviceId;
+        this.notifySyncUpdate({
+          activeDeviceId: data.lease.activeDeviceId || '',
+          activeDeviceName: data.lease.activeDeviceName || 'Remote Device',
+          leaseEpoch: data.lease.leaseEpoch || 1,
+          track: data.lease.track || null,
+          currentTime: Number(data.lease.currentTime) || 0,
+          duration: Number(data.lease.duration) || 0,
+          state: data.lease.state || 'paused',
+          streamToken: isCurrent ? this.streamToken : null,
+          updatedAt: data.lease.updatedAt || Date.now(),
+        });
+      }
+    }).catch(() => {});
   }
 
   public clearSession() {
@@ -409,13 +425,26 @@ class SessionManager {
         break;
       }
 
-      case 'SUPERSEDED':
-      case 'PLAYBACK_PAUSED_BY_HANDOVER': {
+      case 'SUPERSEDED': {
         this.handleSuperseded({
           byDevice: msg.byDevice || msg.newDeviceName || 'Another device',
           at: msg.timestamp || Date.now(),
-          reason: 'superseded_by_handover',
+          reason: 'remote_takeover',
           leaseEpoch: msg.leaseEpoch,
+        });
+        break;
+      }
+
+      case 'PLAYBACK_PAUSED_BY_HANDOVER': {
+        this.notifySyncUpdate({
+          activeDeviceId: this.deviceId,
+          activeDeviceName: this.deviceName,
+          leaseEpoch: msg.leaseEpoch || this.currentLeaseEpoch,
+          track: null,
+          currentTime: 0,
+          duration: 0,
+          state: 'paused',
+          updatedAt: Date.now(),
         });
         break;
       }
@@ -770,13 +799,38 @@ class SessionManager {
     } catch {}
   }
 
+  // Send remote pause command to active device across the user account
+  public sendRemotePause() {
+    this.sendWsMessage({
+      type: 'REMOTE_PAUSE',
+      deviceId: this.deviceId,
+      leaseEpoch: this.currentLeaseEpoch,
+    });
+
+    const token = this.getSessionToken();
+    const user = this.getUsername();
+    fetch('/api/session/pause', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        username: user,
+        deviceId: this.deviceId,
+      }),
+    }).catch(() => {});
+  }
+
   public async getSessionStatus(): Promise<any> {
     const token = this.getSessionToken();
-    if (!token) return { active: false };
+    const user = this.getUsername();
 
     try {
-      const res = await fetch(`/api/session/status?deviceId=${encodeURIComponent(this.deviceId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch(`/api/session/status?username=${encodeURIComponent(user)}&deviceId=${encodeURIComponent(this.deviceId)}`, {
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
       if (res.ok) {
         return await res.json();

@@ -312,6 +312,27 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [remoteDeviceName, setRemoteDeviceName] = useState<string | null>(null);
   const currentDeviceName = sessionManager.getDeviceName();
 
+  const syncAccountPlaybackState = useCallback(async () => {
+    try {
+      const data = await sessionManager.getSessionStatus();
+      if (data && data.hasActivePlayback && data.lease?.track) {
+        const myDeviceId = sessionManager.getDeviceId();
+        const isRemote = data.lease.activeDeviceId !== myDeviceId;
+        if (isRemote) {
+          setIsRemotePlaybackActive(true);
+          setRemoteDeviceName(data.lease.activeDeviceName || 'another device');
+          setActiveTrack(data.lease.track);
+          setCurrentTime(data.lease.currentTime || 0);
+          setDuration(data.lease.duration || 0);
+          setIsPlaying(data.lease.state === 'playing');
+          if (audioRef.current && !audioRef.current.paused) {
+            audioRef.current.pause();
+          }
+        }
+      }
+    } catch {}
+  }, []);
+
   // Cross-device WebSocket & Redis Pub/Sub synchronization
   useEffect(() => {
     const unsubSuperseded = sessionManager.onSuperseded((evt) => {
@@ -329,8 +350,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const isRemote = Boolean(state.activeDeviceId && state.activeDeviceId !== myDeviceId);
 
       if (isRemote) {
-        setIsRemotePlaybackActive(state.state === 'playing');
-        setRemoteDeviceName(state.activeDeviceName);
+        setIsRemotePlaybackActive(true);
+        setRemoteDeviceName(state.activeDeviceName || 'another device');
         if (state.track) {
           setActiveTrack(state.track);
         }
@@ -350,14 +371,29 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsRemotePlaybackActive(false);
         setRemoteDeviceName(null);
         setSupersededNotice(null);
+        if (state.state === 'paused') {
+          if (audioRef.current && !audioRef.current.paused) {
+            audioRef.current.pause();
+          }
+          setIsPlaying(false);
+        }
       }
     });
+
+    syncAccountPlaybackState();
 
     return () => {
       unsubSuperseded();
       unsubSync();
     };
-  }, []);
+  }, [syncAccountPlaybackState]);
+
+  // Synchronize playback when user account changes (e.g. login in incognito or new session)
+  useEffect(() => {
+    if (globalUser) {
+      syncAccountPlaybackState();
+    }
+  }, [globalUser, syncAccountPlaybackState]);
 
   // Playback state
   const [activeTrack, setActiveTrack] = useState<Track | null>(() => {
@@ -723,6 +759,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
     const onPause = () => {
       setIsPlaying(false);
+      setIsBuffering(false);
       if (audio && audio.currentTime >= 0) {
         try {
           localStorage.setItem('mouzika_last_played_pos', String(Math.floor(audio.currentTime)));
@@ -1102,6 +1139,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         localStorage.setItem('hub_active_user', user);
         localStorage.setItem('hub_active_pass', pass);
       } catch {}
+      syncAccountPlaybackState();
       setIsAuthGateOpen(false);
 
       const isUserAdmin = Boolean(data.isAdmin || user.toLowerCase() === 'admin' || data.profile?.isAdmin);
@@ -2666,7 +2704,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const togglePlay = async () => {
     if (isRemotePlaybackActive) {
-      await claimPlaybackHere();
+      if (isPlaying) {
+        // Remotely playing: send pause command across account to pause it for him!
+        sessionManager.sendRemotePause();
+        setIsPlaying(false);
+      } else {
+        // Remotely paused: transfer audio here and resume!
+        await claimPlaybackHere();
+      }
       return;
     }
     const audio = audioRef.current;
@@ -2676,6 +2721,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsRemotePlaybackActive(false);
       setRemoteDeviceName(null);
       setIsPlaying(true);
+      setIsBuffering(false);
 
       // Claim lease asynchronously without blocking audio play
       sessionManager.claimPlaybackLease(activeTrack || undefined, currentTime).catch(() => {});

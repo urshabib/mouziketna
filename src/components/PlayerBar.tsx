@@ -87,7 +87,27 @@ export const PlayerBar: React.FC = () => {
   };
 
   return (
-    <div className="hidden md:flex h-24 bg-black/90 glass-panel border-t border-white/10 px-6 items-center justify-between z-30 select-none">
+    <div className="hidden md:flex flex-col z-30 select-none">
+      {isRemotePlaybackActive && (
+        <div className="w-full bg-[#28c76f]/15 border-t border-b border-[#28c76f]/30 px-6 py-1.5 flex items-center justify-between text-xs text-[#28c76f] backdrop-blur-md">
+          <div className="flex items-center gap-2">
+            <Radio className="w-3.5 h-3.5 text-[#28c76f] animate-pulse flex-shrink-0" />
+            <span className="font-bold">
+              Listening on {remoteDeviceName || 'another device'}
+            </span>
+            <span className="text-white/60 text-[11px] hidden lg:inline">
+              • Playing remotely • No sound on this device
+            </span>
+          </div>
+          <button
+            onClick={() => claimPlaybackHere()}
+            className="px-3 py-1 rounded-full bg-[#28c76f] text-black text-[11px] font-extrabold uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-[0_0_12px_rgba(40,199,111,0.3)] flex items-center gap-1.5 cursor-pointer"
+          >
+            Play on this device
+          </button>
+        </div>
+      )}
+      <div className="h-24 bg-black/90 glass-panel border-t border-white/10 px-6 flex items-center justify-between">
       {/* Left: Track Info & Secondary Actions */}
       <div className="flex items-center gap-4 w-1/4 min-w-[220px]">
         <div
@@ -168,11 +188,10 @@ export const PlayerBar: React.FC = () => {
 
           <button
             onClick={togglePlay}
-            disabled={isBuffering}
-            className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all"
+            className="w-11 h-11 rounded-full bg-white text-black flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer"
             title={isPlaying ? 'Pause' : 'Play'}
           >
-            {isBuffering ? (
+            {isBuffering && isPlaying ? (
               <Loader2 className="w-5 h-5 animate-spin" />
             ) : isPlaying ? (
               <Pause className="w-5 h-5 fill-black" />
@@ -306,6 +325,7 @@ export const PlayerBar: React.FC = () => {
         </button>
       </div>
     </div>
+  </div>
   );
 };
 
@@ -465,10 +485,21 @@ export const MiniPlayer: React.FC = () => {
       <div className="flex-1 min-w-0">
         <h5 className="text-sm font-bold text-white truncate leading-snug">{activeTrack.title}</h5>
         {isRemotePlaybackActive ? (
-          <p className="text-xs text-[#28c76f] truncate font-semibold flex items-center gap-1 mt-0.5">
-            <Radio className="w-3 h-3 animate-pulse flex-shrink-0" />
-            <span>Playing on {remoteDeviceName || 'Remote Device'}</span>
-          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <p className="text-xs text-[#28c76f] truncate font-semibold flex items-center gap-1">
+              <Radio className="w-3 h-3 animate-pulse flex-shrink-0" />
+              <span>Listening on {remoteDeviceName || 'another device'}</span>
+            </p>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                claimPlaybackHere();
+              }}
+              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-[#28c76f] text-black uppercase flex-shrink-0"
+            >
+              Play Here
+            </button>
+          </div>
         ) : (
           <p className="text-xs text-white/50 truncate font-medium">{activeTrack.artist}</p>
         )}
@@ -488,11 +519,10 @@ export const MiniPlayer: React.FC = () => {
 
         <button
           onClick={togglePlay}
-          disabled={isBuffering}
-          className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+          className="w-10 h-10 rounded-full bg-white text-black flex items-center justify-center shadow-lg active:scale-95 transition-transform cursor-pointer"
           title={isPlaying ? 'Pause' : 'Play'}
         >
-          {isBuffering ? (
+          {isBuffering && isPlaying ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : isPlaying ? (
             <Pause className="w-4 h-4 fill-black" />
