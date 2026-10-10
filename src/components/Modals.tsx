@@ -50,6 +50,7 @@ export const Modals: React.FC = () => {
     addTrackToPlaylist,
     userProfile,
     syncProfile,
+    forceProfileServerSync,
     showToast,
     t,
   } = useMusic();
@@ -112,10 +113,12 @@ export const Modals: React.FC = () => {
       const spotifyUrl = extractSpotifyPlaylistUrl(importUrl);
       if (spotifyUrl) {
         const importedPl = await importPlaylistFromSpotify(spotifyUrl);
-        syncProfile({
+        const updatedProf = {
           ...userProfile,
           customPlaylists: [importedPl, ...userProfile.customPlaylists],
-        });
+        };
+        syncProfile(updatedProf);
+        forceProfileServerSync(updatedProf).catch(() => {});
         showToast(`Imported "${importedPl.name}" (${importedPl.tracks.length} tracks from Spotify)!`);
         setModalImportPlaylistOpen(false);
         setImportUrl('');
@@ -124,10 +127,12 @@ export const Modals: React.FC = () => {
 
       // YouTube / YouTube Music playlist import with multiple fallback tiers
       const importedPl = await importPlaylistFromYoutube(importUrl);
-      syncProfile({
+      const updatedProf = {
         ...userProfile,
         customPlaylists: [importedPl, ...userProfile.customPlaylists],
-      });
+      };
+      syncProfile(updatedProf);
+      forceProfileServerSync(updatedProf).catch(() => {});
       showToast(`Imported "${importedPl.name}" (${importedPl.tracks.length} tracks)!`);
       setModalImportPlaylistOpen(false);
       setImportUrl('');

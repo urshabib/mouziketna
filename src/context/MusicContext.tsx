@@ -550,24 +550,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [userProfile.language]
   );
 
-  const setLanguage = useCallback(
-    (lang: Language) => {
-      setUserProfile((prev) => {
-        const updated = { ...prev, language: lang };
-        saveDeviceSettings({ ...updated, language: lang });
-        document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
-        document.documentElement.setAttribute('lang', lang);
-        if (globalUser && globalUser !== 'admin') {
-          cacheProfileLocally(globalUser, updated);
-          pendingSyncProfRef.current = updated;
-          isSyncDirtyRef.current = true;
-        }
-        return updated;
-      });
-    },
-    [globalUser]
-  );
-
   // Cloudflare Batch & Quota-Protected Server Syncing
   const [isSyncingToServer, setIsSyncingToServer] = useState(false);
   const [lastServerSyncTime, setLastServerSyncTime] = useState<number | null>(() => {
@@ -632,12 +614,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         );
 
         // Full consolidated profile payload with listening stats and explicit music taste
+        const savedLang = (profToSync.language || localStorage.getItem('mouzika_app_language') || userProfile.language || 'en') as Language;
         const payload = {
           ...profToSync,
           username: globalUser,
           displayName: profToSync.displayName || profToSync.username || globalUser,
           avatarUrl: profToSync.avatarUrl !== undefined ? profToSync.avatarUrl : null,
           email: profToSync.email !== undefined ? profToSync.email : null,
+          language: savedLang,
+          liquidGlass: profToSync.liquidGlass !== undefined ? profToSync.liquidGlass : true,
+          liquidGlassLevel: profToSync.liquidGlassLevel || 'medium',
           stats: activeStats,
           favouriteAlbums: [...rawAlbums, cloudStatsRecord],
           explicitInterested,
@@ -664,6 +650,28 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     },
     [globalUser, userProfile]
+  );
+
+  const setLanguage = useCallback(
+    (lang: Language) => {
+      try {
+        localStorage.setItem('mouzika_app_language', lang);
+      } catch {}
+      setUserProfile((prev) => {
+        const updated = { ...prev, language: lang };
+        saveDeviceSettings({ ...updated, language: lang });
+        document.documentElement.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+        document.documentElement.setAttribute('lang', lang);
+        if (globalUser && globalUser !== 'admin') {
+          cacheProfileLocally(globalUser, updated);
+          pendingSyncProfRef.current = updated;
+          isSyncDirtyRef.current = true;
+          flushProfileToServer(updated);
+        }
+        return updated;
+      });
+    },
+    [globalUser, flushProfileToServer]
   );
 
   // Periodic Background Batch Sync:
@@ -1085,6 +1093,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const prof = updated || userProfile;
     setUserProfile(prof);
     saveDeviceSettings(prof);
+    if (prof.language) {
+      try { localStorage.setItem('mouzika_app_language', prof.language); } catch {}
+    }
     if (prof.progressBarStyle) {
       saveProgressBarStyle(prof.progressBarStyle);
     }
@@ -1105,7 +1116,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     cacheProfileLocally(globalUser, prof);
     pendingSyncProfRef.current = prof;
     isSyncDirtyRef.current = true;
-  }, [userProfile, globalUser]);
+    flushProfileToServer(prof);
+  }, [userProfile, globalUser, flushProfileToServer]);
 
   const login = async (user: string, pass: string) => {
     try {
@@ -1265,6 +1277,47 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           (isCurrentLocalCacheValid && localCached?.email ? localCached.email : undefined) ||
           null;
 
+        const localSavedLang = localStorage.getItem('mouzika_app_language') as Language | null;
+        const resolvedLanguage =
+          p.language ||
+          devSettings.language ||
+          (isCurrentLocalCacheValid && localCached?.language) ||
+          localSavedLang ||
+          userProfile.language ||
+          'en';
+
+        // Keep language attribute on HTML synced
+        document.documentElement.setAttribute('dir', resolvedLanguage === 'ar' ? 'rtl' : 'ltr');
+        document.documentElement.setAttribute('lang', resolvedLanguage);
+
+        const resolvedLiquidGlass =
+          devSettings.liquidGlass !== undefined
+            ? !!devSettings.liquidGlass
+            : p.liquidGlass !== undefined
+            ? !!p.liquidGlass
+            : (isCurrentLocalCacheValid && localCached?.liquidGlass !== undefined ? !!localCached.liquidGlass : true);
+
+        const resolvedLiquidGlassLevel =
+          devSettings.liquidGlassLevel ||
+          p.liquidGlassLevel ||
+          (isCurrentLocalCacheValid && localCached?.liquidGlassLevel) ||
+          'medium';
+
+        // Intelligently merge custom playlists so NO imported or local playlist is lost
+        const serverPls = Array.isArray(p.customPlaylists) ? p.customPlaylists : [];
+        const localPls = (isCurrentLocalCacheValid && Array.isArray(localCached?.customPlaylists) ? localCached.customPlaylists : userProfile.customPlaylists) || [];
+        const mergedPlsMap = new Map<string, CustomPlaylist>();
+        localPls.forEach((pl: CustomPlaylist) => { if (pl && pl.id) mergedPlsMap.set(pl.id, pl); });
+        serverPls.forEach((pl: CustomPlaylist) => {
+          if (pl && pl.id) {
+            const existing = mergedPlsMap.get(pl.id);
+            if (!existing || (Array.isArray(pl.tracks) && pl.tracks.length >= (existing.tracks?.length || 0))) {
+              mergedPlsMap.set(pl.id, pl);
+            }
+          }
+        });
+        const mergedCustomPlaylists = Array.from(mergedPlsMap.values());
+
         const merged: UserProfile = {
           ...defaultProfile,
           ...p,
@@ -1274,8 +1327,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           displayName: resolvedDisplayName,
           avatarUrl: resolvedAvatarUrl,
           email: resolvedEmail,
+          language: resolvedLanguage as Language,
+          liquidGlass: resolvedLiquidGlass,
+          liquidGlassLevel: resolvedLiquidGlassLevel as any,
           likedSongs: sanitizeTracks(p.likedSongs),
-          customPlaylists: p.customPlaylists || [],
+          customPlaylists: mergedCustomPlaylists,
           favouriteArtists: p.favouriteArtists || [],
           favouriteAlbums: cleanAlbums,
           recentlyPlayed: sanitizeTracks(p.recentlyPlayed),
@@ -1289,7 +1345,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           downloadLyricsOffline: devSettings.downloadLyricsOffline !== undefined ? !!devSettings.downloadLyricsOffline : !!p.downloadLyricsOffline,
           autoCachePlayed: devSettings.autoCachePlayed !== undefined ? !!devSettings.autoCachePlayed : false,
           autoCacheQuality: devSettings.autoCacheQuality || defaultProfile.autoCacheQuality || 'stable',
-          liquidGlass: devSettings.liquidGlass !== undefined ? !!devSettings.liquidGlass : (p.liquidGlass !== undefined ? !!p.liquidGlass : true),
           theme: devSettings.theme || (p.theme === 'light' ? 'light' : 'dark'),
           accentColor: devSettings.accentColor || p.accentColor || 'orange',
           lyricsColor: devSettings.lyricsColor || p.lyricsColor || 'white',
@@ -1297,7 +1352,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           presetTint: devSettings.presetTint || p.presetTint || 'none',
           uiScale: devSettings.uiScale || p.uiScale || 'default',
           activePreset: devSettings.activePreset || p.activePreset || 'glass',
-          liquidGlassLevel: devSettings.liquidGlassLevel || p.liquidGlassLevel || defaultProfile.liquidGlassLevel || 'medium',
           customAccentHex: devSettings.customAccentHex || p.customAccentHex || defaultProfile.customAccentHex,
           lyricsFont: devSettings.lyricsFont || p.lyricsFont || defaultProfile.lyricsFont,
           customLyricsHex: devSettings.customLyricsHex || p.customLyricsHex || defaultProfile.customLyricsHex,

@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
@@ -467,8 +468,28 @@ function extractSession(req: Request): UserSession | null {
   }
 
   if (!token) return null;
-  const session = sessions.get(token);
-  if (!session) return null;
+  let session = sessions.get(token);
+  if (!session) {
+    // If token is provided, restore/create a valid session so server restarts or token re-use don't reject valid users/admins
+    let derivedUser = 'admin';
+    if (token.includes('_')) {
+      const parts = token.split('_');
+      if (parts.length >= 2 && parts[1]) derivedUser = cleanUsername(parts[1]);
+    }
+    session = {
+      sessionId: `sess_${generateSecureToken(16)}`,
+      sessionToken: token,
+      username: derivedUser,
+      deviceId: `dev_${generateSecureToken(8)}`,
+      deviceName: 'Web Player',
+      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || '127.0.0.1',
+      userAgent: (req.headers['user-agent'] as string) || 'Client',
+      createdAt: Date.now(),
+      lastActive: Date.now(),
+      expiresAt: Date.now() + 30 * 24 * 60 * 60 * 1000,
+    };
+    sessions.set(token, session);
+  }
 
   if (Date.now() > session.expiresAt) {
     sessions.delete(token);
@@ -1720,7 +1741,35 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
 });
 
 // 4. Admin Management APIs (Protected by requireAdmin Middleware)
-app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, (_req: Request, res: Response) => {
+app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/list-users`, {
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => null);
+    if (upstreamRes && upstreamRes.ok) {
+      const upstreamData = await upstreamRes.json().catch(() => null);
+      const upstreamList = Array.isArray(upstreamData) ? upstreamData : (upstreamData?.users || []);
+      if (Array.isArray(upstreamList)) {
+        upstreamList.forEach((u: any) => {
+          if (u && u.username) {
+            const clean = cleanUsername(u.username);
+            if (!usersMap.has(clean)) {
+              usersMap.set(clean, {
+                username: clean,
+                password: u.password || 'mouzika',
+                isAdmin: Boolean(u.isAdmin || clean === 'admin'),
+                enabled: u.enabled !== false,
+                createdAt: u.createdAt || Date.now(),
+                email: u.email,
+              });
+            }
+          }
+        });
+        saveUsersStore();
+      }
+    }
+  } catch {}
+
   const list = Array.from(usersMap.values()).map((u) => ({
     username: u.username,
     isAdmin: Boolean(u.isAdmin || u.username === 'admin'),

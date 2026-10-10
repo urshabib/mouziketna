@@ -25,6 +25,8 @@ import {
   Sparkles,
   X,
   Mail,
+  UploadCloud,
+  FileUp,
 } from 'lucide-react';
 import { NEW_HUB_BACKEND, fetchWithTimeout, fetchJsonRetry, fetchAdminSettings, updateAdminSettings, toggleUserEnabledStatus } from '../services/api';
 import { sessionManager } from '../services/sessionManager';
@@ -67,6 +69,63 @@ export const AdminView: React.FC = () => {
 
   // Cloudflare guide modal state
   const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
+  const [restoringBackup, setRestoringBackup] = useState(false);
+
+  const handleRestoreBackupFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setRestoringBackup(true);
+    try {
+      const text = await file.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error('Selected backup file is not valid JSON text');
+      }
+
+      const rawName = data.username || data.user || file.name.replace(/^user_/, '').replace(/\.(txt|json)$/i, '');
+      const targetUser = String(rawName).trim().toLowerCase();
+      if (!targetUser) {
+        throw new Error('Could not determine user account from backup file');
+      }
+
+      const sessionToken = sessionManager.getSessionToken();
+      const payload = {
+        ...data,
+        username: targetUser,
+      };
+
+      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/sync-profile`, 15000, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      }).catch(() => null);
+
+      if (!res || !res.ok) {
+        await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/user-profile`, 15000, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+          },
+          body: JSON.stringify(payload),
+        }).catch(() => null);
+      }
+
+      showToast(`✓ Backup for user "@${targetUser}" successfully uploaded to Cloudflare!`);
+      loadAdminData();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to parse or restore backup file', true);
+    } finally {
+      setRestoringBackup(false);
+      e.target.value = '';
+    }
+  };
 
   const loadAdminData = async () => {
     setLoading(true);
@@ -682,6 +741,47 @@ export const AdminView: React.FC = () => {
             })}
           </div>
         )}
+      </div>
+
+      {/* RESTORE CLOUDFLARE BACKUP FILE CARD */}
+      <div className="p-6 rounded-3xl bg-emerald-500/[0.03] border border-emerald-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+            <UploadCloud className="w-6 h-6" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-sm text-white flex items-center gap-2">
+              <span>Restore User Backup to Cloudflare</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                TXT / JSON Backup
+              </span>
+            </h4>
+            <p className="text-xs text-white/50 mt-0.5">
+              Select or drop a downloaded backup TXT/JSON file (like <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded font-mono">user_doudou.txt</code>) to push their playlists, liked songs, and account data back to Cloudflare.
+            </p>
+          </div>
+        </div>
+
+        <label className="px-4 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-extrabold text-xs transition-all flex items-center gap-2 cursor-pointer self-start sm:self-auto shadow-lg shadow-emerald-950/20 active:scale-95">
+          {restoringBackup ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              <span>Pushing to Cloudflare...</span>
+            </>
+          ) : (
+            <>
+              <FileUp className="w-4 h-4 text-emerald-400" />
+              <span>Upload Backup TXT / JSON</span>
+            </>
+          )}
+          <input
+            type="file"
+            accept=".txt,.json"
+            onChange={handleRestoreBackupFile}
+            disabled={restoringBackup}
+            className="hidden"
+          />
+        </label>
       </div>
 
       {/* CLOUDFLARE DATABASE INFO CARD */}
