@@ -44,6 +44,10 @@ import {
   loadTasteProfile,
   rememberListen,
   restoreProfileFromCache,
+  saveGuestProfile,
+  restoreGuestProfile,
+  clearGuestProfile,
+  mergeProfilesSafely,
   saveDeviceSettings,
   saveDownload,
   tasteArtistKey,
@@ -295,14 +299,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       savedUser = localStorage.getItem('hub_active_user');
     } catch {}
     const cached = savedUser ? restoreProfileFromCache(savedUser) : null;
+    const guest = !savedUser ? restoreGuestProfile() : null;
     const isCachedMatch = Boolean(savedUser && cached && (!cached.username || cached.username.toLowerCase() === savedUser.toLowerCase()));
     return {
       ...defaultProfile,
+      ...(guest || {}),
       ...(isCachedMatch ? cached : {}),
       ...(dev || {}),
       username: savedUser || '',
-      displayName: (isCachedMatch && cached?.displayName) ? cached.displayName : (savedUser || ''),
-      avatarUrl: (isCachedMatch && cached?.avatarUrl !== undefined) ? cached.avatarUrl : null,
+      displayName: (isCachedMatch && cached?.displayName) ? cached.displayName : (guest?.displayName || savedUser || ''),
+      avatarUrl: (isCachedMatch && cached?.avatarUrl !== undefined) ? cached.avatarUrl : (guest?.avatarUrl !== undefined ? guest.avatarUrl : null),
     };
   });
   const [isAuthGateOpen, setIsAuthGateOpen] = useState(false);
@@ -1112,7 +1118,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prof.lyricsGlow,
       prof.liquidGlassLevel
     );
-    if (!globalUser || globalUser === 'admin') return;
+    if (!globalUser || globalUser === 'admin') {
+      saveGuestProfile(prof);
+      return;
+    }
     cacheProfileLocally(globalUser, prof);
     pendingSyncProfRef.current = prof;
     isSyncDirtyRef.current = true;
@@ -1121,6 +1130,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const login = async (user: string, pass: string) => {
     try {
+      const localCached = restoreProfileFromCache(user);
+      const guest = restoreGuestProfile();
+      const clientProfileToSend = localCached || ((userProfile.customPlaylists?.length > 0 || userProfile.likedSongs?.length > 0) ? userProfile : null) || guest || null;
+
       let data: any = null;
       try {
         const localRes = await fetchWithTimeout('/api/auth/login', 5000, {
@@ -1131,6 +1144,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             password: pass,
             deviceId: sessionManager.getDeviceId(),
             deviceName: sessionManager.getDeviceName(),
+            clientProfile: clientProfileToSend,
           }),
         });
         if (localRes.ok) {
@@ -1164,240 +1178,115 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const isUserAdmin = Boolean(data.isAdmin || user.toLowerCase() === 'admin' || data.profile?.isAdmin);
       const userEnabledStatus = data.enabled !== undefined ? data.enabled !== false : (data.profile?.enabled !== undefined ? data.profile.enabled !== false : true);
 
-      if (data.profile) {
-        const p = data.profile;
-        const devSettings = loadDeviceSettings() || {};
-        const sanitizeTracks = (tracks?: Track[]): Track[] => {
-          if (!tracks || !Array.isArray(tracks)) return [];
-          return tracks.map((t) => {
-            if (t && t.thumb && t.thumb.startsWith('blob:') && t.id) {
-              return { ...t, thumb: canonicalThumbUrl(t.id) };
-            }
-            return t;
-          });
-        };
-
-        const localCached = restoreProfileFromCache(user);
-        const isCurrentLocalCacheValid = Boolean(localCached && (!localCached.username || localCached.username.toLowerCase() === user.toLowerCase()));
-        const localStats = isCurrentLocalCacheValid ? localCached?.stats : undefined;
-        let serverStats = p.stats;
-        let cloudTasteInterested = p.explicitInterested;
-        let cloudTasteNotInterested = p.explicitNotInterested;
-        let cloudDisplayName: string | undefined = undefined;
-        let cloudAvatarUrl: string | null | undefined = undefined;
-        let cloudAvatarExplicitlySet = false;
-        let cloudEmail: string | undefined = undefined;
-
-        // Extract cloud stats, explicit taste, and server-persisted profile data from favouriteAlbums system record
-        if (Array.isArray(p.favouriteAlbums)) {
-          const cloudRecord = p.favouriteAlbums.find(
-            (a: any) => a && (a.id === '__mouzika_cloud_stats_v1__' || a.id === '__mouzika_cloud_profile_v1__')
-          );
-          if (cloudRecord) {
-            if (cloudRecord.stats) {
-              if (!serverStats || (cloudRecord.stats.totalMinutesListened || 0) >= (serverStats.totalMinutesListened || 0)) {
-                serverStats = cloudRecord.stats;
-              }
-            }
-            if (!cloudTasteInterested && cloudRecord.explicitInterested) {
-              cloudTasteInterested = cloudRecord.explicitInterested;
-            }
-            if (!cloudTasteNotInterested && cloudRecord.explicitNotInterested) {
-              cloudTasteNotInterested = cloudRecord.explicitNotInterested;
-            }
-            if (cloudRecord.displayName !== undefined && cloudRecord.displayName !== null && String(cloudRecord.displayName).trim()) {
-              cloudDisplayName = String(cloudRecord.displayName).trim();
-            }
-            if (cloudRecord.avatarUrl !== undefined) {
-              cloudAvatarUrl = cloudRecord.avatarUrl;
-              cloudAvatarExplicitlySet = true;
-            }
-            if (cloudRecord.email !== undefined && cloudRecord.email !== null && String(cloudRecord.email).trim()) {
-              cloudEmail = String(cloudRecord.email).trim();
-            }
+      const devSettings = loadDeviceSettings() || {};
+      const sanitizeTracks = (tracks?: Track[]): Track[] => {
+        if (!tracks || !Array.isArray(tracks)) return [];
+        return tracks.map((t) => {
+          if (t && t.thumb && t.thumb.startsWith('blob:') && t.id) {
+            return { ...t, thumb: canonicalThumbUrl(t.id) };
           }
-        }
-
-        // Intelligent stat merge: preserve all minutes listened and counts
-        const mergedStats = {
-          totalMinutesListened: Math.max(serverStats?.totalMinutesListened || 0, localStats?.totalMinutesListened || 0),
-          totalTracksPlayed: Math.max(serverStats?.totalTracksPlayed || 0, localStats?.totalTracksPlayed || 0),
-          topSongs: (serverStats?.topSongs && serverStats.topSongs.length > 0 && (serverStats.totalMinutesListened || 0) >= (localStats?.totalMinutesListened || 0))
-            ? serverStats.topSongs
-            : (localStats?.topSongs && localStats.topSongs.length > 0 ? localStats.topSongs : serverStats?.topSongs || []),
-          topArtists: (serverStats?.topArtists && serverStats.topArtists.length > 0 && (serverStats.totalMinutesListened || 0) >= (localStats?.totalMinutesListened || 0))
-            ? serverStats.topArtists
-            : (localStats?.topArtists && localStats.topArtists.length > 0 ? localStats.topArtists : serverStats?.topArtists || []),
-          lastUpdated: Math.max(serverStats?.lastUpdated || 0, localStats?.lastUpdated || 0, Date.now()),
-        };
-
-        // Restore explicit music taste preferences from cloud if present
-        if (cloudTasteInterested && Array.isArray(cloudTasteInterested)) {
-          try {
-            localStorage.setItem('mouzika_taste_explicit_interested', JSON.stringify(cloudTasteInterested));
-          } catch {}
-        }
-        if (cloudTasteNotInterested && Array.isArray(cloudTasteNotInterested)) {
-          try {
-            localStorage.setItem('mouzika_taste_explicit_not_interested', JSON.stringify(cloudTasteNotInterested));
-          } catch {}
-        }
-
-        const cleanAlbums = (p.favouriteAlbums || []).filter(
-          (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
-        );
-
-        // Server-authoritative resolution:
-        // Priority 1: Cloud system record stored on server inside favouriteAlbums
-        // Priority 2: Direct server profile field (if returned by backend)
-        // Priority 3: Local cache strictly matching this specific user
-        // Priority 4: Default username / null avatar.
-        // NEVER inherit from other accounts or device-level settings!
-        const resolvedDisplayName =
-          cloudDisplayName ||
-          (p.displayName && String(p.displayName).trim()) ||
-          (isCurrentLocalCacheValid && localCached?.displayName ? localCached.displayName : undefined) ||
-          p.username ||
-          user;
-
-        let resolvedAvatarUrl: string | null = null;
-        if (cloudAvatarExplicitlySet) {
-          resolvedAvatarUrl = cloudAvatarUrl || null;
-        } else if (p.avatarUrl !== undefined && p.avatarUrl !== null) {
-          resolvedAvatarUrl = p.avatarUrl;
-        } else if (isCurrentLocalCacheValid && localCached?.avatarUrl) {
-          resolvedAvatarUrl = localCached.avatarUrl;
-        } else {
-          resolvedAvatarUrl = null;
-        }
-
-        const resolvedEmail =
-          cloudEmail ||
-          (p.email && String(p.email).trim()) ||
-          (isCurrentLocalCacheValid && localCached?.email ? localCached.email : undefined) ||
-          null;
-
-        const localSavedLang = localStorage.getItem('mouzika_app_language') as Language | null;
-        const resolvedLanguage =
-          p.language ||
-          devSettings.language ||
-          (isCurrentLocalCacheValid && localCached?.language) ||
-          localSavedLang ||
-          userProfile.language ||
-          'en';
-
-        // Keep language attribute on HTML synced
-        document.documentElement.setAttribute('dir', resolvedLanguage === 'ar' ? 'rtl' : 'ltr');
-        document.documentElement.setAttribute('lang', resolvedLanguage);
-
-        const resolvedLiquidGlass =
-          devSettings.liquidGlass !== undefined
-            ? !!devSettings.liquidGlass
-            : p.liquidGlass !== undefined
-            ? !!p.liquidGlass
-            : (isCurrentLocalCacheValid && localCached?.liquidGlass !== undefined ? !!localCached.liquidGlass : true);
-
-        const resolvedLiquidGlassLevel =
-          devSettings.liquidGlassLevel ||
-          p.liquidGlassLevel ||
-          (isCurrentLocalCacheValid && localCached?.liquidGlassLevel) ||
-          'medium';
-
-        // Intelligently merge custom playlists so NO imported or local playlist is lost
-        const serverPls = Array.isArray(p.customPlaylists) ? p.customPlaylists : [];
-        const localPls = (isCurrentLocalCacheValid && Array.isArray(localCached?.customPlaylists) ? localCached.customPlaylists : userProfile.customPlaylists) || [];
-        const mergedPlsMap = new Map<string, CustomPlaylist>();
-        localPls.forEach((pl: CustomPlaylist) => { if (pl && pl.id) mergedPlsMap.set(pl.id, pl); });
-        serverPls.forEach((pl: CustomPlaylist) => {
-          if (pl && pl.id) {
-            const existing = mergedPlsMap.get(pl.id);
-            if (!existing || (Array.isArray(pl.tracks) && pl.tracks.length >= (existing.tracks?.length || 0))) {
-              mergedPlsMap.set(pl.id, pl);
-            }
-          }
+          return t;
         });
-        const mergedCustomPlaylists = Array.from(mergedPlsMap.values());
+      };
 
-        const merged: UserProfile = {
-          ...defaultProfile,
-          ...p,
-          username: p.username || user,
-          isAdmin: isUserAdmin,
-          enabled: userEnabledStatus,
-          displayName: resolvedDisplayName,
-          avatarUrl: resolvedAvatarUrl,
-          email: resolvedEmail,
-          language: resolvedLanguage as Language,
-          liquidGlass: resolvedLiquidGlass,
-          liquidGlassLevel: resolvedLiquidGlassLevel as any,
-          likedSongs: sanitizeTracks(p.likedSongs),
-          customPlaylists: mergedCustomPlaylists,
-          favouriteArtists: p.favouriteArtists || [],
-          favouriteAlbums: cleanAlbums,
-          recentlyPlayed: sanitizeTracks(p.recentlyPlayed),
-          dataSaver: devSettings.dataSaver !== undefined ? !!devSettings.dataSaver : !!p.dataSaver,
-          dataSaverLevel: devSettings.dataSaverLevel || p.dataSaverLevel || 'off',
-          downloadQuality: devSettings.downloadQuality || defaultProfile.downloadQuality || 'stable',
-          downloadArtOffline: devSettings.downloadArtOffline !== undefined ? devSettings.downloadArtOffline : true,
-          artQualityOffline: devSettings.artQualityOffline || defaultProfile.artQualityOffline || 'low',
-          customAppName: devSettings.customAppName || defaultProfile.customAppName || 'MOUZIKETNA',
-          appLogo: devSettings.appLogo || defaultProfile.appLogo || 'default',
-          downloadLyricsOffline: devSettings.downloadLyricsOffline !== undefined ? !!devSettings.downloadLyricsOffline : !!p.downloadLyricsOffline,
-          autoCachePlayed: devSettings.autoCachePlayed !== undefined ? !!devSettings.autoCachePlayed : false,
-          autoCacheQuality: devSettings.autoCacheQuality || defaultProfile.autoCacheQuality || 'stable',
-          theme: devSettings.theme || (p.theme === 'light' ? 'light' : 'dark'),
-          accentColor: devSettings.accentColor || p.accentColor || 'orange',
-          lyricsColor: devSettings.lyricsColor || p.lyricsColor || 'white',
-          lyricsGlow: devSettings.lyricsGlow || p.lyricsGlow || 'default',
-          presetTint: devSettings.presetTint || p.presetTint || 'none',
-          uiScale: devSettings.uiScale || p.uiScale || 'default',
-          activePreset: devSettings.activePreset || p.activePreset || 'glass',
-          customAccentHex: devSettings.customAccentHex || p.customAccentHex || defaultProfile.customAccentHex,
-          lyricsFont: devSettings.lyricsFont || p.lyricsFont || defaultProfile.lyricsFont,
-          customLyricsHex: devSettings.customLyricsHex || p.customLyricsHex || defaultProfile.customLyricsHex,
-          progressBarStyle: devSettings.progressBarStyle || loadProgressBarStyle() || p.progressBarStyle || defaultProfile.progressBarStyle || 'default',
-          progressBarColor: devSettings.progressBarColor || p.progressBarColor || defaultProfile.progressBarColor || '#ffffff',
-          customProgressBarHex: devSettings.customProgressBarHex || p.customProgressBarHex || defaultProfile.customProgressBarHex,
-          keyPartsDisplay: devSettings.keyPartsDisplay || p.keyPartsDisplay || defaultProfile.keyPartsDisplay || 'dots',
-          stats: mergedStats,
-        };
-        setUserProfile(merged);
-        saveDeviceSettings(merged);
-        if (merged.progressBarStyle) {
-          saveProgressBarStyle(merged.progressBarStyle);
-        }
-        applyTheme(
-          merged.theme,
-          merged.accentColor,
-          merged.lyricsColor,
-          merged.presetTint,
-          merged.liquidGlass,
-          merged.uiScale,
-          merged.customAccentHex,
-          merged.lyricsFont,
-          merged.customLyricsHex,
-          merged.lyricsGlow
+      const serverProfile = data.profile || null;
+
+      // Extract cloud stats, explicit taste, and server-persisted profile data from favouriteAlbums system record if present
+      let cloudTasteInterested: any = undefined;
+      let cloudTasteNotInterested: any = undefined;
+      if (serverProfile && Array.isArray(serverProfile.favouriteAlbums)) {
+        const cloudRecord = serverProfile.favouriteAlbums.find(
+          (a: any) => a && (a.id === '__mouzika_cloud_stats_v1__' || a.id === '__mouzika_cloud_profile_v1__')
         );
-        cacheProfileLocally(user, merged);
-
-        // If local had higher stats, push the merged numbers up to the server
-        if (mergedStats.totalMinutesListened > (serverStats?.totalMinutesListened || 0)) {
-          setTimeout(() => flushProfileToServer(merged), 800);
+        if (cloudRecord) {
+          if (cloudRecord.explicitInterested) cloudTasteInterested = cloudRecord.explicitInterested;
+          if (cloudRecord.explicitNotInterested) cloudTasteNotInterested = cloudRecord.explicitNotInterested;
+          if (cloudRecord.displayName && !serverProfile.displayName) serverProfile.displayName = cloudRecord.displayName;
+          if (cloudRecord.avatarUrl !== undefined && serverProfile.avatarUrl === undefined) serverProfile.avatarUrl = cloudRecord.avatarUrl;
+          if (cloudRecord.email && !serverProfile.email) serverProfile.email = cloudRecord.email;
         }
-      } else {
-        const localCached = restoreProfileFromCache(user);
-        const isCurrentLocalCacheValid = Boolean(localCached && (!localCached.username || localCached.username.toLowerCase() === user.toLowerCase()));
-        const cleanProf: UserProfile = {
-          ...defaultProfile,
-          username: user,
-          displayName: (isCurrentLocalCacheValid && localCached?.displayName) ? localCached.displayName : user,
-          avatarUrl: (isCurrentLocalCacheValid && localCached?.avatarUrl) ? localCached.avatarUrl : null,
-          isAdmin: isUserAdmin,
-          enabled: userEnabledStatus,
-        };
-        setUserProfile(cleanProf);
-        cacheProfileLocally(user, cleanProf);
       }
+
+      if (cloudTasteInterested && Array.isArray(cloudTasteInterested)) {
+        try { localStorage.setItem('mouzika_taste_explicit_interested', JSON.stringify(cloudTasteInterested)); } catch {}
+      }
+      if (cloudTasteNotInterested && Array.isArray(cloudTasteNotInterested)) {
+        try { localStorage.setItem('mouzika_taste_explicit_not_interested', JSON.stringify(cloudTasteNotInterested)); } catch {}
+      }
+
+      // Comprehensive lossless merge: NEVER wipes customPlaylists, likedSongs, recentlyPlayed, or favorites!
+      const merged = mergeProfilesSafely(
+        user,
+        defaultProfile,
+        serverProfile,
+        localCached,
+        guest,
+        userProfile
+      );
+
+      // Sanitize track thumbnail references
+      merged.likedSongs = sanitizeTracks(merged.likedSongs);
+      merged.recentlyPlayed = sanitizeTracks(merged.recentlyPlayed);
+      merged.customPlaylists = (merged.customPlaylists || []).map((pl) => ({
+        ...pl,
+        tracks: sanitizeTracks(pl.tracks),
+      }));
+
+      merged.isAdmin = isUserAdmin;
+      merged.enabled = userEnabledStatus;
+
+      // Apply device-specific preferences
+      if (devSettings.theme) merged.theme = devSettings.theme;
+      if (devSettings.accentColor) merged.accentColor = devSettings.accentColor;
+      if (devSettings.lyricsColor) merged.lyricsColor = devSettings.lyricsColor;
+      if (devSettings.lyricsGlow) merged.lyricsGlow = devSettings.lyricsGlow;
+      if (devSettings.presetTint) merged.presetTint = devSettings.presetTint;
+      if (devSettings.uiScale) merged.uiScale = devSettings.uiScale;
+      if (devSettings.liquidGlass !== undefined) merged.liquidGlass = !!devSettings.liquidGlass;
+      if (devSettings.liquidGlassLevel) merged.liquidGlassLevel = devSettings.liquidGlassLevel;
+      if (devSettings.customAccentHex) merged.customAccentHex = devSettings.customAccentHex;
+      if (devSettings.lyricsFont) merged.lyricsFont = devSettings.lyricsFont;
+      if (devSettings.customLyricsHex) merged.customLyricsHex = devSettings.customLyricsHex;
+      if (devSettings.progressBarStyle) merged.progressBarStyle = devSettings.progressBarStyle;
+      if (devSettings.progressBarColor) merged.progressBarColor = devSettings.progressBarColor;
+      if (devSettings.customProgressBarHex) merged.customProgressBarHex = devSettings.customProgressBarHex;
+
+      const localSavedLang = localStorage.getItem('mouzika_app_language') as Language | null;
+      const resolvedLanguage =
+        merged.language ||
+        devSettings.language ||
+        localSavedLang ||
+        userProfile.language ||
+        'en';
+      merged.language = resolvedLanguage as Language;
+
+      document.documentElement.setAttribute('dir', resolvedLanguage === 'ar' ? 'rtl' : 'ltr');
+      document.documentElement.setAttribute('lang', resolvedLanguage);
+
+      setUserProfile(merged);
+      saveDeviceSettings(merged);
+      if (merged.progressBarStyle) {
+        saveProgressBarStyle(merged.progressBarStyle);
+      }
+      applyTheme(
+        merged.theme,
+        merged.accentColor,
+        merged.lyricsColor,
+        merged.presetTint,
+        merged.liquidGlass,
+        merged.uiScale,
+        merged.customAccentHex,
+        merged.lyricsFont,
+        merged.customLyricsHex,
+        merged.lyricsGlow,
+        merged.liquidGlassLevel
+      );
+      cacheProfileLocally(user, merged);
+      clearGuestProfile();
+
+      // Immediately sync merged profile back to server to ensure cloud persistence
+      setTimeout(() => flushProfileToServer(merged), 400);
+
       return { success: true };
     } catch {
       return { success: false, error: "Can't reach server. Working in offline mode." };
@@ -1610,6 +1499,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const logout = () => {
     try {
+      if (globalUser && globalUser !== 'admin') {
+        cacheProfileLocally(globalUser, userProfile);
+      }
       localStorage.removeItem('hub_active_user');
       localStorage.removeItem('hub_active_pass');
       localStorage.removeItem('hub_is_guest');

@@ -1,4 +1,4 @@
-import { DownloadRecord, LyricsData, Track, UserProfile } from '../types';
+import { DownloadRecord, LyricsData, Track, UserProfile, UserStats } from '../types';
 import { generateLyricsPlusPlan } from './aiLyricsReel';
 
 const DL_DB_NAME = 'mouzika-downloads';
@@ -409,6 +409,185 @@ export function restoreProfileFromCache(username: string): Partial<UserProfile> 
   } catch {
     return null;
   }
+}
+
+const GUEST_PROFILE_KEY = 'mouzika_guest_profile';
+
+export function saveGuestProfile(profile: Partial<UserProfile>) {
+  try {
+    const toSave: any = {
+      ...profile,
+      username: '',
+    };
+    localStorage.setItem(GUEST_PROFILE_KEY, JSON.stringify(toSave));
+  } catch {}
+}
+
+export function restoreGuestProfile(): Partial<UserProfile> | null {
+  try {
+    const raw = localStorage.getItem(GUEST_PROFILE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function clearGuestProfile() {
+  try {
+    localStorage.removeItem(GUEST_PROFILE_KEY);
+  } catch {}
+}
+
+/**
+ * Losslessly merges user profile data across all available sources:
+ * - Server incoming data
+ * - Active in-memory session data
+ * - Local user cache
+ * - Pre-login guest data
+ * GUARANTEES: No custom playlists, liked songs, recently played tracks, or preferences are EVER wiped!
+ */
+export function mergeProfilesSafely(
+  username: string,
+  baseDefault: UserProfile,
+  serverData?: Partial<UserProfile> | null,
+  cachedData?: Partial<UserProfile> | null,
+  guestData?: Partial<UserProfile> | null,
+  currentMemory?: Partial<UserProfile> | null
+): UserProfile {
+  // 1. Playlists union by ID, tracks union by ID
+  const plMap = new Map<string, any>();
+  const addPlaylists = (list?: any[]) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((pl) => {
+      if (!pl || !pl.id) return;
+      const prev = plMap.get(pl.id);
+      if (!prev) {
+        plMap.set(pl.id, { ...pl });
+      } else {
+        const tMap = new Map<string, any>();
+        if (Array.isArray(prev.tracks)) prev.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
+        if (Array.isArray(pl.tracks)) pl.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
+        plMap.set(pl.id, {
+          ...prev,
+          ...pl,
+          title: pl.title || prev.title,
+          tracks: Array.from(tMap.values()),
+        });
+      }
+    });
+  };
+
+  addPlaylists(currentMemory?.customPlaylists);
+  addPlaylists(guestData?.customPlaylists);
+  addPlaylists(cachedData?.customPlaylists);
+  addPlaylists(serverData?.customPlaylists);
+
+  // 2. Liked songs union by ID
+  const likedMap = new Map<string, Track>();
+  const addLikes = (list?: Track[]) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((t) => {
+      if (t && t.id) likedMap.set(t.id, t);
+    });
+  };
+
+  addLikes(currentMemory?.likedSongs);
+  addLikes(guestData?.likedSongs);
+  addLikes(cachedData?.likedSongs);
+  addLikes(serverData?.likedSongs);
+
+  // 3. Recently played union by ID
+  const recentMap = new Map<string, Track>();
+  const addRecent = (list?: Track[]) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((t) => {
+      if (t && t.id && !recentMap.has(t.id)) recentMap.set(t.id, t);
+    });
+  };
+
+  addRecent(serverData?.recentlyPlayed);
+  addRecent(cachedData?.recentlyPlayed);
+  addRecent(currentMemory?.recentlyPlayed);
+  addRecent(guestData?.recentlyPlayed);
+
+  // 4. Favourite artists & albums union
+  const artMap = new Map<string, Track>();
+  const addArtists = (list?: any[]) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((a) => {
+      if (!a) return;
+      if (typeof a === 'string') {
+        const key = a.trim().toLowerCase();
+        if (!artMap.has(key)) artMap.set(key, { id: key, title: a, artist: a, type: 'artist', thumb: null });
+      } else if (a.id || a.title || a.name) {
+        const key = String(a.id || a.title || a.name).trim().toLowerCase();
+        if (!artMap.has(key)) artMap.set(key, a);
+      }
+    });
+  };
+  addArtists(cachedData?.favouriteArtists);
+  addArtists(currentMemory?.favouriteArtists);
+  addArtists(serverData?.favouriteArtists);
+
+  const albMap = new Map<string, any>();
+  const addAlbums = (list?: any[]) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((alb) => {
+      if (alb && (alb.id || alb.title)) {
+        albMap.set(alb.id || alb.title, alb);
+      }
+    });
+  };
+  addAlbums(cachedData?.favouriteAlbums);
+  addAlbums(currentMemory?.favouriteAlbums);
+  addAlbums(serverData?.favouriteAlbums);
+
+  // 5. Merge listening stats
+  const cStats = (cachedData?.stats || {}) as Partial<UserStats>;
+  const sStats = (serverData?.stats || {}) as Partial<UserStats>;
+  const mStats = (currentMemory?.stats || {}) as Partial<UserStats>;
+  const mergedStats: UserStats = {
+    totalMinutesListened: Math.max(sStats.totalMinutesListened || 0, cStats.totalMinutesListened || 0, mStats.totalMinutesListened || 0),
+    totalTracksPlayed: Math.max(sStats.totalTracksPlayed || 0, cStats.totalTracksPlayed || 0, mStats.totalTracksPlayed || 0),
+    topSongs: (sStats.topSongs && sStats.topSongs.length > 0) ? sStats.topSongs : (cStats.topSongs && cStats.topSongs.length > 0 ? cStats.topSongs : mStats.topSongs || []),
+    topArtists: (sStats.topArtists && sStats.topArtists.length > 0) ? sStats.topArtists : (cStats.topArtists && cStats.topArtists.length > 0 ? cStats.topArtists : mStats.topArtists || []),
+    lastUpdated: Math.max(sStats.lastUpdated || 0, cStats.lastUpdated || 0, mStats.lastUpdated || 0, Date.now()),
+  };
+
+  // 6. User display name & avatar resolution (preserve if server has none)
+  const resolvedDisplayName =
+    (serverData?.displayName && String(serverData.displayName).trim()) ||
+    (cachedData?.displayName && String(cachedData.displayName).trim()) ||
+    (currentMemory?.displayName && String(currentMemory.displayName).trim()) ||
+    username;
+
+  const resolvedAvatarUrl =
+    serverData?.avatarUrl !== undefined && serverData?.avatarUrl !== null
+      ? serverData.avatarUrl
+      : cachedData?.avatarUrl !== undefined && cachedData?.avatarUrl !== null
+      ? cachedData.avatarUrl
+      : currentMemory?.avatarUrl !== undefined && currentMemory?.avatarUrl !== null
+      ? currentMemory.avatarUrl
+      : null;
+
+  return {
+    ...baseDefault,
+    ...(cachedData || {}),
+    ...(currentMemory || {}),
+    ...(serverData || {}),
+    username,
+    displayName: resolvedDisplayName,
+    avatarUrl: resolvedAvatarUrl,
+    customPlaylists: Array.from(plMap.values()),
+    likedSongs: Array.from(likedMap.values()),
+    recentlyPlayed: Array.from(recentMap.values()).slice(0, 50),
+    favouriteArtists: Array.from(artMap.values()),
+    favouriteAlbums: Array.from(albMap.values()).filter(
+      (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
+    ),
+    stats: mergedStats,
+  };
 }
 
 // Taste profile

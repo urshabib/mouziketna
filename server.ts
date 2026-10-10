@@ -317,6 +317,8 @@ export interface UserRecord {
   enabled: boolean;
   createdAt: number;
   email?: string;
+  likedCount?: number;
+  playlistCount?: number;
 }
 
 export interface ServerSettings {
@@ -329,9 +331,11 @@ if (!fs.existsSync(DATA_DIR)) {
 }
 
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 const usersMap = new Map<string, UserRecord>();
+const profilesMap = new Map<string, any>();
 let serverSettings: ServerSettings = { autoEnable: false };
 
 try {
@@ -348,6 +352,40 @@ function saveServerSettings() {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(serverSettings, null, 2));
   } catch (e) {
     console.warn('[Server] Could not save settings.json:', e);
+  }
+}
+
+function loadProfilesStore() {
+  try {
+    if (fs.existsSync(PROFILES_FILE)) {
+      const raw = fs.readFileSync(PROFILES_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (typeof data === 'object' && data !== null) {
+        if (Array.isArray(data)) {
+          data.forEach((p: any) => {
+            if (p && p.username) profilesMap.set(cleanUsername(p.username), p);
+          });
+        } else {
+          Object.keys(data).forEach((k) => {
+            profilesMap.set(cleanUsername(k), data[k]);
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Server] Could not load profiles.json:', e);
+  }
+}
+
+function saveProfilesStore() {
+  try {
+    const obj: Record<string, any> = {};
+    profilesMap.forEach((val, key) => {
+      obj[key] = val;
+    });
+    fs.writeFileSync(PROFILES_FILE, JSON.stringify(obj, null, 2));
+  } catch (e) {
+    console.warn('[Server] Could not save profiles.json:', e);
   }
 }
 
@@ -373,6 +411,8 @@ function loadUsersStore() {
       isAdmin: true,
       enabled: true,
       createdAt: Date.now(),
+      likedCount: 0,
+      playlistCount: 0,
     });
     saveUsersStore();
   } else {
@@ -391,7 +431,67 @@ function saveUsersStore() {
   }
 }
 
+async function syncUsersFromUpstream() {
+  try {
+    const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/list-users`, {
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => null);
+    if (upstreamRes && upstreamRes.ok) {
+      const upstreamData = await upstreamRes.json().catch(() => null);
+      const upstreamList = Array.isArray(upstreamData) ? upstreamData : (upstreamData?.users || []);
+      if (Array.isArray(upstreamList)) {
+        let dirty = false;
+        upstreamList.forEach((u: any) => {
+          if (u && u.username) {
+            const clean = cleanUsername(u.username);
+            const localProf = profilesMap.get(clean);
+            const localPls = Array.isArray(localProf?.customPlaylists) ? localProf.customPlaylists.length : 0;
+            const localLikes = Array.isArray(localProf?.likedSongs) ? localProf.likedSongs.length : 0;
+            const upstreamPls = Number(u.playlistCount) || 0;
+            const upstreamLikes = Number(u.likedCount) || 0;
+
+            const existing = usersMap.get(clean);
+            const effPlaylistCount = Math.max(upstreamPls, localPls, Number(existing?.playlistCount) || 0);
+            const effLikedCount = Math.max(upstreamLikes, localLikes, Number(existing?.likedCount) || 0);
+
+            if (!existing) {
+              usersMap.set(clean, {
+                username: clean,
+                password: u.password || 'mouzika',
+                isAdmin: Boolean(u.isAdmin || clean === 'admin'),
+                enabled: u.enabled !== false,
+                createdAt: u.createdAt || Date.now(),
+                email: u.email,
+                playlistCount: effPlaylistCount,
+                likedCount: effLikedCount,
+              });
+              dirty = true;
+            } else {
+              if (existing.playlistCount !== effPlaylistCount || existing.likedCount !== effLikedCount) {
+                existing.playlistCount = effPlaylistCount;
+                existing.likedCount = effLikedCount;
+                dirty = true;
+              }
+              if (u.password && (!existing.password || existing.password === 'mouzika')) {
+                existing.password = u.password;
+                dirty = true;
+              }
+            }
+          }
+        });
+        if (dirty) {
+          saveUsersStore();
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Server] Failed to sync users from upstream:', err);
+  }
+}
+
 loadUsersStore();
+loadProfilesStore();
+syncUsersFromUpstream().catch(() => {});
 
 // =========================================================================
 // 3. HELPERS & SECURITY FUNCTIONS
@@ -1641,37 +1741,42 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
   let userRec = usersMap.get(normUser);
   let authSucceeded = false;
 
+  let upstreamProfile: any = null;
+
   if (userRec) {
     if (userRec.password === password || password === 'mouzika' || normUser === 'admin') {
       authSucceeded = true;
     }
   }
 
-  if (!authSucceeded) {
-    // Upstream fallback
-    try {
-      const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
-      });
-      const upstreamData = await upstreamRes.json().catch(() => null);
-      if (upstreamRes.ok && upstreamData && !upstreamData.error) {
-        authSucceeded = true;
-        if (!userRec) {
-          userRec = {
-            username: normUser,
-            password,
-            isAdmin: normUser === 'admin',
-            enabled: true, // Existing upstream users default to enabled: true!
-            createdAt: Date.now(),
-          };
-          usersMap.set(normUser, userRec);
-          saveUsersStore();
-        }
+  // Attempt upstream login & profile fetch
+  try {
+    const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const upstreamData = await upstreamRes.json().catch(() => null);
+    if (upstreamRes.ok && upstreamData && !upstreamData.error) {
+      authSucceeded = true;
+      if (upstreamData.profile) {
+        upstreamProfile = upstreamData.profile;
       }
-    } catch {}
-  }
+      if (!userRec) {
+        userRec = {
+          username: normUser,
+          password,
+          isAdmin: Boolean(upstreamData.isAdmin || normUser === 'admin'),
+          enabled: true,
+          createdAt: Date.now(),
+          playlistCount: Array.isArray(upstreamProfile?.customPlaylists) ? upstreamProfile.customPlaylists.length : 0,
+          likedCount: Array.isArray(upstreamProfile?.likedSongs) ? upstreamProfile.likedSongs.length : 0,
+        };
+        usersMap.set(normUser, userRec);
+        saveUsersStore();
+      }
+    }
+  } catch {}
 
   if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
     authSucceeded = true;
@@ -1682,6 +1787,8 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
         isAdmin: true,
         enabled: true,
         createdAt: Date.now(),
+        playlistCount: 0,
+        likedCount: 0,
       };
       usersMap.set(normUser, userRec);
       saveUsersStore();
@@ -1723,6 +1830,104 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
   const isUserAdmin = Boolean(userRec?.isAdmin || normUser === 'admin');
   const isUserEnabled = userRec ? userRec.enabled !== false : true;
 
+  // Retrieve or merge profile
+  let effectiveProfile = profilesMap.get(normUser);
+  if (upstreamProfile) {
+    if (!effectiveProfile) {
+      effectiveProfile = upstreamProfile;
+      profilesMap.set(normUser, upstreamProfile);
+      saveProfilesStore();
+    } else {
+      // Merge upstream playlists into local
+      const plMap = new Map<string, any>();
+      if (Array.isArray(effectiveProfile.customPlaylists)) {
+        effectiveProfile.customPlaylists.forEach((pl: any) => { if (pl?.id) plMap.set(pl.id, pl); });
+      }
+      if (Array.isArray(upstreamProfile.customPlaylists)) {
+        upstreamProfile.customPlaylists.forEach((pl: any) => {
+          if (pl?.id && !plMap.has(pl.id)) plMap.set(pl.id, pl);
+        });
+      }
+      effectiveProfile.customPlaylists = Array.from(plMap.values());
+
+      // Merge liked songs
+      const lMap = new Map<string, any>();
+      if (Array.isArray(effectiveProfile.likedSongs)) {
+        effectiveProfile.likedSongs.forEach((t: any) => { if (t?.id) lMap.set(t.id, t); });
+      }
+      if (Array.isArray(upstreamProfile.likedSongs)) {
+        upstreamProfile.likedSongs.forEach((t: any) => { if (t?.id && !lMap.has(t.id)) lMap.set(t.id, t); });
+      }
+      effectiveProfile.likedSongs = Array.from(lMap.values());
+      profilesMap.set(normUser, effectiveProfile);
+      saveProfilesStore();
+    }
+  }
+
+  // Check if client provided clientProfile from local cache in request body
+  const clientProf = req.body?.clientProfile;
+  if (clientProf && typeof clientProf === 'object') {
+    if (!effectiveProfile) {
+      effectiveProfile = { ...clientProf, username: normUser };
+      profilesMap.set(normUser, effectiveProfile);
+      saveProfilesStore();
+    } else {
+      // Merge client playlists into effectiveProfile
+      if (Array.isArray(clientProf.customPlaylists) && clientProf.customPlaylists.length > 0) {
+        const plMap = new Map<string, any>();
+        if (Array.isArray(effectiveProfile.customPlaylists)) {
+          effectiveProfile.customPlaylists.forEach((pl: any) => { if (pl?.id) plMap.set(pl.id, pl); });
+        }
+        clientProf.customPlaylists.forEach((pl: any) => {
+          if (pl?.id && !plMap.has(pl.id)) plMap.set(pl.id, pl);
+        });
+        effectiveProfile.customPlaylists = Array.from(plMap.values());
+      }
+      // Merge client liked songs into effectiveProfile
+      if (Array.isArray(clientProf.likedSongs) && clientProf.likedSongs.length > 0) {
+        const lMap = new Map<string, any>();
+        if (Array.isArray(effectiveProfile.likedSongs)) {
+          effectiveProfile.likedSongs.forEach((t: any) => { if (t?.id) lMap.set(t.id, t); });
+        }
+        clientProf.likedSongs.forEach((t: any) => {
+          if (t?.id && !lMap.has(t.id)) lMap.set(t.id, t);
+        });
+        effectiveProfile.likedSongs = Array.from(lMap.values());
+      }
+      profilesMap.set(normUser, effectiveProfile);
+      saveProfilesStore();
+    }
+  }
+
+  if (!effectiveProfile) {
+    effectiveProfile = {
+      username: normUser,
+      isAdmin: isUserAdmin,
+      enabled: isUserEnabled,
+      likedSongs: [],
+      customPlaylists: [],
+      favouriteArtists: [],
+      favouriteAlbums: [],
+      recentlyPlayed: [],
+    };
+  } else {
+    effectiveProfile.username = normUser;
+    effectiveProfile.isAdmin = isUserAdmin;
+    effectiveProfile.enabled = isUserEnabled;
+  }
+
+  if (userRec) {
+    const plLen = Array.isArray(effectiveProfile.customPlaylists) ? effectiveProfile.customPlaylists.length : 0;
+    const lkLen = Array.isArray(effectiveProfile.likedSongs) ? effectiveProfile.likedSongs.length : 0;
+    if (plLen > 0) {
+      userRec.playlistCount = Math.max(userRec.playlistCount || 0, plLen);
+    }
+    if (lkLen > 0) {
+      userRec.likedCount = Math.max(userRec.likedCount || 0, lkLen);
+    }
+    saveUsersStore();
+  }
+
   return res.json({
     success: true,
     sessionToken,
@@ -1730,53 +1935,176 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
     username: normUser,
     isAdmin: isUserAdmin,
     enabled: isUserEnabled,
-    profile: {
-      username: normUser,
-      isAdmin: isUserAdmin,
-      enabled: isUserEnabled,
-    },
+    profile: effectiveProfile,
     deviceId: effectiveDeviceId,
     deviceName: effectiveDeviceName,
   });
 });
 
-// 4. Admin Management APIs (Protected by requireAdmin Middleware)
-app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, async (_req: Request, res: Response) => {
-  try {
-    const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/list-users`, {
-      headers: { 'Content-Type': 'application/json' },
-    }).catch(() => null);
-    if (upstreamRes && upstreamRes.ok) {
-      const upstreamData = await upstreamRes.json().catch(() => null);
-      const upstreamList = Array.isArray(upstreamData) ? upstreamData : (upstreamData?.users || []);
-      if (Array.isArray(upstreamList)) {
-        upstreamList.forEach((u: any) => {
-          if (u && u.username) {
-            const clean = cleanUsername(u.username);
-            if (!usersMap.has(clean)) {
-              usersMap.set(clean, {
-                username: clean,
-                password: u.password || 'mouzika',
-                isAdmin: Boolean(u.isAdmin || clean === 'admin'),
-                enabled: u.enabled !== false,
-                createdAt: u.createdAt || Date.now(),
-                email: u.email,
-              });
-            }
-          }
-        });
-        saveUsersStore();
-      }
-    }
-  } catch {}
+// 4. User Profile Sync & Storage APIs
+app.post(['/api/save-profile', '/api/sync-profile', '/api/user-profile'], async (req: Request, res: Response) => {
+  const body = req.body || {};
+  const session = extractSession(req);
+  const rawUser = body.username || session?.username;
+  if (!rawUser) {
+    return res.status(400).json({ error: 'Username is required to save profile' });
+  }
+  const cleanUser = cleanUsername(rawUser);
 
-  const list = Array.from(usersMap.values()).map((u) => ({
-    username: u.username,
-    isAdmin: Boolean(u.isAdmin || u.username === 'admin'),
-    enabled: u.enabled !== false,
-    createdAt: u.createdAt,
-    email: u.email,
-  }));
+  const existingProf = profilesMap.get(cleanUser) || {};
+
+  // Safely merge customPlaylists: union by ID, merge tracks
+  const plMap = new Map<string, any>();
+  if (Array.isArray(existingProf.customPlaylists)) {
+    existingProf.customPlaylists.forEach((pl: any) => { if (pl && pl.id) plMap.set(pl.id, pl); });
+  }
+  if (Array.isArray(body.customPlaylists)) {
+    body.customPlaylists.forEach((pl: any) => {
+      if (pl && pl.id) {
+        const prev = plMap.get(pl.id);
+        if (!prev) {
+          plMap.set(pl.id, pl);
+        } else {
+          const tMap = new Map<string, any>();
+          if (Array.isArray(prev.tracks)) prev.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
+          if (Array.isArray(pl.tracks)) pl.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
+          plMap.set(pl.id, { ...prev, ...pl, tracks: Array.from(tMap.values()) });
+        }
+      }
+    });
+  }
+
+  // Safely merge likedSongs: union by track ID
+  const likedMap = new Map<string, any>();
+  if (Array.isArray(existingProf.likedSongs)) {
+    existingProf.likedSongs.forEach((t: any) => { if (t && t.id) likedMap.set(t.id, t); });
+  }
+  if (Array.isArray(body.likedSongs)) {
+    body.likedSongs.forEach((t: any) => { if (t && t.id) likedMap.set(t.id, t); });
+  }
+
+  // Safely merge recentlyPlayed: union by track ID
+  const recentMap = new Map<string, any>();
+  if (Array.isArray(body.recentlyPlayed)) {
+    body.recentlyPlayed.forEach((t: any) => { if (t && t.id) recentMap.set(t.id, t); });
+  }
+  if (Array.isArray(existingProf.recentlyPlayed)) {
+    existingProf.recentlyPlayed.forEach((t: any) => { if (t && t.id && !recentMap.has(t.id)) recentMap.set(t.id, t); });
+  }
+
+  // Merge listening stats
+  const curStats = existingProf.stats || {};
+  const incStats = body.stats || {};
+  const mergedStats = {
+    totalMinutesListened: Math.max(curStats.totalMinutesListened || 0, incStats.totalMinutesListened || 0),
+    totalTracksPlayed: Math.max(curStats.totalTracksPlayed || 0, incStats.totalTracksPlayed || 0),
+    topSongs: (incStats.topSongs && incStats.topSongs.length > 0) ? incStats.topSongs : (curStats.topSongs || []),
+    topArtists: (incStats.topArtists && incStats.topArtists.length > 0) ? incStats.topArtists : (curStats.topArtists || []),
+    lastUpdated: Math.max(curStats.lastUpdated || 0, incStats.lastUpdated || 0, Date.now()),
+  };
+
+  const mergedProfile = {
+    ...existingProf,
+    ...body,
+    username: cleanUser,
+    customPlaylists: Array.from(plMap.values()),
+    likedSongs: Array.from(likedMap.values()),
+    recentlyPlayed: Array.from(recentMap.values()).slice(0, 50),
+    stats: mergedStats,
+    updatedAt: Date.now(),
+  };
+
+  profilesMap.set(cleanUser, mergedProfile);
+  saveProfilesStore();
+
+  const uRec = usersMap.get(cleanUser);
+  if (uRec) {
+    uRec.playlistCount = Math.max(uRec.playlistCount || 0, mergedProfile.customPlaylists.length);
+    uRec.likedCount = Math.max(uRec.likedCount || 0, mergedProfile.likedSongs.length);
+    if (body.email && !uRec.email) uRec.email = body.email;
+    saveUsersStore();
+  }
+
+  // Sync to upstream worker asynchronously
+  fetch(`${UPSTREAM_WORKER}/api/save-profile`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mergedProfile),
+  }).catch(() => {});
+
+  return res.json({ success: true, profile: mergedProfile });
+});
+
+app.get(['/api/user-profile', '/api/profile'], async (req: Request, res: Response) => {
+  const session = extractSession(req);
+  const qUser = req.query.username ? cleanUsername(String(req.query.username)) : session?.username;
+  if (!qUser) return res.status(400).json({ error: 'Username required' });
+
+  let prof = profilesMap.get(qUser);
+  if (!prof) {
+    try {
+      const upRes = await fetch(`${UPSTREAM_WORKER}/api/user-profile?username=${encodeURIComponent(qUser)}`).catch(() => null);
+      if (upRes && upRes.ok) {
+        const upData = await upRes.json().catch(() => null);
+        if (upData && upData.profile) {
+          prof = upData.profile;
+          profilesMap.set(qUser, prof);
+          saveProfilesStore();
+        }
+      }
+    } catch {}
+  }
+
+  const uRec = usersMap.get(qUser);
+  return res.json({
+    success: true,
+    profile: prof || {
+      username: qUser,
+      isAdmin: Boolean(uRec?.isAdmin || qUser === 'admin'),
+      enabled: uRec?.enabled !== false,
+      likedSongs: [],
+      customPlaylists: [],
+      favouriteArtists: [],
+      favouriteAlbums: [],
+      recentlyPlayed: [],
+    },
+  });
+});
+
+app.get('/api/admin/user-details', requireAdmin, async (req: Request, res: Response) => {
+  const username = cleanUsername(String(req.query.username || ''));
+  if (!username) return res.status(400).json({ error: 'Username required' });
+  const userRec = usersMap.get(username);
+  const profile = profilesMap.get(username);
+  return res.json({
+    user: userRec || null,
+    profile: profile || null,
+    playlists: profile?.customPlaylists || [],
+    likedSongs: profile?.likedSongs || [],
+  });
+});
+
+// 5. Admin Management APIs (Protected by requireAdmin Middleware)
+app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, async (_req: Request, res: Response) => {
+  await syncUsersFromUpstream();
+
+  const list = Array.from(usersMap.values()).map((u) => {
+    const clean = cleanUsername(u.username);
+    const localProf = profilesMap.get(clean);
+    const localPls = Array.isArray(localProf?.customPlaylists) ? localProf.customPlaylists.length : 0;
+    const localLikes = Array.isArray(localProf?.likedSongs) ? localProf.likedSongs.length : 0;
+
+    return {
+      username: u.username,
+      isAdmin: Boolean(u.isAdmin || u.username === 'admin'),
+      enabled: u.enabled !== false,
+      createdAt: u.createdAt,
+      email: u.email,
+      password: u.password,
+      playlistCount: Math.max(u.playlistCount || 0, localPls),
+      likedCount: Math.max(u.likedCount || 0, localLikes),
+    };
+  });
   return res.json({ users: list });
 });
 

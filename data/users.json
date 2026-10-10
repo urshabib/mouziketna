@@ -1,0 +1,232 @@
+[
+  {
+    "username": "admin",
+    "password": "admin",
+    "isAdmin": true,
+    "enabled": true,
+    "createdAt": 1791661109633,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "a",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "doudou",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 1,
+    "likedCount": 0
+  },
+  {
+    "username": "habib",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "haitham",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 1,
+    "likedCount": 0
+  },
+  {
+    "username": "hedi",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "karim",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "manel",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "mariem",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 1,
+    "likedCount": 0
+  },
+  {
+    "username": "mariemm",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "o",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "rhayma",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "saousen",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 1,
+    "likedCount": 2
+  },
+  {
+    "username": "test",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "test_1791566326567",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "test_1791566334178",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "test_1791566859303",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "test_1791566866323",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "test_check_123",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 1,
+    "likedCount": 0
+  },
+  {
+    "username": "test_session_sync",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "test_user",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "zouari",
+    "password": "mouzika",
+    "isAdmin": false,
+    "enabled": true,
+    "createdAt": 1791661367504,
+    "playlistCount": 2,
+    "likedCount": 1
+  },
+  {
+    "username": "habib_test_1791661442276",
+    "password": "admin",
+    "isAdmin": true,
+    "enabled": true,
+    "createdAt": 1791661442764
+  },
+  {
+    "username": "testuser_1791661446894",
+    "password": "admin",
+    "isAdmin": true,
+    "enabled": true,
+    "createdAt": 1791661447334
+  },
+  {
+    "username": "testuser_1791662331977",
+    "password": "admin",
+    "isAdmin": true,
+    "enabled": true,
+    "createdAt": 1791662332446,
+    "playlistCount": 0,
+    "likedCount": 0
+  },
+  {
+    "username": "habib_test_1791662341546",
+    "password": "admin",
+    "isAdmin": true,
+    "enabled": true,
+    "createdAt": 1791662341780,
+    "playlistCount": 0,
+    "likedCount": 0
+  }
+]

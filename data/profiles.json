@@ -1,0 +1,18 @@
+{
+  "doudou": {
+    "customPlaylists": [
+      {
+        "id": "pl_doudou_favs",
+        "name": "Doudou Favorites",
+        "tracks": [
+          {
+            "id": "song_1",
+            "title": "Track 1",
+            "artist": "Artist 1"
+          }
+        ]
+      }
+    ],
+    "username": "doudou"
+  }
+}
