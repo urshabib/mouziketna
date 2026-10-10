@@ -41,6 +41,7 @@ export const ActionSheet: React.FC = () => {
   } = useMusic();
 
   const [isClosing, setIsClosing] = useState(false);
+  const [isOpening, setIsOpening] = useState(true);
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const startYRef = useRef(0);
@@ -54,13 +55,18 @@ export const ActionSheet: React.FC = () => {
 
   const track = actionSheetTrack || trackCacheRef.current;
 
-  // Reset state when a new track is opened
+  // Reset state and opening lock when a new track is opened
   useEffect(() => {
     if (actionSheetTrack) {
       setIsClosing(false);
+      setIsOpening(true);
       setDragY(0);
       setIsDragging(false);
       currentDragYRef.current = 0;
+      const timer = setTimeout(() => {
+        setIsOpening(false);
+      }, 300); // 300ms lock to prevent accidental immediate clicks on open
+      return () => clearTimeout(timer);
     }
   }, [actionSheetTrack]);
 
@@ -198,10 +204,12 @@ export const ActionSheet: React.FC = () => {
             : 'translateY(0px)',
           transition: isDragging
             ? 'none'
-            : 'transform 260ms cubic-bezier(0.2, 0.9, 0.3, 1), opacity 200ms ease',
+            : 'transform 280ms cubic-bezier(0.16, 1, 0.3, 1), opacity 220ms ease',
           opacity: isClosing ? 0 : 1,
         }}
-        className="w-full sm:max-w-md bg-[#18181b] glass-panel border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col gap-1 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200"
+        className={`w-full sm:max-w-md bg-[#18181b] glass-panel border border-white/10 rounded-t-3xl sm:rounded-3xl p-5 pt-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] shadow-2xl flex flex-col gap-1 max-h-[85vh] overflow-y-auto animate-in slide-in-from-bottom-8 sm:zoom-in-95 duration-280 ${
+          isOpening ? 'pointer-events-none' : ''
+        }`}
       >
         {/* Android Gesture Grab Bar at the top */}
         <div
