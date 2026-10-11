@@ -925,53 +925,6 @@ export const SettingsView: React.FC = () => {
             </h3>
           </div>
 
-          {/* Global Language Selector Card */}
-          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-              <div>
-                <h4 className="font-bold text-sm text-white flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-[var(--accent)]" />
-                  <span>{t('settings.language', 'Language')}</span>
-                </h4>
-                <p className="text-xs text-white/50 mt-0.5">
-                  {t('settings.languageDesc', 'Choose application display language')}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2.5 pt-1">
-              {[
-                { id: 'en', name: 'English', flag: '🇬🇧' },
-                { id: 'fr', name: 'French', flag: '🇫🇷' },
-                { id: 'ar', name: 'Arabic', flag: '🇹🇳' },
-              ].map((langOption) => {
-                const isSelected = (userProfile.language || 'en') === langOption.id;
-                return (
-                  <button
-                    key={langOption.id}
-                    type="button"
-                    onClick={() => {
-                      setLanguage(langOption.id as any);
-                    }}
-                    className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-1.5 transition-all cursor-pointer ${
-                      isSelected
-                        ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-white font-extrabold shadow-lg scale-[1.02]'
-                        : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
-                    }`}
-                  >
-                    <span className="text-2xl sm:text-3xl">{langOption.flag}</span>
-                    <span className="text-xs font-bold text-white">{langOption.name}</span>
-                    {isSelected && (
-                      <span className="text-[10px] font-extrabold text-[var(--accent)] flex items-center gap-1 mt-0.5">
-                        <Check className="w-3 h-3 stroke-[3]" /> Active
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
           {/* Liquid Glass Blur (Clean 3-Box Selector) */}
           <div id="liquid-glass-section" className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
             <div>
