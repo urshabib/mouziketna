@@ -1360,23 +1360,39 @@ export async function fetchAdminUsersList(): Promise<any[]> {
 export async function fetchAdminSettings(): Promise<{ autoEnable: boolean }> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const url = `/api/admin/settings${sessionToken ? `?sessionToken=${encodeURIComponent(sessionToken)}` : ''}`;
-    const res = await fetchWithTimeout(url, 5000, {
+    const query = sessionToken ? `?sessionToken=${encodeURIComponent(sessionToken)}` : '';
+    
+    // 1. Try local server endpoint first
+    let res = await fetchWithTimeout(`/api/admin/settings${query}`, 4000, {
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
     }).catch(() => null);
-    if (!res || !res.ok) {
-      const local = localStorage.getItem('mouzika_admin_auto_enable');
-      return { autoEnable: local === 'true' };
+
+    // 2. If local request didn't succeed and NEW_HUB_BACKEND is set, try Cloudflare Worker
+    if ((!res || !res.ok) && NEW_HUB_BACKEND) {
+      res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/settings${query}`, 4000, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
+      }).catch(() => null);
     }
-    const data = await res.json();
-    const autoEnable = Boolean(data.autoEnable);
-    try {
-      localStorage.setItem('mouzika_admin_auto_enable', String(autoEnable));
-    } catch {}
-    return { autoEnable };
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data && typeof data.autoEnable === 'boolean') {
+        const autoEnable = Boolean(data.autoEnable);
+        try {
+          localStorage.setItem('mouzika_admin_auto_enable', String(autoEnable));
+        } catch {}
+        return { autoEnable };
+      }
+    }
+
+    const local = localStorage.getItem('mouzika_admin_auto_enable');
+    return { autoEnable: local === 'true' };
   } catch {
     const local = localStorage.getItem('mouzika_admin_auto_enable');
     return { autoEnable: local === 'true' };
@@ -1387,14 +1403,28 @@ export async function updateAdminSettings(autoEnable: boolean): Promise<{ succes
   try {
     localStorage.setItem('mouzika_admin_auto_enable', String(autoEnable));
     const sessionToken = sessionManager.getSessionToken();
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    };
+    const body = JSON.stringify({ autoEnable, sessionToken });
+
+    // Send POST to local endpoint
     const res = await fetchWithTimeout('/api/admin/settings', 5000, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-      },
-      body: JSON.stringify({ autoEnable, sessionToken }),
+      headers,
+      body,
     }).catch(() => null);
+
+    // If NEW_HUB_BACKEND is configured, also mirror to upstream worker
+    if (NEW_HUB_BACKEND) {
+      await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/settings`, 5000, {
+        method: 'POST',
+        headers,
+        body,
+      }).catch(() => null);
+    }
+
     if (res && res.ok) {
       const data = await res.json().catch(() => null);
       const val = Boolean(data?.autoEnable ?? autoEnable);
@@ -1404,7 +1434,7 @@ export async function updateAdminSettings(autoEnable: boolean): Promise<{ succes
       return { success: true, autoEnable: val };
     }
     return { success: true, autoEnable };
-  } catch (err: any) {
+  } catch {
     return { success: true, autoEnable };
   }
 }

@@ -85,7 +85,7 @@
   </head>
   <body class="bg-black text-white antialiased overflow-hidden select-none">
     <div id="root"></div>
-    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791738091161';</script>
+    <script>window.__MOUZIKETNA_BUILD_TIME__ = '1791752491382';</script>
     <script>
       (function() {
         var isDev = location.port === '3000' ||
@@ -146,17 +146,15 @@
 
       // Register Service Worker for offline PWA functionality safely
       if ('serviceWorker' in navigator) {
-        if (location.port !== '3000') {
-          window.addEventListener('load', function() {
-            navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
-              .then(function(reg) {
-                console.log('[MOUZIKETNA] PWA Service Worker active with scope:', reg.scope);
-              })
-              .catch(function(err) {
-                console.warn('[MOUZIKETNA] Service Worker registration notice:', err);
-              });
-          });
-        }
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+            .then(function(reg) {
+              console.log('[MOUZIKETNA] PWA Service Worker active with scope:', reg.scope);
+            })
+            .catch(function(err) {
+              console.warn('[MOUZIKETNA] Service Worker registration notice:', err);
+            });
+        });
       }
     </script>
   </body>
