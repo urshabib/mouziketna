@@ -1690,15 +1690,17 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const sessionToken = sessionManager.getSessionToken();
       // 1. Try dedicated admin reset-password endpoint first
       try {
+        const resetHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (!NEW_HUB_BACKEND && sessionToken) {
+          resetHeaders.Authorization = `Bearer ${sessionToken}`;
+        }
         const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/reset-password`, 6000, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-          },
+          headers: resetHeaders,
           body: JSON.stringify({
             username: targetUsername,
             password: newPass,
+            sessionToken: sessionToken || '',
           }),
         });
         const resData = await res.json().catch(() => null);
@@ -1717,6 +1719,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               newPassword: newPass,
               password: newPass,
               force: true,
+              sessionToken: sessionToken || '',
             }),
           });
           const resData = await res.json().catch(() => null);
@@ -1730,7 +1733,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!updatedOnServer) {
         let wasAdmin = targetUsername.toLowerCase() === 'admin';
         try {
-          const listRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/list-users`, 5000);
+          const listRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/list-users`, 5000, {
+            headers: { 'Content-Type': 'application/json' },
+          });
           const listData = await listRes.json().catch(() => null);
           const userEntry = listData?.users?.find(
             (u: any) => u.username.toLowerCase() === targetUsername.toLowerCase()
@@ -1746,7 +1751,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const delRes = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/delete-user`, 8000, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: targetUsername }),
+          body: JSON.stringify({ username: targetUsername, sessionToken: sessionToken || '' }),
         });
         const delData = await delRes.json().catch(() => null);
         if (!delRes.ok || (delData && delData.error)) {
@@ -1761,6 +1766,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             username: targetUsername,
             password: newPass,
             isAdmin: wasAdmin,
+            sessionToken: sessionToken || '',
           }),
         });
         const createData = await createRes.json().catch(() => null);

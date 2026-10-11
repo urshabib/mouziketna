@@ -86,6 +86,20 @@ export const Modals: React.FC = () => {
   const [regError, setRegError] = useState('');
   const [regSuccessMsg, setRegSuccessMsg] = useState('');
 
+  // Anti-spam & anti-bot protection states
+  const [botTrap, setBotTrap] = useState('');
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockoutSeconds, setLockoutSeconds] = useState(0);
+  const lastRegTimeRef = React.useRef(0);
+
+  React.useEffect(() => {
+    if (lockoutSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutSeconds((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutSeconds]);
+
   // Handle Add to Playlist
   const handleAddToExisting = (plId: string) => {
     if (!modalAddToPlaylistTrack) return;
@@ -165,6 +179,14 @@ export const Modals: React.FC = () => {
   // Handle Gate Login
   const handleGateLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (botTrap) {
+      setGateError('Automated request blocked.');
+      return;
+    }
+    if (lockoutSeconds > 0) {
+      setGateError(`Too many failed attempts. Please wait ${lockoutSeconds}s before retrying.`);
+      return;
+    }
     const u = gateUser.trim();
     const p = gatePass.trim();
     if (!u || !p) return;
@@ -174,7 +196,17 @@ export const Modals: React.FC = () => {
     try {
       const res = await login(u, p);
       if (!res.success) {
-        setGateError(res.error || 'Login failed. Please check your username and password.');
+        const nextAttempts = failedAttempts + 1;
+        setFailedAttempts(nextAttempts);
+        if (nextAttempts >= 5) {
+          setLockoutSeconds(30);
+          setGateError('Too many failed attempts. Entry locked for 30 seconds.');
+        } else {
+          setGateError(res.error || 'Login failed. Please check your username and password.');
+        }
+      } else {
+        setFailedAttempts(0);
+        setLockoutSeconds(0);
       }
     } catch (err: any) {
       setGateError(err.message || 'Connection error. Please try again.');
@@ -186,7 +218,18 @@ export const Modals: React.FC = () => {
   // Handle Public Registration
   const handlePublicRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    const u = regUser.trim();
+    if (botTrap) {
+      setRegError('Automated registration blocked.');
+      return;
+    }
+    const now = Date.now();
+    if (now - lastRegTimeRef.current < 2500) {
+      setRegError('Please wait a moment before submitting again.');
+      return;
+    }
+    lastRegTimeRef.current = now;
+
+    const u = regUser.trim().toLowerCase();
     const p = regPass.trim();
     const cp = regConfirmPass.trim();
 
@@ -194,8 +237,16 @@ export const Modals: React.FC = () => {
       setRegError('Please fill in all fields.');
       return;
     }
-    if (u.length < 3) {
-      setRegError('Username must be at least 3 characters.');
+    if (u.length < 3 || u.length > 30) {
+      setRegError('Username must be between 3 and 30 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(u)) {
+      setRegError('Username may only contain letters, numbers, underscores, and hyphens.');
+      return;
+    }
+    if (u === '__proto__' || u === 'constructor' || u === 'prototype') {
+      setRegError('Invalid username chosen.');
       return;
     }
     if (p.length < 4) {
@@ -212,7 +263,7 @@ export const Modals: React.FC = () => {
     setRegSuccessMsg('');
 
     try {
-      const res = await registerUser(u, p);
+      const res = await registerUser(u, p, botTrap);
       if (!res.success) {
         setRegError(res.error || 'Registration failed.');
       } else {
@@ -535,6 +586,17 @@ export const Modals: React.FC = () => {
                 </div>
 
                 <form onSubmit={handleGateLogin} className="w-full flex flex-col gap-3">
+                  {/* Invisible honeypot field for anti-bot spam protection */}
+                  <div style={{ display: 'none' }} aria-hidden="true">
+                    <input
+                      type="text"
+                      name="bot_field"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={botTrap}
+                      onChange={(e) => setBotTrap(e.target.value)}
+                    />
+                  </div>
                   <input
                     type="text"
                     placeholder={t('modal.username', 'Username')}
@@ -560,11 +622,13 @@ export const Modals: React.FC = () => {
 
                   <button
                     type="submit"
-                    disabled={gateLoading || !gateUser.trim() || !gatePass.trim()}
+                    disabled={gateLoading || lockoutSeconds > 0 || !gateUser.trim() || !gatePass.trim()}
                     className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg mt-1 cursor-pointer"
                   >
                     {gateLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : lockoutSeconds > 0 ? (
+                      <span>Locked ({lockoutSeconds}s)</span>
                     ) : (
                       <span>{t('modal.signIn', 'Sign In')}</span>
                     )}
@@ -581,6 +645,17 @@ export const Modals: React.FC = () => {
                 </div>
 
                 <form onSubmit={handlePublicRegister} className="w-full flex flex-col gap-3">
+                  {/* Invisible honeypot field for anti-bot spam protection */}
+                  <div style={{ display: 'none' }} aria-hidden="true">
+                    <input
+                      type="text"
+                      name="bot_field_reg"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={botTrap}
+                      onChange={(e) => setBotTrap(e.target.value)}
+                    />
+                  </div>
                   <input
                     type="text"
                     placeholder="Choose Username"

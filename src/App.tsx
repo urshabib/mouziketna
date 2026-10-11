@@ -262,9 +262,10 @@ const AppShell: React.FC = () => {
       }, 1000);
     };
 
-    const runUpdateCheck = async () => {
+    const runUpdateCheck = async (force = false) => {
       if (isUpdating) return;
       await checkForAppUpdates({
+        forceCheck: force,
         onUpdateFound: (result) => {
           const detail = result.latestVersion ? ` (${result.latestVersion})` : '';
           triggerRefresh(`⚡ Update detected${detail}! Applying latest version...`, result.latestSha);
@@ -272,19 +273,28 @@ const AppShell: React.FC = () => {
       });
     };
 
-    // 2. Run background check after a gentle 20s delay so user can use the app without disruption
-    const initialTimer = setTimeout(() => {
-      runUpdateCheck();
-    }, 20000);
+    // 2. Trigger immediately every time the user opens the app
+    const appOpenTimer = setTimeout(() => {
+      runUpdateCheck(true);
+    }, 600);
 
-    // 3. Periodic check every 10 minutes
+    // 3. Trigger whenever user returns to / opens the app window or PWA tab
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        runUpdateCheck(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // 4. Periodic background check every 10 minutes
     const interval = setInterval(() => {
-      runUpdateCheck();
+      runUpdateCheck(false);
     }, 10 * 60 * 1000);
 
     return () => {
-      clearTimeout(initialTimer);
+      clearTimeout(appOpenTimer);
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [showToast]);
 

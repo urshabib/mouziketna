@@ -519,6 +519,24 @@ function loadUsersStore() {
     adminRecord.isAdmin = true;
     adminRecord.enabled = true;
   }
+
+  // Ensure 'habib' owner account is recognized as admin
+  const habibKey = 'habib';
+  if (!usersMap.has(habibKey)) {
+    usersMap.set(habibKey, {
+      username: 'habib',
+      isAdmin: true,
+      enabled: true,
+      createdAt: Date.now(),
+      likedCount: 0,
+      playlistCount: 0,
+    });
+    saveUsersStore();
+  } else {
+    const habibRecord = usersMap.get(habibKey)!;
+    habibRecord.isAdmin = true;
+    habibRecord.enabled = true;
+  }
 }
 
 function saveUsersStore() {
@@ -803,8 +821,14 @@ function extractSession(req: Request): UserSession | null {
   if (!token && req.body && req.body.sessionToken) {
     token = String(req.body.sessionToken).trim();
   }
+  if (!token && req.body && req.body.token) {
+    token = String(req.body.token).trim();
+  }
   if (!token && req.query && req.query.sessionToken) {
     token = String(req.query.sessionToken).trim();
+  }
+  if (!token && req.query && req.query.token) {
+    token = String(req.query.token).trim();
   }
 
   if (!token) return null;
@@ -849,7 +873,7 @@ function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
   const normUser = cleanUsername(session.username);
   const userRec = usersMap.get(normUser);
-  const isUserAdmin = normUser === 'admin' || Boolean(userRec?.isAdmin);
+  const isUserAdmin = normUser === 'admin' || normUser === 'habib' || Boolean(userRec?.isAdmin);
   if (!isUserAdmin) {
     return res.status(403).json({ error: 'forbidden', message: 'Admin privileges required' });
   }
@@ -1441,6 +1465,17 @@ function enforceTunisiaGeoAndAntiVpn(req: Request, res: Response, next: NextFunc
 const app = express();
 const server = http.createServer(app);
 
+// CORS configuration for Cross-Origin REST and WebSocket connections
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Playback-Token, X-Admin-Key, X-Device-Id');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(enforceTunisiaGeoAndAntiVpn);
@@ -1930,17 +1965,34 @@ function setAuthCookie(res: Response, token: string) {
   });
 }
 
-// 2. Public Self-Registration Endpoint
-app.post(['/api/auth/register', '/api/register'], rateLimit(10, 60000), (req: Request, res: Response) => {
-  const { username, password } = req.body || {};
-  if (!username || typeof username !== 'string' || username.trim().length < 3) {
-    return res.status(400).json({ error: 'Username must be at least 3 characters long' });
+// 2. Public Self-Registration Endpoint (Protected against bot spam & parameter tampering)
+app.post(['/api/auth/register', '/api/register'], rateLimit(8, 60000), (req: Request, res: Response) => {
+  const { username, password, botTrap } = req.body || {};
+  // Anti-bot honeypot check
+  if (botTrap) {
+    return res.status(400).json({ error: 'Automated submission rejected' });
   }
-  if (!password || typeof password !== 'string' || password.trim().length < 4) {
+
+  if (!username || typeof username !== 'string') {
+    return res.status(400).json({ error: 'Username is required' });
+  }
+  const cleanUser = cleanUsername(username);
+
+  // Strict format validation
+  if (cleanUser.length < 3 || cleanUser.length > 30) {
+    return res.status(400).json({ error: 'Username must be between 3 and 30 characters long' });
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(cleanUser)) {
+    return res.status(400).json({ error: 'Username may only contain letters, numbers, underscores, and hyphens' });
+  }
+  if (cleanUser === '__proto__' || cleanUser === 'constructor' || cleanUser === 'prototype') {
+    return res.status(400).json({ error: 'Invalid username' });
+  }
+
+  if (!password || typeof password !== 'string' || password.length < 4) {
     return res.status(400).json({ error: 'Password must be at least 4 characters long' });
   }
 
-  const cleanUser = cleanUsername(username);
   if (usersMap.has(cleanUser)) {
     return res.status(400).json({ error: 'Username already taken. Please choose a different username.' });
   }

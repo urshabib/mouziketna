@@ -34,6 +34,7 @@ import {
   NEW_HUB_BACKEND,
   fetchWithTimeout,
   fetchJsonRetry,
+  fetchAdminUsersList,
   fetchAdminSettings,
   updateAdminSettings,
   toggleUserEnabledStatus,
@@ -95,8 +96,12 @@ export const AdminView: React.FC = () => {
     try {
       const sessionToken = sessionManager.getSessionToken();
       const today = new Date().toISOString().split('T')[0]; // "2026-10-10"
-      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/backup`, 15000, {
-        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!NEW_HUB_BACKEND && sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
+      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/backup`, 10000, {
+        headers,
       }).catch(() => null);
 
       let backupJson: any = null;
@@ -149,8 +154,12 @@ export const AdminView: React.FC = () => {
     try {
       const sessionToken = sessionManager.getSessionToken();
       const today = new Date().toISOString().split('T')[0];
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!NEW_HUB_BACKEND && sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/user-profile?username=${encodeURIComponent(targetUser.username)}`, 8000, {
-        headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {},
+        headers,
       }).catch(() => null);
       let profData: any = null;
       if (res && res.ok) {
@@ -205,12 +214,13 @@ export const AdminView: React.FC = () => {
 
       // Check if this is an all-users backup file ({ users: [...] } or array)
       if (Array.isArray(data) || Array.isArray(data.users)) {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (!NEW_HUB_BACKEND && sessionToken) {
+          headers.Authorization = `Bearer ${sessionToken}`;
+        }
         const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/restore-backup`, 25000, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-          },
+          headers,
           body: JSON.stringify(data),
         }).catch(() => null);
 
@@ -235,22 +245,20 @@ export const AdminView: React.FC = () => {
         username: targetUser,
       };
 
+      const syncHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!NEW_HUB_BACKEND && sessionToken) {
+        syncHeaders.Authorization = `Bearer ${sessionToken}`;
+      }
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/sync-profile`, 15000, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
+        headers: syncHeaders,
         body: JSON.stringify(payload),
       }).catch(() => null);
 
       if (!res || !res.ok) {
         await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/user-profile`, 15000, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-          },
+          headers: syncHeaders,
           body: JSON.stringify(payload),
         }).catch(() => null);
       }
@@ -268,28 +276,29 @@ export const AdminView: React.FC = () => {
   const loadAdminData = async () => {
     setLoading(true);
     try {
-      const sessionToken = sessionManager.getSessionToken();
-      const [usersData, settingsData, feedbackData] = await Promise.all([
-        fetchJsonRetry<any>(
-          `${NEW_HUB_BACKEND}/api/list-users`,
-          3,
-          500,
-          sessionToken ? { headers: { Authorization: `Bearer ${sessionToken}` } } : undefined
-        ).catch(() => ({ users: [] })),
+      const [usersList, settingsData, feedbackData] = await Promise.all([
+        fetchAdminUsersList().catch(() => []),
         fetchAdminSettings().catch(() => ({ autoEnable: false })),
         fetchFeedbackList().catch(() => []),
       ]);
 
-      if (usersData && Array.isArray(usersData.users)) {
-        setUsers(usersData.users);
-      } else if (Array.isArray(usersData)) {
-        setUsers(usersData);
+      if (Array.isArray(usersList)) {
+        const enriched = usersList.map((u: any) => {
+          try {
+            const override = localStorage.getItem(`mouzika_user_status_${u.username.toLowerCase()}`);
+            if (override) {
+              return { ...u, enabled: override === 'enabled' };
+            }
+          } catch {}
+          return u;
+        });
+        setUsers(enriched);
       } else {
         setUsers([]);
       }
 
-      setAutoEnable(settingsData.autoEnable);
-      setFeedbackList(feedbackData);
+      setAutoEnable(Boolean(settingsData?.autoEnable));
+      setFeedbackList(Array.isArray(feedbackData) ? feedbackData : []);
     } catch {
       showToast('Could not load admin data from server', true);
     } finally {
@@ -373,16 +382,18 @@ export const AdminView: React.FC = () => {
 
     try {
       const sessionToken = sessionManager.getSessionToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!NEW_HUB_BACKEND && sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/create-user`, 9000, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
+        headers,
         body: JSON.stringify({
           username: u,
           password: p,
           isAdmin: newIsAdmin,
+          sessionToken: sessionToken || '',
         }),
       });
 
@@ -409,15 +420,17 @@ export const AdminView: React.FC = () => {
     const newStatus = !currentAdminStatus;
     try {
       const sessionToken = sessionManager.getSessionToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!NEW_HUB_BACKEND && sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/set-admin`, 8000, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
+        headers,
         body: JSON.stringify({
           username: targetUsername,
           isAdmin: newStatus,
+          sessionToken: sessionToken || '',
         }),
       });
 
@@ -455,13 +468,17 @@ export const AdminView: React.FC = () => {
     setUpdatingUser(uName);
     try {
       const sessionToken = sessionManager.getSessionToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (!NEW_HUB_BACKEND && sessionToken) {
+        headers.Authorization = `Bearer ${sessionToken}`;
+      }
       const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/delete-user`, 8000, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-        },
-        body: JSON.stringify({ username: uName }),
+        headers,
+        body: JSON.stringify({
+          username: uName,
+          sessionToken: sessionToken || '',
+        }),
       });
       const resData = await res.json().catch(() => null);
       if (!res.ok || (resData && resData.error)) {

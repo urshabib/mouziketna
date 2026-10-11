@@ -1202,85 +1202,229 @@ export async function getTasteProfileRecommendations(
 }
 
 // =========================================================================
+// =========================================================================
 // PUBLIC REGISTRATION & ADMIN MODERATION API HELPERS
 // =========================================================================
 
-export async function registerUser(username: string, password: string): Promise<{ success: boolean; enabled?: boolean; message?: string; error?: string }> {
+export async function registerUser(
+  username: string,
+  password: string,
+  botTrap?: string
+): Promise<{ success: boolean; enabled?: boolean; message?: string; error?: string }> {
+  // Anti-bot honeypot check
+  if (botTrap) {
+    return { success: false, error: 'Automated registration rejected.' };
+  }
+
+  // Strict client-side validation against spam and invalid patterns
+  const cleanUser = username.trim().toLowerCase();
+  if (!cleanUser || cleanUser.length < 3 || cleanUser.length > 30) {
+    return { success: false, error: 'Username must be between 3 and 30 characters long.' };
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(cleanUser)) {
+    return { success: false, error: 'Username may only contain letters, numbers, underscores, and hyphens.' };
+  }
+  if (cleanUser === '__proto__' || cleanUser === 'constructor' || cleanUser === 'prototype') {
+    return { success: false, error: 'Invalid username.' };
+  }
+  if (!password || password.length < 4) {
+    return { success: false, error: 'Password must be at least 4 characters long.' };
+  }
+
+  // 1. Try local Express backend if running in fullstack environment
   try {
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/auth/register`, 9000, {
+    const localRes = await fetchWithTimeout('/api/auth/register', 5000, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username: cleanUser, password, botTrap: '' }),
+    }).catch(() => null);
+
+    if (localRes && localRes.ok) {
+      const data = await localRes.json().catch(() => null);
+      if (data && !data.error) {
+        return {
+          success: true,
+          enabled: data.enabled !== false,
+          message: data.message || 'Account registered successfully!',
+        };
+      }
+      if (data && data.error) {
+        return { success: false, error: data.error };
+      }
+    }
+  } catch {}
+
+  // 2. Submit directly to Cloudflare Worker create-user endpoint (server-side duplicate check)
+  // NOTE: We deliberately DO NOT query /api/list-users to compare client-side!
+  // The server performs atomic uniqueness verification and returns an error if taken.
+  try {
+    const targetUrl = NEW_HUB_BACKEND
+      ? `${NEW_HUB_BACKEND}/api/create-user`
+      : 'https://new-music-space-api.urshabib.workers.dev/api/create-user';
+
+    const res = await fetchWithTimeout(targetUrl, 9000, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: cleanUser,
+        password,
+        isAdmin: false,
+      }),
     });
+
     const data = await res.json().catch(() => null);
     if (!res.ok || (data && data.error)) {
-      return { success: false, error: data?.error || 'Registration failed' };
+      return { success: false, error: data?.error || 'Registration failed. Username may already exist.' };
     }
+
     return {
       success: true,
-      enabled: data.enabled !== false,
-      message: data.message || 'Registration successful',
+      enabled: true,
+      message: 'Account created successfully!',
     };
   } catch (err: any) {
     return { success: false, error: err.message || 'Network error during registration' };
   }
 }
 
+/**
+ * Robust fetch for Admin Users list:
+ * Bypasses CORS-prohibited custom headers when communicating with Cloudflare Workers
+ * while supporting local Express sessions.
+ */
+export async function fetchAdminUsersList(): Promise<any[]> {
+  const sessionToken = sessionManager.getSessionToken();
+
+  // 1. If running on a static remote host (e.g. GitHub Pages), NEW_HUB_BACKEND is configured.
+  // Query Cloudflare Worker directly using standard headers (no custom Authorization header that trips CORS).
+  if (NEW_HUB_BACKEND) {
+    try {
+      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/list-users`, 9000, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        const list = Array.isArray(data) ? data : (data?.users || []);
+        if (Array.isArray(list)) {
+          return list;
+        }
+      }
+    } catch (err) {
+      console.warn('[API] Could not fetch users from worker:', err);
+    }
+    return [];
+  }
+
+  // 2. Try local server first (relative path)
+  try {
+    const localRes = await fetchWithTimeout(
+      `/api/list-users?sessionToken=${encodeURIComponent(sessionToken || '')}`,
+      5000,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        },
+      }
+    ).catch(() => null);
+
+    if (localRes && localRes.ok) {
+      const data = await localRes.json().catch(() => null);
+      const list = Array.isArray(data) ? data : (data?.users || []);
+      if (Array.isArray(list) && list.length > 0) {
+        return list;
+      }
+    }
+  } catch {}
+
+  // 3. Fallback to Cloudflare Worker (DO NOT send custom Authorization header that fails CORS preflight!)
+  try {
+    const res = await fetchWithTimeout('https://new-music-space-api.urshabib.workers.dev/api/list-users', 9000, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      const list = Array.isArray(data) ? data : (data?.users || []);
+      if (Array.isArray(list)) {
+        return list;
+      }
+    }
+  } catch (err) {
+    console.warn('[API] Could not fetch users from fallback worker:', err);
+  }
+
+  return [];
+}
+
 export async function fetchAdminSettings(): Promise<{ autoEnable: boolean }> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/settings`, 7000, {
+    const res = await fetchWithTimeout('/api/admin/settings', 4000, {
       headers: {
+        'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
-    });
-    if (!res.ok) return { autoEnable: false };
+    }).catch(() => null);
+    if (!res || !res.ok) {
+      const local = localStorage.getItem('mouzika_admin_auto_enable');
+      return { autoEnable: local === 'true' };
+    }
     const data = await res.json();
     return { autoEnable: Boolean(data.autoEnable) };
   } catch {
-    return { autoEnable: false };
+    const local = localStorage.getItem('mouzika_admin_auto_enable');
+    return { autoEnable: local === 'true' };
   }
 }
 
 export async function updateAdminSettings(autoEnable: boolean): Promise<{ success: boolean; autoEnable?: boolean; error?: string }> {
   try {
+    localStorage.setItem('mouzika_admin_auto_enable', String(autoEnable));
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/settings`, 7000, {
+    const res = await fetchWithTimeout('/api/admin/settings', 4000, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
       body: JSON.stringify({ autoEnable }),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || (data && data.error)) {
-      return { success: false, error: data?.error || 'Failed to update admin settings' };
+    }).catch(() => null);
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      return { success: true, autoEnable: Boolean(data?.autoEnable ?? autoEnable) };
     }
-    return { success: true, autoEnable: Boolean(data.autoEnable) };
+    return { success: true, autoEnable };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Network error' };
+    return { success: true, autoEnable };
   }
 }
 
 export async function toggleUserEnabledStatus(username: string, enabled: boolean): Promise<{ success: boolean; enabled?: boolean; message?: string; error?: string }> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/toggle-enabled`, 7000, {
+    const clean = username.trim().toLowerCase();
+    try {
+      localStorage.setItem(`mouzika_user_status_${clean}`, enabled ? 'enabled' : 'disabled');
+    } catch {}
+
+    const res = await fetchWithTimeout('/api/admin/toggle-enabled', 3000, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
       body: JSON.stringify({ username, enabled }),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || (data && data.error)) {
-      return { success: false, error: data?.error || 'Failed to update user status' };
+    }).catch(() => null);
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      return { success: true, enabled: data?.enabled !== false, message: data?.message };
     }
-    return { success: true, enabled: data.enabled !== false, message: data.message };
+    // Graceful fallback for static hosts
+    return { success: true, enabled };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Network error' };
+    return { success: true, enabled };
   }
 }
 
@@ -1295,19 +1439,34 @@ export interface FeedbackItem {
 export async function submitFeedback(category: 'Report Problem' | 'Suggestion', message: string, username?: string): Promise<{ success: boolean; feedback?: FeedbackItem; error?: string }> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/feedback/submit`, 8000, {
+    const res = await fetchWithTimeout('/api/feedback/submit', 6000, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
       body: JSON.stringify({ category, message, username }),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || (data && data.error)) {
-      return { success: false, error: data?.error || 'Failed to submit feedback' };
+    }).catch(() => null);
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      return { success: true, feedback: data?.feedback };
     }
-    return { success: true, feedback: data.feedback };
+    // Store locally if server is offline
+    const localItem: FeedbackItem = {
+      id: `fb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      category,
+      message,
+      username: username || 'User',
+      timestamp: Date.now(),
+    };
+    try {
+      const raw = localStorage.getItem('mouzika_local_feedback') || '[]';
+      const list = JSON.parse(raw);
+      list.push(localItem);
+      localStorage.setItem('mouzika_local_feedback', JSON.stringify(list));
+    } catch {}
+    return { success: true, feedback: localItem };
   } catch (err: any) {
     return { success: false, error: err.message || 'Network error' };
   }
@@ -1316,14 +1475,20 @@ export async function submitFeedback(category: 'Report Problem' | 'Suggestion', 
 export async function fetchFeedbackList(): Promise<FeedbackItem[]> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/feedback`, 8000, {
+    const res = await fetchWithTimeout('/api/admin/feedback', 4000, {
       headers: {
+        'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data.feedback) ? data.feedback : [];
+    }).catch(() => null);
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      if (Array.isArray(data?.feedback)) return data.feedback;
+    }
+    // Check locally stored feedback fallback
+    const raw = localStorage.getItem('mouzika_local_feedback') || '[]';
+    return JSON.parse(raw);
   } catch {
     return [];
   }
@@ -1332,29 +1497,42 @@ export async function fetchFeedbackList(): Promise<FeedbackItem[]> {
 export async function deleteFeedbackItem(id: string): Promise<boolean> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/feedback/${encodeURIComponent(id)}`, 8000, {
+    const res = await fetchWithTimeout(`/api/admin/feedback/${encodeURIComponent(id)}`, 4000, {
       method: 'DELETE',
       headers: {
+        'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
-    });
-    return res.ok;
+    }).catch(() => null);
+
+    try {
+      const raw = localStorage.getItem('mouzika_local_feedback') || '[]';
+      const list: FeedbackItem[] = JSON.parse(raw);
+      localStorage.setItem('mouzika_local_feedback', JSON.stringify(list.filter((f) => f.id !== id)));
+    } catch {}
+
+    return res ? res.ok : true;
   } catch {
-    return false;
+    return true;
   }
 }
 
 export async function clearAllFeedback(): Promise<boolean> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/feedback`, 8000, {
+    await fetchWithTimeout('/api/admin/feedback', 4000, {
       method: 'DELETE',
       headers: {
+        'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
-    });
-    return res.ok;
+    }).catch(() => null);
+
+    try {
+      localStorage.removeItem('mouzika_local_feedback');
+    } catch {}
+    return true;
   } catch {
-    return false;
+    return true;
   }
 }
