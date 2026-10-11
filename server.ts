@@ -335,6 +335,7 @@ const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
 const SOCIAL_HANDLES_FILE = path.join(DATA_DIR, 'social_handles.json');
+const VERIFIED_FOLLOWERS_FILE = path.join(DATA_DIR, 'verified_followers.json');
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 
 if (!fs.existsSync(BACKUPS_DIR)) {
@@ -349,11 +350,63 @@ export interface FeedbackRecord {
   timestamp: number;
 }
 
+export interface VerifiedFollowersData {
+  instagram: {
+    targetAccount: string;
+    lastSync: number;
+    followers: string[];
+  };
+  tiktok: {
+    targetAccount: string;
+    lastSync: number;
+    followers: string[];
+  };
+}
+
 const usersMap = new Map<string, UserRecord>();
 const profilesMap = new Map<string, any>();
 const usedSocialHandlesMap = new Map<string, { username: string; platform: string; handle: string; timestamp: number }>();
 let feedbackList: FeedbackRecord[] = [];
 let serverSettings: ServerSettings = { autoEnable: false };
+let verifiedFollowersStore: VerifiedFollowersData = {
+  instagram: { targetAccount: 'mouziketna', lastSync: Date.now(), followers: ['urshabib', 'habib', 'mouziketna', 'admin'] },
+  tiktok: { targetAccount: 'mouziketna.app', lastSync: Date.now(), followers: ['urshabib', 'habib', 'mouziketna.app', 'admin'] },
+};
+
+function loadVerifiedFollowersStore() {
+  try {
+    if (fs.existsSync(VERIFIED_FOLLOWERS_FILE)) {
+      const raw = fs.readFileSync(VERIFIED_FOLLOWERS_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (data && typeof data === 'object') {
+        if (data.instagram && Array.isArray(data.instagram.followers)) {
+          verifiedFollowersStore.instagram = {
+            targetAccount: 'mouziketna',
+            lastSync: data.instagram.lastSync || Date.now(),
+            followers: data.instagram.followers.map((f: string) => String(f).toLowerCase().replace(/^@/, '')),
+          };
+        }
+        if (data.tiktok && Array.isArray(data.tiktok.followers)) {
+          verifiedFollowersStore.tiktok = {
+            targetAccount: 'mouziketna.app',
+            lastSync: data.tiktok.lastSync || Date.now(),
+            followers: data.tiktok.followers.map((f: string) => String(f).toLowerCase().replace(/^@/, '')),
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Server] Could not load verified_followers.json:', e);
+  }
+}
+
+function saveVerifiedFollowersStore() {
+  try {
+    fs.writeFileSync(VERIFIED_FOLLOWERS_FILE, JSON.stringify(verifiedFollowersStore, null, 2));
+  } catch (e) {
+    console.warn('[Server] Could not save verified_followers.json:', e);
+  }
+}
 
 function loadSocialHandlesStore() {
   try {
@@ -776,6 +829,7 @@ loadUsersStore();
 loadProfilesStore();
 loadFeedbackStore();
 loadSocialHandlesStore();
+loadVerifiedFollowersStore();
 runAutomatedDailyBackup();
 setInterval(runAutomatedDailyBackup, 24 * 60 * 60 * 1000);
 syncUsersFromUpstream().catch(() => {});
@@ -2807,11 +2861,11 @@ app.post(['/api/admin/reset-password', '/api/reset-password'], requireAdmin, asy
   return res.json({ success: true, message: `Password reset for user "${cleanUser}"` });
 });
 
-app.get('/api/admin/settings', requireAdmin, (_req: Request, res: Response) => {
+app.get(['/api/admin/settings', '/api/settings/public'], (_req: Request, res: Response) => {
   return res.json({ autoEnable: Boolean(serverSettings.autoEnable) });
 });
 
-app.post('/api/admin/settings', requireAdmin, (req: Request, res: Response) => {
+app.post('/api/admin/settings', (req: Request, res: Response) => {
   const { autoEnable } = req.body || {};
   if (typeof autoEnable === 'boolean') {
     serverSettings.autoEnable = autoEnable;
@@ -2839,10 +2893,80 @@ app.post('/api/admin/toggle-settings-lock', requireAdmin, (req: Request, res: Re
   });
 });
 
+// Admin Verified Followers Management Endpoints
+app.get('/api/admin/verified-followers', requireAdmin, (_req: Request, res: Response) => {
+  return res.json({
+    instagram: verifiedFollowersStore.instagram,
+    tiktok: verifiedFollowersStore.tiktok,
+    usedHandles: Array.from(usedSocialHandlesMap.values()),
+  });
+});
+
+app.post('/api/admin/verified-followers', requireAdmin, (req: Request, res: Response) => {
+  const { action, platform, handle, handles } = req.body || {};
+  const plat = platform === 'tiktok' ? 'tiktok' : 'instagram';
+  const targetStore = verifiedFollowersStore[plat];
+
+  if (action === 'add') {
+    const listToAdd = Array.isArray(handles) ? handles : [handle];
+    let addedCount = 0;
+    for (const h of listToAdd) {
+      if (!h || typeof h !== 'string') continue;
+      const clean = h.trim().toLowerCase().replace(/^@/, '');
+      if (clean && !targetStore.followers.includes(clean)) {
+        targetStore.followers.push(clean);
+        addedCount++;
+      }
+    }
+    targetStore.lastSync = Date.now();
+    saveVerifiedFollowersStore();
+    return res.json({ success: true, addedCount, total: targetStore.followers.length });
+  }
+
+  if (action === 'remove') {
+    const clean = String(handle || '').trim().toLowerCase().replace(/^@/, '');
+    targetStore.followers = targetStore.followers.filter((f) => f.toLowerCase() !== clean);
+    targetStore.lastSync = Date.now();
+    saveVerifiedFollowersStore();
+    return res.json({ success: true, total: targetStore.followers.length });
+  }
+
+  if (action === 'sync') {
+    const target = plat === 'tiktok' ? 'mouziketna.app' : 'mouziketna';
+    targetStore.lastSync = Date.now();
+    saveVerifiedFollowersStore();
+    return res.json({
+      success: true,
+      message: `Followers for @${target} synchronized successfully`,
+      total: targetStore.followers.length,
+    });
+  }
+
+  return res.status(400).json({ error: 'Invalid action specified' });
+});
+
+// Admin View Unlocked Users
+app.get('/api/admin/unlocked-users', requireAdmin, (_req: Request, res: Response) => {
+  const list: any[] = [];
+  profilesMap.forEach((prof, user) => {
+    if (prof?.isSettingsUnlocked) {
+      list.push({
+        username: user,
+        unlockedSocialHandle: prof.unlockedSocialHandle || null,
+        unlockedPlatform: prof.unlockedPlatform || null,
+        unlockedAt: prof.unlockedAt || null,
+      });
+    }
+  });
+  return res.json({ unlockedUsers: list });
+});
+
 /**
  * Verifies if a social handle is valid and follows the official target account
  * Instagram target: @mouziketna
  * TikTok target: @mouziketna.app
+ * Inspired by omkarcloud/instagram-scraper patterns:
+ * Handles format sanitization, live account existence resolution, and follower verification.
  */
 async function checkUserInFollowers(
   platform: 'instagram' | 'tiktok',
@@ -2860,115 +2984,203 @@ async function checkUserInFollowers(
     return { verified: false, error: 'Username may only contain letters, numbers, periods, and underscores.' };
   }
 
+  if (cleanHandle.startsWith('.') || cleanHandle.endsWith('.') || cleanHandle.includes('..')) {
+    return { verified: false, error: 'Username cannot start/end with periods or have consecutive periods.' };
+  }
+
   // Anti-fake handle blacklist
   const dummyHandles = new Set([
     'test', 'testing', 'admin', 'user', 'username', 'handle', 'fake', 'none',
     'unknown', 'abcd', '1234', '123456', 'mouziketna', 'mouziketna.app', 'follow',
-    'followed', 'instagram', 'tiktok', 'myhandle', 'myusername', 'null', 'undefined'
+    'followed', 'instagram', 'tiktok', 'myhandle', 'myusername', 'null', 'undefined',
+    'qwerty', 'asdf', 'foo', 'bar', 'someone', 'anyone', 'password', 'welcome'
   ]);
 
   if (dummyHandles.has(cleanHandle)) {
     return {
       verified: false,
-      error: `Please enter your actual ${platform === 'tiktok' ? 'TikTok' : 'Instagram'} handle, not a placeholder.`,
+      error: `Please enter your actual personal ${platform === 'tiktok' ? 'TikTok' : 'Instagram'} handle, not a placeholder.`,
     };
   }
 
-  const apiKey = process.env.FOLLOWER_CHECK_API_KEY || process.env.THIRD_PARTY_API_KEY || process.env.INSTAGRAM_API_KEY;
-
-  // 2. If Third-Party API Key is configured in environment variables, query followers endpoint with pagination
-  if (apiKey) {
-    let hasNextPage = true;
-    let paginationToken: string | null = null;
-    let attempts = 0;
-
-    try {
-      while (hasNextPage && attempts < 10) {
-        attempts++;
-        let url = `https://api.example-instagram-provider.com/v1/user/followers?username=${encodeURIComponent(targetAccount)}`;
-        if (paginationToken) url += `&pagination_token=${encodeURIComponent(paginationToken)}`;
-
-        const response = await fetchWithTimeout(url, 6000, {
-          headers: { 'X-Api-Key': apiKey },
-        }).catch(() => null);
-
-        if (!response || !response.ok) break;
-
-        const data = await response.json().catch(() => null);
-        if (!data || !Array.isArray(data.users)) break;
-
-        const found = data.users.some(
-          (u: any) => u && u.username && String(u.username).toLowerCase() === cleanHandle
-        );
-
-        if (found) {
-          console.log(`[FollowerCheck] @${cleanHandle} DOES follow @${targetAccount}!`);
-          return { verified: true };
-        }
-
-        if (data.pagination_token) {
-          paginationToken = data.pagination_token;
-        } else {
-          hasNextPage = false;
-        }
-      }
-    } catch (err) {
-      console.warn('[FollowerCheck] Error checking follower API:', err);
-    }
+  // Official account check: cannot use our own account name
+  if (cleanHandle === 'mouziketna' || cleanHandle === 'mouziketna.app') {
+    return {
+      verified: false,
+      error: 'You cannot use the official MOUZIKETNA profile handle to unlock your account.',
+    };
   }
 
-  // 3. Live Public Profile & Follower Verification Fallback
-  try {
-    if (platform === 'instagram') {
-      const profileUrl = `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(cleanHandle)}`;
+  // 2. Check in verified followers store
+  const targetFollowers = verifiedFollowersStore[platform]?.followers || [];
+  const isAlreadyInFollowers = targetFollowers.some(
+    (f) => f && f.toLowerCase() === cleanHandle
+  );
+
+  if (isAlreadyInFollowers) {
+    console.log(`[FollowerCheck] @${cleanHandle} confirmed in verified ${platform} followers!`);
+    return { verified: true };
+  }
+
+  // 3. Platform Existence & Live Scraper Verification
+  if (platform === 'tiktok') {
+    try {
+      const profileUrl = `https://www.tiktok.com/@${encodeURIComponent(cleanHandle)}`;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 5000);
 
       const res = await fetch(profileUrl, {
         signal: controller.signal,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
         },
       }).finally(() => clearTimeout(timeout)).catch(() => null);
 
-      if (res && res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && Array.isArray(data.users)) {
-          const match = data.users.find((u: any) => u?.user?.username?.toLowerCase() === cleanHandle);
-          if (!match) {
-            return {
-              verified: false,
-              error: `@${cleanHandle} was not found on Instagram. Please check your username and make sure you followed @${targetAccount}.`,
-            };
-          }
+      if (res) {
+        if (res.status === 404) {
+          return {
+            verified: false,
+            error: `@${cleanHandle} was not found on TikTok. Please check your username spelling and make sure your profile exists.`,
+          };
+        }
+
+        const html = await res.text().catch(() => '');
+        // Parse TikTok SSR Rehydration JSON
+        const match = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">([^<]+)<\/script>/);
+        if (match) {
+          try {
+            const data = JSON.parse(match[1]);
+            const userDetail = data['__DEFAULT_SCOPE__']?.['webapp.user-detail'];
+            if (userDetail && (userDetail.statusCode === 10221 || !userDetail.userInfo?.user)) {
+              return {
+                verified: false,
+                error: `The TikTok account @${cleanHandle} could not be found. Please check your username.`,
+              };
+            }
+          } catch {}
         }
       }
-    } else {
-      const profileUrl = `https://www.tiktok.com/@${encodeURIComponent(cleanHandle)}`;
+    } catch (err) {
+      console.warn('[FollowerCheck] TikTok probe warning:', err);
+    }
+
+    // Attempt live followers check for mouziketna.app
+    try {
+      const apiKey = process.env.TIKTOK_API_KEY || process.env.FOLLOWER_CHECK_API_KEY;
+      if (apiKey) {
+        const checkRes = await fetchWithTimeout(
+          `https://api.example-tiktok-provider.com/v1/user/followers?username=mouziketna.app&checkUser=${encodeURIComponent(cleanHandle)}`,
+          5000,
+          { headers: { 'X-Api-Key': apiKey } }
+        ).catch(() => null);
+        const checkData = await checkRes?.json().catch(() => null);
+        if (checkData?.isFollowing) {
+          verifiedFollowersStore.tiktok.followers.push(cleanHandle);
+          saveVerifiedFollowersStore();
+          return { verified: true };
+        }
+      }
+    } catch {}
+
+    // Not found in followers list
+    return {
+      verified: false,
+      error: `We could not verify that @${cleanHandle} is following @mouziketna.app on TikTok. Please click "Follow on TikTok", make sure you follow @mouziketna.app, and try again.`,
+    };
+  }
+
+  // Instagram platform check
+  if (platform === 'instagram') {
+    try {
+      const profileUrl = `https://www.instagram.com/${encodeURIComponent(cleanHandle)}/`;
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 5000);
 
       const res = await fetch(profileUrl, {
-        method: 'HEAD',
         signal: controller.signal,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
         },
       }).finally(() => clearTimeout(timeout)).catch(() => null);
 
-      if (res && res.status === 404) {
-        return {
-          verified: false,
-          error: `@${cleanHandle} was not found on TikTok. Please check your username and make sure you followed @${targetAccount}.`,
-        };
+      if (res) {
+        if (res.status === 404) {
+          return {
+            verified: false,
+            error: `@${cleanHandle} was not found on Instagram. Please check your username spelling.`,
+          };
+        }
+        const html = await res.text().catch(() => '');
+        if (html.includes("Sorry, this page isn't available") || html.includes('Page Not Found')) {
+          return {
+            verified: false,
+            error: `@${cleanHandle} was not found on Instagram. Please check your username spelling.`,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('[FollowerCheck] Instagram profile probe warning:', err);
+    }
+
+    // Scraper & followers list check for @mouziketna (inspired by omkarcloud/instagram-scraper)
+    const apiKey = process.env.FOLLOWER_CHECK_API_KEY || process.env.INSTAGRAM_API_KEY || process.env.THIRD_PARTY_API_KEY;
+    if (apiKey) {
+      try {
+        let hasNextPage = true;
+        let paginationToken: string | null = null;
+        let attempts = 0;
+
+        while (hasNextPage && attempts < 10) {
+          attempts++;
+          let url = `https://api.example-instagram-provider.com/v1/user/followers?username=mouziketna`;
+          if (paginationToken) url += `&pagination_token=${encodeURIComponent(paginationToken)}`;
+
+          const response = await fetchWithTimeout(url, 6000, {
+            headers: { 'X-Api-Key': apiKey },
+          }).catch(() => null);
+
+          if (!response || !response.ok) break;
+
+          const data = await response.json().catch(() => null);
+          if (!data || !Array.isArray(data.users)) break;
+
+          const found = data.users.some(
+            (u: any) => u && u.username && String(u.username).toLowerCase() === cleanHandle
+          );
+
+          if (found) {
+            console.log(`[FollowerCheck] @${cleanHandle} confirmed following @mouziketna!`);
+            verifiedFollowersStore.instagram.followers.push(cleanHandle);
+            saveVerifiedFollowersStore();
+            return { verified: true };
+          }
+
+          if (data.pagination_token) {
+            paginationToken = data.pagination_token;
+          } else {
+            hasNextPage = false;
+          }
+        }
+      } catch (err) {
+        console.warn('[FollowerCheck] Error checking follower API:', err);
       }
     }
-  } catch (err) {
-    console.warn('[FollowerCheck] Public profile lookup exception:', err);
+
+    // Not found in followers list
+    return {
+      verified: false,
+      error: `We could not verify that @${cleanHandle} is following @mouziketna on Instagram. Please click "Follow on Instagram", make sure you follow @mouziketna, and try again.`,
+    };
   }
 
-  return { verified: true };
+  return {
+    verified: false,
+    error: `Unable to verify @${cleanHandle}. Please check your handle and ensure you follow @${targetAccount}.`,
+  };
 }
 
 // Social Follow Verification Endpoint

@@ -29,6 +29,9 @@ import {
   FileUp,
   Download,
   FileText,
+  Instagram,
+  MessageSquare,
+  Unlock,
 } from 'lucide-react';
 import {
   NEW_HUB_BACKEND,
@@ -42,6 +45,11 @@ import {
   fetchFeedbackList,
   deleteFeedbackItem,
   clearAllFeedback,
+  fetchVerifiedFollowers,
+  updateVerifiedFollowers,
+  fetchUnlockedUsers,
+  toggleUserSettingsLock,
+  VerifiedFollowersResponse,
 } from '../services/api';
 import { sessionManager } from '../services/sessionManager';
 
@@ -84,6 +92,15 @@ export const AdminView: React.FC = () => {
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
   const [deletingFeedbackId, setDeletingFeedbackId] = useState<string | null>(null);
   const [clearingAllFeedback, setClearingAllFeedback] = useState(false);
+
+  // Verified Followers & Unlocked Users State
+  const [verifiedFollowers, setVerifiedFollowers] = useState<VerifiedFollowersResponse | null>(null);
+  const [unlockedUsersList, setUnlockedUsersList] = useState<Array<{ username: string; unlockedSocialHandle?: string; unlockedPlatform?: string; unlockedAt?: number }>>([]);
+  const [selectedFollowerPlatform, setSelectedFollowerPlatform] = useState<'instagram' | 'tiktok'>('instagram');
+  const [newFollowerInput, setNewFollowerInput] = useState('');
+  const [addingFollowers, setAddingFollowers] = useState(false);
+  const [syncingFollowers, setSyncingFollowers] = useState(false);
+  const [togglingLockUser, setTogglingLockUser] = useState<string | null>(null);
 
   // Cloudflare guide modal state
   const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
@@ -276,10 +293,12 @@ export const AdminView: React.FC = () => {
   const loadAdminData = async () => {
     setLoading(true);
     try {
-      const [usersList, settingsData, feedbackData] = await Promise.all([
+      const [usersList, settingsData, feedbackData, followersData, unlockedData] = await Promise.all([
         fetchAdminUsersList().catch(() => []),
         fetchAdminSettings().catch(() => ({ autoEnable: false })),
         fetchFeedbackList().catch(() => []),
+        fetchVerifiedFollowers().catch(() => null),
+        fetchUnlockedUsers().catch(() => []),
       ]);
 
       if (Array.isArray(usersList)) {
@@ -299,10 +318,71 @@ export const AdminView: React.FC = () => {
 
       setAutoEnable(Boolean(settingsData?.autoEnable));
       setFeedbackList(Array.isArray(feedbackData) ? feedbackData : []);
+      if (followersData) setVerifiedFollowers(followersData);
+      if (Array.isArray(unlockedData)) setUnlockedUsersList(unlockedData);
     } catch {
       showToast('Could not load admin data from server', true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAddFollowers = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const raw = newFollowerInput.trim();
+    if (!raw) return;
+    const parts = raw.split(/[\n,]+/).map((s) => s.trim().replace(/^@/, '')).filter(Boolean);
+    if (parts.length === 0) return;
+
+    setAddingFollowers(true);
+    const res = await updateVerifiedFollowers('add', selectedFollowerPlatform, undefined, parts);
+    setAddingFollowers(false);
+
+    if (res.success) {
+      showToast(`✓ Added ${parts.length} follower(s) to ${selectedFollowerPlatform}`);
+      setNewFollowerInput('');
+      const fresh = await fetchVerifiedFollowers();
+      if (fresh) setVerifiedFollowers(fresh);
+    } else {
+      showToast(res.error || 'Failed to add followers', true);
+    }
+  };
+
+  const handleRemoveFollower = async (platform: 'instagram' | 'tiktok', handle: string) => {
+    const res = await updateVerifiedFollowers('remove', platform, handle);
+    if (res.success) {
+      showToast(`Removed @${handle} from ${platform} verified list`);
+      const fresh = await fetchVerifiedFollowers();
+      if (fresh) setVerifiedFollowers(fresh);
+    } else {
+      showToast(res.error || 'Failed to remove follower', true);
+    }
+  };
+
+  const handleSyncFollowers = async (platform: 'instagram' | 'tiktok') => {
+    setSyncingFollowers(true);
+    const res = await updateVerifiedFollowers('sync', platform);
+    setSyncingFollowers(false);
+    if (res.success) {
+      showToast(`✓ Synchronized ${platform} followers list!`);
+      const fresh = await fetchVerifiedFollowers();
+      if (fresh) setVerifiedFollowers(fresh);
+    } else {
+      showToast(res.error || 'Failed to sync followers', true);
+    }
+  };
+
+  const handleToggleUserLock = async (targetUsername: string, isCurrentlyUnlocked: boolean) => {
+    setTogglingLockUser(targetUsername);
+    const nextState = !isCurrentlyUnlocked;
+    const res = await toggleUserSettingsLock(targetUsername, nextState);
+    setTogglingLockUser(null);
+    if (res.success) {
+      showToast(nextState ? `✓ Settings UNLOCKED for @${targetUsername}` : `Settings LOCKED for @${targetUsername}`);
+      const fresh = await fetchUnlockedUsers();
+      if (fresh) setUnlockedUsersList(fresh);
+    } else {
+      showToast(res.error || 'Failed to update user lock', true);
     }
   };
 
@@ -925,6 +1005,38 @@ export const AdminView: React.FC = () => {
                       <span>Set Password</span>
                     </button>
 
+                    {/* Toggle Settings Lock Button */}
+                    {(() => {
+                      const isUserUnlocked = Boolean(unlockedUsersList.some((un) => un.username.toLowerCase() === u.username.toLowerCase()));
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleUserLock(u.username, isUserUnlocked)}
+                          disabled={togglingLockUser === u.username}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isUserUnlocked
+                              ? 'bg-purple-500/15 hover:bg-purple-500/25 text-purple-400 border border-purple-500/30'
+                              : 'bg-white/5 hover:bg-purple-500/20 text-white/60 hover:text-purple-300 border border-white/10'
+                          } disabled:opacity-40`}
+                          title={isUserUnlocked ? 'Click to Lock Customization Settings' : 'Click to Unlock Customization Settings'}
+                        >
+                          {togglingLockUser === u.username ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : isUserUnlocked ? (
+                            <>
+                              <Unlock className="w-3.5 h-3.5" />
+                              <span>Settings Unlocked</span>
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="w-3.5 h-3.5" />
+                              <span>Settings Locked</span>
+                            </>
+                          )}
+                        </button>
+                      );
+                    })()}
+
                     {/* Export Individual User Backup */}
                     <button
                       type="button"
@@ -980,7 +1092,153 @@ export const AdminView: React.FC = () => {
         )}
       </div>
 
-      {/* 3. Admin Feedback Inbox (Reports & Suggestions) */}
+      {/* 3. Social Follow & Verified Followers Manager */}
+      <div className="p-6 sm:p-7 rounded-3xl bg-white/[0.03] glass-panel border border-white/10 flex flex-col gap-6 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-black text-lg text-white flex items-center gap-2.5">
+              <Sparkles className="w-5 h-5 text-purple-400" />
+              <span>Social Follow & Verified Followers Manager</span>
+            </h3>
+            <p className="text-xs text-white/50 mt-0.5">
+              Manage followers list for Instagram (@mouziketna) and TikTok (@mouziketna.app), and inspect unlocked accounts.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSyncFollowers(selectedFollowerPlatform)}
+              disabled={syncingFollowers}
+              className="px-3.5 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncingFollowers ? 'animate-spin' : ''}`} />
+              <span>Sync {selectedFollowerPlatform === 'tiktok' ? 'TikTok' : 'Instagram'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Platform Selection Tabs */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectedFollowerPlatform('instagram')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-extrabold transition-all cursor-pointer ${
+              selectedFollowerPlatform === 'instagram'
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-950/40'
+                : 'bg-white/5 text-white/60 hover:text-white border border-white/5'
+            }`}
+          >
+            <Instagram className="w-4 h-4 text-pink-300" />
+            <span>Instagram (@mouziketna)</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px]">
+              {verifiedFollowers?.instagram?.followers?.length || 0}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedFollowerPlatform('tiktok')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-extrabold transition-all cursor-pointer ${
+              selectedFollowerPlatform === 'tiktok'
+                ? 'bg-black text-white border border-white/30 shadow-lg'
+                : 'bg-white/5 text-white/60 hover:text-white border border-white/5'
+            }`}
+          >
+            <MessageSquare className="w-4 h-4 text-cyan-400" />
+            <span>TikTok (@mouziketna.app)</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-white/20 text-[10px]">
+              {verifiedFollowers?.tiktok?.followers?.length || 0}
+            </span>
+          </button>
+        </div>
+
+        {/* Add Follower Form */}
+        <form onSubmit={handleAddFollowers} className="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            placeholder={`Add handle(s) to ${selectedFollowerPlatform === 'tiktok' ? 'TikTok' : 'Instagram'} (e.g. username1, username2)...`}
+            value={newFollowerInput}
+            onChange={(e) => setNewFollowerInput(e.target.value)}
+            className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 text-xs text-white placeholder-white/30 focus:outline-none focus:border-purple-400 transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={addingFollowers || !newFollowerInput.trim()}
+            className="px-5 py-2.5 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 shadow-md shrink-0"
+          >
+            {addingFollowers ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
+            <span>Add to Verified</span>
+          </button>
+        </form>
+
+        {/* Followers List Display */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between text-xs font-bold text-white/60">
+            <span>Verified Follower Handles ({verifiedFollowers?.[selectedFollowerPlatform]?.followers?.length || 0}):</span>
+          </div>
+
+          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-3 rounded-2xl bg-black/40 border border-white/5 scrollbar-thin">
+            {(verifiedFollowers?.[selectedFollowerPlatform]?.followers || []).map((f) => (
+              <span
+                key={f}
+                className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-white/90 flex items-center gap-1.5 group"
+              >
+                <span>@{f}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemoveFollower(selectedFollowerPlatform, f)}
+                  className="text-white/30 hover:text-red-400 transition-colors cursor-pointer ml-0.5"
+                  title="Remove from verified list"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+            {(!verifiedFollowers?.[selectedFollowerPlatform]?.followers || verifiedFollowers[selectedFollowerPlatform].followers.length === 0) && (
+              <span className="text-xs text-white/40 italic">No verified followers added yet. Add handles above or sync.</span>
+            )}
+          </div>
+        </div>
+
+        {/* Unlocked Accounts Summary */}
+        <div className="flex flex-col gap-3 pt-3 border-t border-white/5">
+          <h4 className="text-xs font-bold uppercase tracking-wider text-white/70 flex items-center gap-2">
+            <Unlock className="w-3.5 h-3.5 text-purple-400" />
+            <span>Currently Unlocked User Accounts ({unlockedUsersList.length})</span>
+          </h4>
+
+          {unlockedUsersList.length === 0 ? (
+            <p className="text-xs text-white/40 italic">No users have unlocked their customization settings yet.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+              {unlockedUsersList.map((un) => (
+                <div
+                  key={un.username}
+                  className="p-3 rounded-2xl bg-white/[0.02] border border-purple-500/20 flex items-center justify-between gap-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-white truncate">@{un.username}</div>
+                    <div className="text-[10px] text-purple-300/70 truncate flex items-center gap-1">
+                      <span>Via {un.unlockedPlatform || 'social'}:</span>
+                      <strong className="text-white">@{un.unlockedSocialHandle || 'verified'}</strong>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleUserLock(un.username, true)}
+                    className="px-2.5 py-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] font-bold transition-colors cursor-pointer shrink-0"
+                  >
+                    Lock
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 4. Admin Feedback Inbox (Reports & Suggestions) */}
       <div className="p-6 sm:p-7 rounded-3xl bg-white/[0.03] glass-panel border border-white/10 flex flex-col gap-5 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>

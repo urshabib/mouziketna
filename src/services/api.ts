@@ -1415,33 +1415,117 @@ export async function verifySocialFollow(
   username?: string
 ): Promise<{ success: boolean; isSettingsUnlocked?: boolean; message?: string; error?: string }> {
   try {
+    if (!handle || !handle.trim()) {
+      return { success: false, error: 'Please enter your username handle.' };
+    }
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout('/api/auth/verify-social-follow', 6000, {
+    const res = await fetchWithTimeout('/api/auth/verify-social-follow', 8000, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
-      body: JSON.stringify({ platform, handle, username, sessionToken }),
+      body: JSON.stringify({ platform, handle: handle.trim(), username, sessionToken }),
     }).catch(() => null);
 
-    if (res && res.ok) {
+    if (res) {
       const data = await res.json().catch(() => null);
-      if (data && data.success) {
-        return { success: true, isSettingsUnlocked: true, message: data.message || 'Settings unlocked successfully!' };
+      if (res.ok && data?.success) {
+        return {
+          success: true,
+          isSettingsUnlocked: true,
+          message: data.message || 'Settings unlocked successfully!',
+        };
       }
-      return { success: false, error: data?.error || 'Verification failed.' };
-    }
-    
-    if (res && res.status === 400) {
-      const data = await res.json().catch(() => null);
-      return { success: false, error: data?.error || 'This handle has already been used to unlock an account.' };
+      return {
+        success: false,
+        error: data?.message || data?.error || 'Verification failed. Please check your username and follow status.',
+      };
     }
 
-    // Client-side fallback if offline
-    return { success: true, isSettingsUnlocked: true, message: 'Settings unlocked successfully!' };
+    return {
+      success: false,
+      error: 'Unable to reach the verification server. Please check your connection and try again.',
+    };
   } catch (err: any) {
     return { success: false, error: err.message || 'Network error during social verification.' };
+  }
+}
+
+export interface VerifiedFollowersResponse {
+  instagram: {
+    targetAccount: string;
+    lastSync: number;
+    followers: string[];
+  };
+  tiktok: {
+    targetAccount: string;
+    lastSync: number;
+    followers: string[];
+  };
+  usedHandles?: Array<{ username: string; platform: string; handle: string; timestamp: number }>;
+}
+
+export async function fetchVerifiedFollowers(): Promise<VerifiedFollowersResponse | null> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout('/api/admin/verified-followers', 5000, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+    }).catch(() => null);
+    if (res && res.ok) {
+      return await res.json();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export async function updateVerifiedFollowers(
+  action: 'add' | 'remove' | 'sync',
+  platform: 'instagram' | 'tiktok',
+  handle?: string,
+  handles?: string[]
+): Promise<{ success: boolean; total?: number; error?: string }> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout('/api/admin/verified-followers', 6000, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ action, platform, handle, handles, sessionToken }),
+    }).catch(() => null);
+    if (res && res.ok) {
+      return await res.json();
+    }
+    const errData = await res?.json().catch(() => null);
+    return { success: false, error: errData?.error || 'Failed to update verified followers' };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error' };
+  }
+}
+
+export async function fetchUnlockedUsers(): Promise<Array<{ username: string; unlockedSocialHandle?: string; unlockedPlatform?: string; unlockedAt?: number }>> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout('/api/admin/unlocked-users', 5000, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+    }).catch(() => null);
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      return data?.unlockedUsers || [];
+    }
+    return [];
+  } catch {
+    return [];
   }
 }
 

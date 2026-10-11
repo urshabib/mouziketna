@@ -943,7 +943,7 @@ export const SettingsView: React.FC = () => {
               {[
                 { id: 'en', name: 'English', flag: '🇬🇧' },
                 { id: 'fr', name: 'French', flag: '🇫🇷' },
-                { id: 'ar', name: 'Arabic', flag: '🇸🇦' },
+                { id: 'ar', name: 'Arabic', flag: '🇹🇳' },
               ].map((langOption) => {
                 const isSelected = (userProfile.language || 'en') === langOption.id;
                 return (
