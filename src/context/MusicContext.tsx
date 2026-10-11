@@ -1104,13 +1104,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       } catch {}
 
-      if (!data) {
-        const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/login`, 9000, {
+      if (!data || data.error) {
+        const cloudUrl = NEW_HUB_BACKEND
+          ? `${NEW_HUB_BACKEND}/api/login`
+          : 'https://new-music-space-api.urshabib.workers.dev/api/login';
+        const res = await fetchWithTimeout(cloudUrl, 9000, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username: user, password: pass }),
         });
-        data = await res.json().catch(() => ({}));
+        const cloudData = await res.json().catch(() => ({}));
+        if (res.ok && !cloudData.error) {
+          data = cloudData;
+        } else if (!data) {
+          data = cloudData;
+        }
       }
 
       if (data.error) {

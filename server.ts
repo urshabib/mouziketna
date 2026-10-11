@@ -1966,7 +1966,7 @@ function setAuthCookie(res: Response, token: string) {
 }
 
 // 2. Public Self-Registration Endpoint (Protected against bot spam & parameter tampering)
-app.post(['/api/auth/register', '/api/register'], rateLimit(8, 60000), (req: Request, res: Response) => {
+app.post(['/api/auth/register', '/api/register'], rateLimit(8, 60000), async (req: Request, res: Response) => {
   const { username, password, botTrap } = req.body || {};
   // Anti-bot honeypot check
   if (botTrap) {
@@ -2009,6 +2009,21 @@ app.post(['/api/auth/register', '/api/register'], rateLimit(8, 60000), (req: Req
   usersMap.set(cleanUser, newUser);
   saveUsersStore();
 
+  // Mirror registration to Cloudflare Worker immediately
+  try {
+    await fetch(`${UPSTREAM_WORKER}/api/create-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: cleanUser,
+        password: String(password).trim(),
+        isAdmin: false,
+      }),
+    });
+  } catch (err) {
+    console.warn('[Server] Error mirroring registered user to Cloudflare Worker:', err);
+  }
+
   return res.json({
     success: true,
     username: cleanUser,
@@ -2035,29 +2050,31 @@ app.post(['/api/auth/login', '/api/login'], rateLimit(25, 60000), async (req: Re
 
   let upstreamProfile: any = null;
 
-  if (userRec) {
-    if ((userRec.password && userRec.password === password) || password === 'mouzika' || normUser === 'admin' || (!userRec.password && password)) {
+  if (userRec && userRec.password) {
+    if (userRec.password === password) {
       authSucceeded = true;
     }
   }
 
-  // Attempt upstream login & profile fetch
-  try {
-    const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    const upstreamData = await upstreamRes.json().catch(() => null);
-    if (upstreamRes.ok && upstreamData && !upstreamData.error) {
-      authSucceeded = true;
-      if (upstreamData.profile) {
-        upstreamProfile = upstreamData.profile;
+  // Attempt upstream login & profile fetch if local password didn't match or not set
+  if (!authSucceeded) {
+    try {
+      const upstreamRes = await fetch(`${UPSTREAM_WORKER}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const upstreamData = await upstreamRes.json().catch(() => null);
+      if (upstreamRes.ok && upstreamData && !upstreamData.error) {
+        authSucceeded = true;
+        if (upstreamData.profile) {
+          upstreamProfile = upstreamData.profile;
+        }
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
-  if (!authSucceeded && (normUser === 'admin' || password === 'admin' || password === 'mouzika')) {
+  if (!authSucceeded && normUser === 'admin' && (password === 'admin' || (userRec?.password && userRec.password === password))) {
     authSucceeded = true;
   }
 
@@ -2626,7 +2643,7 @@ app.post(['/api/admin/restore-backup', '/api/restore-backup'], requireAdmin, asy
   });
 });
 
-app.post(['/api/admin/create-user', '/api/create-user'], requireAdmin, (req: Request, res: Response) => {
+app.post(['/api/admin/create-user', '/api/create-user'], requireAdmin, async (req: Request, res: Response) => {
   const { username, password, isAdmin } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: 'Username and password are required' });
@@ -2641,6 +2658,22 @@ app.post(['/api/admin/create-user', '/api/create-user'], requireAdmin, (req: Req
   };
   usersMap.set(cleanUser, newUser);
   saveUsersStore();
+
+  // Mirror user and password to Cloudflare Worker
+  try {
+    await fetch(`${UPSTREAM_WORKER}/api/create-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: cleanUser,
+        password: String(password).trim(),
+        isAdmin: Boolean(isAdmin),
+      }),
+    });
+  } catch (err) {
+    console.warn('[Server] Error mirroring created user to Cloudflare Worker:', err);
+  }
+
   return res.json({ success: true, user: { username: cleanUser, isAdmin: newUser.isAdmin, enabled: newUser.enabled } });
 });
 
@@ -2662,7 +2695,7 @@ app.post(['/api/admin/toggle-enabled', '/api/admin/set-enabled'], requireAdmin, 
   });
 });
 
-app.post(['/api/admin/set-admin', '/api/set-admin'], requireAdmin, (req: Request, res: Response) => {
+app.post(['/api/admin/set-admin', '/api/set-admin'], requireAdmin, async (req: Request, res: Response) => {
   const { username, isAdmin } = req.body || {};
   if (!username) return res.status(400).json({ error: 'Username is required' });
   const cleanUser = cleanUsername(username);
@@ -2672,10 +2705,19 @@ app.post(['/api/admin/set-admin', '/api/set-admin'], requireAdmin, (req: Request
   userRec.isAdmin = Boolean(isAdmin);
   saveUsersStore();
 
+  // Mirror admin status to Cloudflare Worker
+  try {
+    await fetch(`${UPSTREAM_WORKER}/api/set-admin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cleanUser, isAdmin: userRec.isAdmin }),
+    });
+  } catch {}
+
   return res.json({ success: true, username: cleanUser, isAdmin: userRec.isAdmin });
 });
 
-app.post(['/api/admin/delete-user', '/api/delete-user'], requireAdmin, (req: Request, res: Response) => {
+app.post(['/api/admin/delete-user', '/api/delete-user'], requireAdmin, async (req: Request, res: Response) => {
   const { username } = req.body || {};
   if (!username) return res.status(400).json({ error: 'Username is required' });
   const cleanUser = cleanUsername(username);
@@ -2684,10 +2726,19 @@ app.post(['/api/admin/delete-user', '/api/delete-user'], requireAdmin, (req: Req
   usersMap.delete(cleanUser);
   saveUsersStore();
 
+  // Mirror deletion to Cloudflare Worker
+  try {
+    await fetch(`${UPSTREAM_WORKER}/api/delete-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cleanUser }),
+    });
+  } catch {}
+
   return res.json({ success: true, message: `User "${cleanUser}" deleted` });
 });
 
-app.post(['/api/admin/reset-password', '/api/reset-password'], requireAdmin, (req: Request, res: Response) => {
+app.post(['/api/admin/reset-password', '/api/reset-password'], requireAdmin, async (req: Request, res: Response) => {
   const { username, password } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required' });
   const cleanUser = cleanUsername(username);
@@ -2696,6 +2747,24 @@ app.post(['/api/admin/reset-password', '/api/reset-password'], requireAdmin, (re
 
   userRec.password = String(password).trim();
   saveUsersStore();
+
+  // Mirror new password to Cloudflare Worker by atomic recreate
+  try {
+    await fetch(`${UPSTREAM_WORKER}/api/delete-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: cleanUser }),
+    });
+    await fetch(`${UPSTREAM_WORKER}/api/create-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: cleanUser,
+        password: String(password).trim(),
+        isAdmin: Boolean(userRec.isAdmin),
+      }),
+    });
+  } catch {}
 
   return res.json({ success: true, message: `Password reset for user "${cleanUser}"` });
 });

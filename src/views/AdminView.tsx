@@ -382,26 +382,47 @@ export const AdminView: React.FC = () => {
 
     try {
       const sessionToken = sessionManager.getSessionToken();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (!NEW_HUB_BACKEND && sessionToken) {
-        headers.Authorization = `Bearer ${sessionToken}`;
-      }
-      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/create-user`, 9000, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          username: u,
-          password: p,
-          isAdmin: newIsAdmin,
-          sessionToken: sessionToken || '',
-        }),
-      });
+      
+      // 1. Always create on Cloudflare Worker so the account and password exist in the cloud!
+      let workerErr: string | null = null;
+      try {
+        const workerRes = await fetchWithTimeout('https://new-music-space-api.urshabib.workers.dev/api/create-user', 9000, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: u,
+            password: p,
+            isAdmin: newIsAdmin,
+          }),
+        });
+        const wData = await workerRes.json().catch(() => null);
+        if (!workerRes.ok || (wData && wData.error)) {
+          if (wData?.error?.toLowerCase().includes('already exist')) {
+            workerErr = wData.error;
+          }
+        }
+      } catch {}
 
-      const resData = await res.json().catch(() => null);
-
-      if (!res.ok || (resData && resData.error)) {
-        throw new Error(resData?.error || 'Failed to create user');
+      if (workerErr) {
+        throw new Error(workerErr);
       }
+
+      // 2. Also create on local Express server if available
+      try {
+        await fetchWithTimeout('/api/create-user', 5000, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+          },
+          body: JSON.stringify({
+            username: u,
+            password: p,
+            isAdmin: newIsAdmin,
+            sessionToken: sessionToken || '',
+          }),
+        });
+      } catch {}
 
       showToast(`User "${u}" successfully created!`);
       setNewUsername('');
@@ -822,6 +843,39 @@ export const AdminView: React.FC = () => {
                             </span>
                           </>
                         )}
+
+                        <span>•</span>
+                        <span className="flex items-center gap-1.5 font-medium">
+                          <KeyRound className="w-3 h-3 text-white/30" />
+                          {u.password && u.password !== 'mouzika' ? (
+                            <span className="flex items-center gap-1 font-mono text-[var(--accent)] font-semibold">
+                              <span>Password:</span>
+                              <span>{revealedPasswords[u.username] ? u.password : '••••••••'}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setRevealedPasswords((prev) => ({
+                                    ...prev,
+                                    [u.username]: !prev[u.username],
+                                  }));
+                                }}
+                                className="p-0.5 hover:text-white transition-colors cursor-pointer ml-0.5"
+                                title={revealedPasswords[u.username] ? 'Hide password' : 'Show password'}
+                              >
+                                {revealedPasswords[u.username] ? (
+                                  <EyeOff className="w-3 h-3" />
+                                ) : (
+                                  <Eye className="w-3 h-3" />
+                                )}
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="text-white/40 italic">
+                              Password: Cloud Protected
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
                   </div>
