@@ -14,6 +14,9 @@ import {
   UserPlus,
   LogIn,
   CheckCircle2,
+  Eye,
+  EyeOff,
+  ExternalLink,
 } from 'lucide-react';
 import {
   importPlaylistFromYoutube,
@@ -59,9 +62,15 @@ export const Modals: React.FC = () => {
   const [newPlaylistName, setNewPlaylistName] = useState('');
 
   // Import Playlist state
+  const [importPlatform, setImportPlatform] = useState<'youtube' | 'spotify' | 'deezer' | 'apple'>('youtube');
   const [importUrl, setImportUrl] = useState('');
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState('');
+
+  // Password visibility states
+  const [showGatePass, setShowGatePass] = useState(false);
+  const [showRegPass, setShowRegPass] = useState(false);
+  const [showRegConfirmPass, setShowRegConfirmPass] = useState(false);
 
   // Add song by link state
   const [songLink, setSongLink] = useState('');
@@ -388,47 +397,132 @@ export const Modals: React.FC = () => {
               </div>
               <button
                 onClick={() => setModalImportPlaylistOpen(false)}
-                className="p-1.5 text-white/40 hover:text-white rounded-full transition-colors"
+                className="p-1.5 text-white/40 hover:text-white rounded-full transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-white/60 leading-relaxed">
-              Paste a public YouTube Music or YouTube playlist URL. Songs will be imported directly
-              into your library with multi-tier mirror fallback so it never fails.
-            </p>
-
-            <form onSubmit={handleImportSubmit} className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="https://music.youtube.com/playlist?list=..."
-                value={importUrl}
-                onChange={(e) => setImportUrl(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
-              />
-
-              {importError && (
-                <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
-                  {importError}
-                </p>
-              )}
-
+            {/* Platform Selection Tabs */}
+            <div className="grid grid-cols-4 gap-1.5 bg-black/40 p-1.5 rounded-2xl border border-white/10">
               <button
-                type="submit"
-                disabled={importLoading || !importUrl.trim()}
-                className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg"
+                type="button"
+                onClick={() => { setImportPlatform('youtube'); setImportError(''); }}
+                className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                  importPlatform === 'youtube'
+                    ? 'bg-red-500/20 text-red-400 border border-red-500/40 shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
               >
-                {importLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Importing Playlist…</span>
-                  </>
-                ) : (
-                  <span>Import Tracks</span>
-                )}
+                YouTube
               </button>
-            </form>
+              <button
+                type="button"
+                onClick={() => { setImportPlatform('spotify'); setImportError(''); }}
+                className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                  importPlatform === 'spotify'
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                Spotify
+              </button>
+              <button
+                type="button"
+                onClick={() => { setImportPlatform('deezer'); setImportError(''); }}
+                className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                  importPlatform === 'deezer'
+                    ? 'bg-purple-500/20 text-purple-400 border border-purple-500/40 shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                Deezer
+              </button>
+              <button
+                type="button"
+                onClick={() => { setImportPlatform('apple'); setImportError(''); }}
+                className={`py-2 px-1 rounded-xl text-xs font-bold transition-all cursor-pointer text-center ${
+                  importPlatform === 'apple'
+                    ? 'bg-pink-500/20 text-pink-400 border border-pink-500/40 shadow'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                Apple
+              </button>
+            </div>
+
+            {importPlatform === 'youtube' ? (
+              <>
+                <p className="text-xs text-white/60 leading-relaxed">
+                  Paste a public YouTube Music or YouTube playlist URL. Songs will be imported directly
+                  into your library with multi-tier mirror fallback so it never fails.
+                </p>
+
+                <form onSubmit={handleImportSubmit} className="flex flex-col gap-3">
+                  <input
+                    type="text"
+                    placeholder="https://music.youtube.com/playlist?list=..."
+                    value={importUrl}
+                    onChange={(e) => setImportUrl(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
+                  />
+
+                  {importError && (
+                    <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
+                      {importError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={importLoading || !importUrl.trim()}
+                    className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg cursor-pointer"
+                  >
+                    {importLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Importing Playlist…</span>
+                      </>
+                    ) : (
+                      <span>Import Tracks</span>
+                    )}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="flex flex-col items-center text-center p-4 rounded-2xl bg-white/5 border border-white/10 gap-3 animate-in fade-in">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)]">
+                  <DownloadCloud className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-white text-base">Contact the admin to get your playlist</h4>
+                  <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                    Direct {importPlatform === 'spotify' ? 'Spotify' : importPlatform === 'deezer' ? 'Deezer' : 'Apple Music'} playlist conversion is handled personally by our admin team. Reach out via Instagram or TikTok with your playlist link!
+                  </p>
+                </div>
+
+                <div className="flex gap-2 w-full mt-2">
+                  <a
+                    href="https://instagram.com/mouziketna"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md hover:opacity-95 transition-opacity"
+                  >
+                    <span>Instagram</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                  <a
+                    href="https://www.tiktok.com/@mouziketna.app"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-black border border-white/20 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-md hover:bg-white/10 transition-colors"
+                  >
+                    <span>TikTok</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -606,13 +700,24 @@ export const Modals: React.FC = () => {
                     autoCorrect="off"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
                   />
-                  <input
-                    type="password"
-                    placeholder={t('modal.password', 'Password')}
-                    value={gatePass}
-                    onChange={(e) => setGatePass(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
-                  />
+                  <div className="relative w-full">
+                    <input
+                      type={showGatePass ? 'text' : 'password'}
+                      placeholder={t('modal.password', 'Password')}
+                      value={gatePass}
+                      onChange={(e) => setGatePass(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 py-3 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowGatePass(!showGatePass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors cursor-pointer p-1"
+                      tabIndex={-1}
+                      aria-label="Toggle password visibility"
+                    >
+                      {showGatePass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
 
                   {gateError && (
                     <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 text-left">
@@ -665,20 +770,42 @@ export const Modals: React.FC = () => {
                     autoCorrect="off"
                     className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
                   />
-                  <input
-                    type="password"
-                    placeholder="Create Password"
-                    value={regPass}
-                    onChange={(e) => setRegPass(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
-                  />
-                  <input
-                    type="password"
-                    placeholder="Confirm Password"
-                    value={regConfirmPass}
-                    onChange={(e) => setRegConfirmPass(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
-                  />
+                  <div className="relative w-full">
+                    <input
+                      type={showRegPass ? 'text' : 'password'}
+                      placeholder="Create Password"
+                      value={regPass}
+                      onChange={(e) => setRegPass(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegPass(!showRegPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors cursor-pointer p-1"
+                      tabIndex={-1}
+                      aria-label="Toggle password visibility"
+                    >
+                      {showRegPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <div className="relative w-full">
+                    <input
+                      type={showRegConfirmPass ? 'text' : 'password'}
+                      placeholder="Confirm Password"
+                      value={regConfirmPass}
+                      onChange={(e) => setRegConfirmPass(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowRegConfirmPass(!showRegConfirmPass)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white transition-colors cursor-pointer p-1"
+                      tabIndex={-1}
+                      aria-label="Toggle password visibility"
+                    >
+                      {showRegConfirmPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
 
                   {regError && (
                     <p className="text-xs text-red-400 font-medium bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 text-left">

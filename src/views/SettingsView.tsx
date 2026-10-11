@@ -326,6 +326,8 @@ export const SettingsView: React.FC = () => {
     language,
     setLanguage,
     t,
+    isSettingsUnlocked,
+    unlockSettingsWithSocial,
   } = useMusic();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('all');
@@ -347,6 +349,14 @@ export const SettingsView: React.FC = () => {
   const [nameSavedSuccess, setNameSavedSuccess] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isRefreshingApp, setIsRefreshingApp] = useState(false);
+
+  // Social Unlock Modal States
+  const [isSocialUnlockModalOpen, setIsSocialUnlockModalOpen] = useState(false);
+  const [socialPlatform, setSocialPlatform] = useState<'instagram' | 'tiktok'>('instagram');
+  const [hasClickedFollow, setHasClickedFollow] = useState(false);
+  const [socialHandleInput, setSocialHandleInput] = useState('');
+  const [socialVerifying, setSocialVerifying] = useState(false);
+  const [socialError, setSocialError] = useState<string | null>(null);
 
   // Modals for Custom Swatches & Lyrics Gallery
   const [isProgressBarColorModalOpen, setIsProgressBarColorModalOpen] = useState(false);
@@ -530,6 +540,42 @@ export const SettingsView: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-6 max-w-4xl pb-24 select-none">
+      {/* UNLOCK SETTINGS CTA BANNER */}
+      {!isSettingsUnlocked && (
+        <div className="w-full bg-gradient-to-r from-purple-950/80 via-pink-950/60 to-black border border-purple-500/40 rounded-3xl p-5 shadow-2xl backdrop-blur-xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 animate-in fade-in">
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="flex items-center gap-4 z-10">
+            <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shadow-lg shrink-0">
+              <Lock className="w-6 h-6 animate-pulse text-pink-400" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-white text-base sm:text-lg flex items-center gap-2">
+                Unlock Customization Settings
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Locked
+                </span>
+              </h3>
+              <p className="text-xs text-white/70 mt-1 leading-snug">
+                Follow our official Instagram or TikTok profile to permanently unlock custom themes, accent colors, liquid glass, and audio visualizers.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setIsSocialUnlockModalOpen(true);
+              setHasClickedFollow(false);
+              setSocialHandleInput('');
+              setSocialError(null);
+            }}
+            className="z-10 px-6 py-3 bg-gradient-to-r from-purple-500 via-pink-500 to-rose-500 text-white font-extrabold text-xs rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center gap-2 shrink-0 border border-white/20"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Unlock All Settings</span>
+          </button>
+        </div>
+      )}
+
       {/* Header & Category Navigation */}
       <div className="flex flex-col gap-4">
         <div>
@@ -570,7 +616,60 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 1. AUDIO & DOWNLOADS */}
+      {/* Unblurred Language Settings Card */}
+      <section className="flex flex-col gap-3">
+        <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shrink-0">
+              <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-white">{t('settings.language', 'App Language')}</h4>
+              <p className="text-xs text-white/50 mt-0.5">Select interface language for MOUZIKETNA</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 bg-black/40 p-1.5 rounded-2xl border border-white/10 w-full sm:w-auto">
+            {(['en', 'fr', 'ar'] as const).map((lang) => (
+              <button
+                key={lang}
+                type="button"
+                onClick={() => setLanguage(lang)}
+                className={`flex-1 sm:w-20 sm:flex-initial py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                  language === lang
+                    ? 'bg-[var(--accent)] text-black font-extrabold shadow-lg scale-[1.02]'
+                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <span className="text-xl leading-none">{lang === 'en' ? '🇬🇧' : lang === 'fr' ? '🇫🇷' : '🇹🇳'}</span>
+                <span className="text-[11px] leading-tight font-extrabold">{lang === 'en' ? 'English' : lang === 'fr' ? 'Français' : 'العربية'}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Customization Settings Container (Blurred when locked) */}
+      <div className={`flex flex-col gap-6 transition-all duration-300 relative ${!isSettingsUnlocked ? 'filter blur-[4px] opacity-60 pointer-events-none select-none' : ''}`}>
+        {!isSettingsUnlocked && (
+          <div className="absolute inset-0 z-30 bg-black/10 flex items-center justify-center pointer-events-auto">
+            <div
+              onClick={() => setIsSocialUnlockModalOpen(true)}
+              className="bg-black/85 border border-purple-500/50 rounded-3xl p-5 shadow-2xl backdrop-blur-md text-center max-w-sm flex flex-col items-center gap-2.5 cursor-pointer hover:scale-105 transition-transform"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300">
+                <Lock className="w-6 h-6 text-pink-400 animate-pulse" />
+              </div>
+              <h4 className="text-sm font-extrabold text-white">Customization Locked</h4>
+              <p className="text-xs text-white/60 leading-relaxed">
+                Follow our official Instagram or TikTok page to unlock custom themes, accent colors, liquid glass, and visualizers.
+              </p>
+              <span className="px-5 py-2.5 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-extrabold text-xs rounded-xl shadow-lg mt-1">
+                Unlock All Settings
+              </span>
+            </div>
+          </div>
+        )}
       {showAudio && (
         <section className="flex flex-col gap-3.5">
           <div className="flex items-center gap-2 pb-1 border-b border-white/10">
@@ -2092,6 +2191,148 @@ export const SettingsView: React.FC = () => {
                 Understood
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* End Customization Settings Container */}
+      </div>
+
+      {/* SOCIAL FOLLOW UNLOCK OVERLAY MODAL */}
+      {isSocialUnlockModalOpen && (
+        <div
+          onClick={() => setIsSocialUnlockModalOpen(false)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-md bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col gap-4 animate-in zoom-in-95"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center text-purple-300">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-white">Follow to Unlock Settings</h3>
+                  <p className="text-[11px] text-white/50">Verify your social follow to unlock settings</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSocialUnlockModalOpen(false)}
+                className="p-1.5 text-white/40 hover:text-white rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Platform Selection */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setSocialPlatform('instagram');
+                  setHasClickedFollow(false);
+                  setSocialHandleInput('');
+                  setSocialError(null);
+                }}
+                className={`p-3 rounded-2xl border flex items-center justify-center gap-2.5 font-extrabold text-xs transition-all cursor-pointer ${
+                  socialPlatform === 'instagram'
+                    ? 'bg-gradient-to-r from-purple-600/30 to-pink-600/30 border-pink-500/50 text-white shadow-lg scale-[1.02]'
+                    : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+                }`}
+              >
+                <Instagram className="w-4 h-4 text-pink-400" />
+                <span>Instagram</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSocialPlatform('tiktok');
+                  setHasClickedFollow(false);
+                  setSocialHandleInput('');
+                  setSocialError(null);
+                }}
+                className={`p-3 rounded-2xl border flex items-center justify-center gap-2.5 font-extrabold text-xs transition-all cursor-pointer ${
+                  socialPlatform === 'tiktok'
+                    ? 'bg-black border-white/30 text-white shadow-lg scale-[1.02]'
+                    : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
+                }`}
+              >
+                <MessageSquare className="w-4 h-4 text-cyan-400" />
+                <span>TikTok</span>
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
+              <p className="text-xs text-white/70 leading-relaxed">
+                1. Click <strong className="text-white">Follow</strong> to open our official {socialPlatform === 'instagram' ? 'Instagram' : 'TikTok'} profile in a new tab.
+              </p>
+
+              <a
+                href={socialPlatform === 'instagram' ? 'https://instagram.com/mouziketna' : 'https://www.tiktok.com/@mouziketna.app'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setHasClickedFollow(true)}
+                className={`w-full py-3 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                  socialPlatform === 'instagram'
+                    ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white shadow-lg hover:opacity-95'
+                    : 'bg-black border border-white/20 text-white shadow-lg hover:bg-white/10'
+                }`}
+              >
+                <span>Follow on {socialPlatform === 'instagram' ? 'Instagram' : 'TikTok'}</span>
+                <ExternalLink className="w-4 h-4" />
+              </a>
+
+              {hasClickedFollow && (
+                <div className="flex flex-col gap-2 pt-2 border-t border-white/10 animate-in fade-in">
+                  <p className="text-xs text-white/70">
+                    2. Enter your {socialPlatform === 'instagram' ? 'Instagram' : 'TikTok'} handle:
+                  </p>
+                  <input
+                    type="text"
+                    placeholder="@your_username"
+                    value={socialHandleInput}
+                    onChange={(e) => setSocialHandleInput(e.target.value)}
+                    className="w-full bg-black/40 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
+                  />
+                </div>
+              )}
+            </div>
+
+            {socialError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <span>{socialError}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={!hasClickedFollow || !socialHandleInput.trim() || socialVerifying}
+              onClick={async () => {
+                setSocialVerifying(true);
+                setSocialError(null);
+                const res = await unlockSettingsWithSocial(socialPlatform, socialHandleInput.trim());
+                setSocialVerifying(false);
+                if (res.success) {
+                  setIsSocialUnlockModalOpen(false);
+                } else {
+                  setSocialError(res.error || 'Verification failed. Please check your handle.');
+                }
+              }}
+              className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg cursor-pointer"
+            >
+              {socialVerifying ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Verifying Handle…</span>
+                </>
+              ) : (
+                <span>Verify & Unlock Settings</span>
+              )}
+            </button>
           </div>
         </div>
       )}

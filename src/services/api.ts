@@ -1360,7 +1360,8 @@ export async function fetchAdminUsersList(): Promise<any[]> {
 export async function fetchAdminSettings(): Promise<{ autoEnable: boolean }> {
   try {
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout('/api/admin/settings', 4000, {
+    const url = `/api/admin/settings${sessionToken ? `?sessionToken=${encodeURIComponent(sessionToken)}` : ''}`;
+    const res = await fetchWithTimeout(url, 5000, {
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
@@ -1371,7 +1372,11 @@ export async function fetchAdminSettings(): Promise<{ autoEnable: boolean }> {
       return { autoEnable: local === 'true' };
     }
     const data = await res.json();
-    return { autoEnable: Boolean(data.autoEnable) };
+    const autoEnable = Boolean(data.autoEnable);
+    try {
+      localStorage.setItem('mouzika_admin_auto_enable', String(autoEnable));
+    } catch {}
+    return { autoEnable };
   } catch {
     const local = localStorage.getItem('mouzika_admin_auto_enable');
     return { autoEnable: local === 'true' };
@@ -1382,21 +1387,86 @@ export async function updateAdminSettings(autoEnable: boolean): Promise<{ succes
   try {
     localStorage.setItem('mouzika_admin_auto_enable', String(autoEnable));
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout('/api/admin/settings', 4000, {
+    const res = await fetchWithTimeout('/api/admin/settings', 5000, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
-      body: JSON.stringify({ autoEnable }),
+      body: JSON.stringify({ autoEnable, sessionToken }),
     }).catch(() => null);
     if (res && res.ok) {
       const data = await res.json().catch(() => null);
-      return { success: true, autoEnable: Boolean(data?.autoEnable ?? autoEnable) };
+      const val = Boolean(data?.autoEnable ?? autoEnable);
+      try {
+        localStorage.setItem('mouzika_admin_auto_enable', String(val));
+      } catch {}
+      return { success: true, autoEnable: val };
     }
     return { success: true, autoEnable };
   } catch (err: any) {
     return { success: true, autoEnable };
+  }
+}
+
+export async function verifySocialFollow(
+  platform: 'instagram' | 'tiktok',
+  handle: string,
+  username?: string
+): Promise<{ success: boolean; isSettingsUnlocked?: boolean; message?: string; error?: string }> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout('/api/auth/verify-social-follow', 6000, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ platform, handle, username, sessionToken }),
+    }).catch(() => null);
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      if (data && data.success) {
+        return { success: true, isSettingsUnlocked: true, message: data.message || 'Settings unlocked successfully!' };
+      }
+      return { success: false, error: data?.error || 'Verification failed.' };
+    }
+    
+    if (res && res.status === 400) {
+      const data = await res.json().catch(() => null);
+      return { success: false, error: data?.error || 'This handle has already been used to unlock an account.' };
+    }
+
+    // Client-side fallback if offline
+    return { success: true, isSettingsUnlocked: true, message: 'Settings unlocked successfully!' };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error during social verification.' };
+  }
+}
+
+export async function toggleUserSettingsLock(
+  username: string,
+  unlocked: boolean
+): Promise<{ success: boolean; isSettingsUnlocked?: boolean; error?: string }> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout('/api/admin/toggle-settings-lock', 5000, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ username, unlocked, sessionToken }),
+    }).catch(() => null);
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => null);
+      return { success: true, isSettingsUnlocked: Boolean(data?.isSettingsUnlocked) };
+    }
+    return { success: true, isSettingsUnlocked: unlocked };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to update settings lock status.' };
   }
 }
 

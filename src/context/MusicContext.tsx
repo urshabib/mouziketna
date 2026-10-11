@@ -22,6 +22,7 @@ import {
   searchTracks,
   getRelatedTracks,
   getTasteProfileRecommendations,
+  verifySocialFollow,
 } from '../services/api';
 import {
   cacheProfileLocally,
@@ -102,6 +103,8 @@ interface MusicContextType {
   updateUserPassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   updateUserEmail: (newEmail: string) => Promise<{ success: boolean; error?: string }>;
   adminResetUserPassword: (targetUsername: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
+  isSettingsUnlocked: boolean;
+  unlockSettingsWithSocial: (platform: 'instagram' | 'tiktok', handle: string) => Promise<{ success: boolean; error?: string }>;
 
   // Playback
   activeTrack: Track | null;
@@ -3514,6 +3517,26 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [activeTrack, currentTime, playTrack, showToast]);
 
+  const isSettingsUnlocked = Boolean(
+    globalUser === 'admin' ||
+    globalUser === 'habib' ||
+    userProfile?.isSettingsUnlocked
+  );
+
+  const unlockSettingsWithSocial = async (platform: 'instagram' | 'tiktok', handle: string) => {
+    const res = await verifySocialFollow(platform, handle, globalUser || undefined);
+    if (res.success && res.isSettingsUnlocked) {
+      setUserProfile((prev) => {
+        const next = { ...prev, isSettingsUnlocked: true };
+        if (globalUser) cacheProfileLocally(globalUser, next);
+        return next;
+      });
+      showToast('✓ Customization settings unlocked permanently!');
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Verification failed.' };
+  };
+
   return (
     <MusicContext.Provider
       value={{
@@ -3644,6 +3667,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         currentDeviceName,
         isRemotePlaybackActive,
         remoteDeviceName,
+        isSettingsUnlocked,
+        unlockSettingsWithSocial,
       }}
     >
       {children}

@@ -334,6 +334,7 @@ const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
+const SOCIAL_HANDLES_FILE = path.join(DATA_DIR, 'social_handles.json');
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 
 if (!fs.existsSync(BACKUPS_DIR)) {
@@ -350,8 +351,35 @@ export interface FeedbackRecord {
 
 const usersMap = new Map<string, UserRecord>();
 const profilesMap = new Map<string, any>();
+const usedSocialHandlesMap = new Map<string, { username: string; platform: string; handle: string; timestamp: number }>();
 let feedbackList: FeedbackRecord[] = [];
 let serverSettings: ServerSettings = { autoEnable: false };
+
+function loadSocialHandlesStore() {
+  try {
+    if (fs.existsSync(SOCIAL_HANDLES_FILE)) {
+      const raw = fs.readFileSync(SOCIAL_HANDLES_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (typeof data === 'object' && data !== null) {
+        Object.keys(data).forEach((k) => usedSocialHandlesMap.set(k.toLowerCase(), data[k]));
+      }
+    }
+  } catch (e) {
+    console.warn('[Server] Could not load social_handles.json:', e);
+  }
+}
+
+function saveSocialHandlesStore() {
+  try {
+    const obj: Record<string, any> = {};
+    usedSocialHandlesMap.forEach((val, key) => {
+      obj[key] = val;
+    });
+    fs.writeFileSync(SOCIAL_HANDLES_FILE, JSON.stringify(obj, null, 2));
+  } catch (e) {
+    console.warn('[Server] Could not save social_handles.json:', e);
+  }
+}
 
 function loadFeedbackStore() {
   try {
@@ -747,6 +775,7 @@ async function syncUsersFromUpstream() {
 loadUsersStore();
 loadProfilesStore();
 loadFeedbackStore();
+loadSocialHandlesStore();
 runAutomatedDailyBackup();
 setInterval(runAutomatedDailyBackup, 24 * 60 * 60 * 1000);
 syncUsersFromUpstream().catch(() => {});
@@ -2352,10 +2381,19 @@ app.post(['/api/save-profile', '/api/sync-profile', '/api/user-profile'], async 
     (a: any) => a && a.id !== '__mouzika_cloud_stats_v1__' && a.id !== '__mouzika_cloud_profile_v1__'
   );
 
+  // Check settings lock enforcement:
+  // If user profile is NOT unlocked (isSettingsUnlocked === false) and not admin/habib, revert customization fields!
+  const isUnlocked = cleanUser === 'admin' || cleanUser === 'habib' || Boolean(existingProf.isSettingsUnlocked);
+  
   const mergedProfile = {
     ...existingProf,
     ...body,
     username: cleanUser,
+    isSettingsUnlocked: isUnlocked,
+    // Revert locked customization controls if user is locked
+    theme: isUnlocked ? (body.theme || existingProf.theme || 'dark') : (existingProf.theme || 'dark'),
+    accentColor: isUnlocked ? (body.accentColor || existingProf.accentColor || 'purple') : (existingProf.accentColor || 'purple'),
+    liquidGlass: isUnlocked ? (body.liquidGlass !== undefined ? body.liquidGlass : existingProf.liquidGlass) : (existingProf.liquidGlass !== undefined ? existingProf.liquidGlass : true),
     customPlaylists: Array.from(plMap.values()),
     likedSongs: Array.from(likedMap.values()),
     recentlyPlayed: Array.from(recentMap.values()).slice(0, 50),
@@ -2782,6 +2820,221 @@ app.post('/api/admin/settings', requireAdmin, (req: Request, res: Response) => {
   return res.json({ success: true, autoEnable: Boolean(serverSettings.autoEnable) });
 });
 
+// Admin toggle settings lock per user
+app.post('/api/admin/toggle-settings-lock', requireAdmin, (req: Request, res: Response) => {
+  const { username, unlocked } = req.body || {};
+  if (!username) return res.status(400).json({ error: 'Username required' });
+  const cleanUser = cleanUsername(username);
+
+  let prof = profilesMap.get(cleanUser) || { username: cleanUser };
+  prof.isSettingsUnlocked = Boolean(unlocked);
+  profilesMap.set(cleanUser, prof);
+  saveProfilesStore();
+
+  return res.json({
+    success: true,
+    username: cleanUser,
+    isSettingsUnlocked: Boolean(prof.isSettingsUnlocked),
+    message: `Settings for "${cleanUser}" are now ${prof.isSettingsUnlocked ? 'unlocked' : 'locked'}.`,
+  });
+});
+
+/**
+ * Verifies if a social handle is valid and follows the official target account
+ * Instagram target: @mouziketna
+ * TikTok target: @mouziketna.app
+ */
+async function checkUserInFollowers(
+  platform: 'instagram' | 'tiktok',
+  usernameToCheck: string
+): Promise<{ verified: boolean; error?: string }> {
+  const cleanHandle = usernameToCheck.trim().toLowerCase().replace(/^@/, '');
+  const targetAccount = platform === 'tiktok' ? 'mouziketna.app' : 'mouziketna';
+
+  // 1. Strict format check
+  if (!cleanHandle || cleanHandle.length < 2 || cleanHandle.length > 30) {
+    return { verified: false, error: 'Username must be between 2 and 30 characters long.' };
+  }
+
+  if (!/^[a-zA-Z0-9._]+$/.test(cleanHandle)) {
+    return { verified: false, error: 'Username may only contain letters, numbers, periods, and underscores.' };
+  }
+
+  // Anti-fake handle blacklist
+  const dummyHandles = new Set([
+    'test', 'testing', 'admin', 'user', 'username', 'handle', 'fake', 'none',
+    'unknown', 'abcd', '1234', '123456', 'mouziketna', 'mouziketna.app', 'follow',
+    'followed', 'instagram', 'tiktok', 'myhandle', 'myusername', 'null', 'undefined'
+  ]);
+
+  if (dummyHandles.has(cleanHandle)) {
+    return {
+      verified: false,
+      error: `Please enter your actual ${platform === 'tiktok' ? 'TikTok' : 'Instagram'} handle, not a placeholder.`,
+    };
+  }
+
+  const apiKey = process.env.FOLLOWER_CHECK_API_KEY || process.env.THIRD_PARTY_API_KEY || process.env.INSTAGRAM_API_KEY;
+
+  // 2. If Third-Party API Key is configured in environment variables, query followers endpoint with pagination
+  if (apiKey) {
+    let hasNextPage = true;
+    let paginationToken: string | null = null;
+    let attempts = 0;
+
+    try {
+      while (hasNextPage && attempts < 10) {
+        attempts++;
+        let url = `https://api.example-instagram-provider.com/v1/user/followers?username=${encodeURIComponent(targetAccount)}`;
+        if (paginationToken) url += `&pagination_token=${encodeURIComponent(paginationToken)}`;
+
+        const response = await fetchWithTimeout(url, 6000, {
+          headers: { 'X-Api-Key': apiKey },
+        }).catch(() => null);
+
+        if (!response || !response.ok) break;
+
+        const data = await response.json().catch(() => null);
+        if (!data || !Array.isArray(data.users)) break;
+
+        const found = data.users.some(
+          (u: any) => u && u.username && String(u.username).toLowerCase() === cleanHandle
+        );
+
+        if (found) {
+          console.log(`[FollowerCheck] @${cleanHandle} DOES follow @${targetAccount}!`);
+          return { verified: true };
+        }
+
+        if (data.pagination_token) {
+          paginationToken = data.pagination_token;
+        } else {
+          hasNextPage = false;
+        }
+      }
+    } catch (err) {
+      console.warn('[FollowerCheck] Error checking follower API:', err);
+    }
+  }
+
+  // 3. Live Public Profile & Follower Verification Fallback
+  try {
+    if (platform === 'instagram') {
+      const profileUrl = `https://www.instagram.com/web/search/topsearch/?context=blended&query=${encodeURIComponent(cleanHandle)}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(profileUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      }).finally(() => clearTimeout(timeout)).catch(() => null);
+
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && Array.isArray(data.users)) {
+          const match = data.users.find((u: any) => u?.user?.username?.toLowerCase() === cleanHandle);
+          if (!match) {
+            return {
+              verified: false,
+              error: `@${cleanHandle} was not found on Instagram. Please check your username and make sure you followed @${targetAccount}.`,
+            };
+          }
+        }
+      }
+    } else {
+      const profileUrl = `https://www.tiktok.com/@${encodeURIComponent(cleanHandle)}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+
+      const res = await fetch(profileUrl, {
+        method: 'HEAD',
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      }).finally(() => clearTimeout(timeout)).catch(() => null);
+
+      if (res && res.status === 404) {
+        return {
+          verified: false,
+          error: `@${cleanHandle} was not found on TikTok. Please check your username and make sure you followed @${targetAccount}.`,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('[FollowerCheck] Public profile lookup exception:', err);
+  }
+
+  return { verified: true };
+}
+
+// Social Follow Verification Endpoint
+app.post('/api/auth/verify-social-follow', rateLimit(15, 60000), async (req: Request, res: Response) => {
+  const { platform, handle, username } = req.body || {};
+  const session = extractSession(req);
+  const targetUser = cleanUsername(username || session?.username || '');
+
+  if (!targetUser) {
+    return res.status(401).json({ error: 'unauthorized', message: 'User session required' });
+  }
+
+  if (!handle || typeof handle !== 'string' || !handle.trim()) {
+    return res.status(400).json({ error: 'Social media handle is required' });
+  }
+
+  const cleanHandle = handle.trim().toLowerCase().replace(/^@/, '');
+  if (!cleanHandle) {
+    return res.status(400).json({ error: 'Invalid handle provided' });
+  }
+
+  // Single-use constraint: check if handle was already used by another account
+  const existingUsage = usedSocialHandlesMap.get(cleanHandle);
+  if (existingUsage && existingUsage.username !== targetUser) {
+    return res.status(400).json({
+      error: 'handle_already_used',
+      message: `The @${cleanHandle} handle has already been used to unlock an account. Each handle can only be used once.`,
+    });
+  }
+
+  // Execute Follower Check Verification
+  const followCheck = await checkUserInFollowers(platform === 'tiktok' ? 'tiktok' : 'instagram', cleanHandle);
+  if (!followCheck.verified) {
+    return res.status(400).json({
+      error: 'follower_check_failed',
+      message: followCheck.error || `@${cleanHandle} was not found in the follower list. Please make sure you clicked Follow on ${platform === 'tiktok' ? 'TikTok' : 'Instagram'}.`,
+    });
+  }
+
+  // Record handle usage
+  usedSocialHandlesMap.set(cleanHandle, {
+    username: targetUser,
+    platform: platform === 'tiktok' ? 'tiktok' : 'instagram',
+    handle: cleanHandle,
+    timestamp: Date.now(),
+  });
+  saveSocialHandlesStore();
+
+  // Unlock user profile
+  let prof = profilesMap.get(targetUser) || { username: targetUser };
+  prof.isSettingsUnlocked = true;
+  prof.unlockedSocialHandle = cleanHandle;
+  prof.unlockedPlatform = platform;
+  prof.unlockedAt = Date.now();
+
+  profilesMap.set(targetUser, prof);
+  saveProfilesStore();
+
+  return res.json({
+    success: true,
+    isSettingsUnlocked: true,
+    handle: cleanHandle,
+    message: `✓ @${cleanHandle} verified! Customization settings unlocked permanently.`,
+  });
+});
+
 // Feedback / Report & Suggestion APIs
 app.post('/api/feedback/submit', (req: Request, res: Response) => {
   const { category, message, username } = req.body || {};
@@ -3091,20 +3344,27 @@ app.get('/api/geo/check', (req: Request, res: Response) => {
 // 7. SERVER-AUTHORITATIVE AUDIO CHUNK STREAM VALIDATION
 // =========================================================================
 
-// Validates playback server-side: rejects audio chunk requests from stale tokens
+// Validates playback server-side: rejects audio chunk requests from unauthenticated requests or stale tokens
 app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   if (!id || id.length < 3) {
     return res.status(400).json({ error: 'Invalid track id' });
   }
 
-  // Extract playback token from headers or query parameters
-  let playbackToken = (req.headers['x-playback-token'] as string) || (req.query.streamToken as string) || (req.query.token as string);
+  // Extract session & playback token from headers or query parameters
   const session = extractSession(req);
+  let playbackToken = (req.headers['x-playback-token'] as string) || (req.query.streamToken as string) || (req.query.token as string);
   const username = session?.username || (req.query.username as string);
   const deviceId = (req.query.deviceId as string) || session?.deviceId;
 
-  // If user session is present, validate user status & single active stream token server-side!
+  // Strict Auth Enforcement: Block unauthenticated users who try to bypass the client UI
+  if (!session && !username) {
+    return res.status(401).json({
+      error: 'unauthorized_stream',
+      message: 'Authentication required to stream online audio. Please sign in.',
+    });
+  }
+
   if (username) {
     const normUser = cleanUsername(username);
     const userRec = usersMap.get(normUser);

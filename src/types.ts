@@ -75,6 +75,10 @@ export interface UserProfile {
   avatarUrl: string | null;
   isAdmin?: boolean;
   enabled?: boolean;
+  isSettingsUnlocked?: boolean;
+  unlockedSocialHandle?: string;
+  unlockedPlatform?: string;
+  unlockedAt?: number;
 }
 
 export interface SongHighlight {
