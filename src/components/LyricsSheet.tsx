@@ -115,7 +115,7 @@ export const LyricsSheet: React.FC = () => {
   };
 
   const handleHeaderTouchEnd = () => {
-    if (headerDragY > 70) {
+    if (headerDragY > 25) {
       setIsLyricsOpen(false);
     }
     headerTouchStart.current = null;
@@ -145,7 +145,7 @@ export const LyricsSheet: React.FC = () => {
         <div className="absolute inset-0 bg-gradient-to-b from-black/25 via-black/45 to-black/85" />
       </div>
 
-      {/* Top Header & Grab Section (Only section that handles swipe-down to dismiss) */}
+      {/* Expanded Top Header & Grab Section (Expanded touch hit-area for effortless swipe-down dismiss) */}
       <div
         onTouchStart={handleHeaderTouchStart}
         onTouchMove={handleHeaderTouchMove}
@@ -153,11 +153,11 @@ export const LyricsSheet: React.FC = () => {
         onMouseDown={handleHeaderTouchStart}
         onMouseMove={handleHeaderTouchMove}
         onMouseUp={handleHeaderTouchEnd}
-        className="w-full max-w-2xl mx-auto flex-shrink-0 cursor-grab active:cursor-grabbing pb-3 touch-none select-none border-b border-white/10 relative z-20"
+        className="w-full max-w-2xl mx-auto flex-shrink-0 cursor-grab active:cursor-grabbing pt-2 pb-4 -mx-5 px-5 sm:-mx-8 sm:px-8 touch-none select-none border-b border-white/10 relative z-20"
       >
-        {/* Swipe Handle Indicator */}
-        <div className="flex justify-center pt-1 pb-2">
-          <div className="w-12 h-1.5 rounded-full bg-white/30" />
+        {/* Expanded Swipe Handle Indicator */}
+        <div className="flex justify-center pt-1 pb-3 cursor-grab active:cursor-grabbing">
+          <div className="w-20 h-2 rounded-full bg-white/40 hover:bg-white/60 shadow-md transition-all" />
         </div>
 
         <div className="flex items-center justify-between">

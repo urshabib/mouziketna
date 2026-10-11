@@ -31,11 +31,13 @@ import {
   Check,
   X,
   Upload,
+  HelpCircle,
 } from 'lucide-react';
 import { TrackThumbImage } from '../services/useTrackThumb';
 import { Track, SongPlayStat } from '../types';
 import { AvatarCropperModal } from '../components/AvatarCropperModal';
 import { AccountSettingsModal } from '../components/AccountSettingsModal';
+import { SupportModal } from '../components/SupportModal';
 import { normalizeImageFile } from '../services/imageUtils';
 import { extractStatsFromProfile } from '../services/storage';
 
@@ -79,8 +81,9 @@ export const AccountView: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
 
-  // Account Settings Modal
+  // Account Settings Modal & Support Modal
   const [isAccountSettingsModalOpen, setIsAccountSettingsModalOpen] = useState(false);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -397,6 +400,17 @@ export const AccountView: React.FC = () => {
             >
               <KeyRound className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span>Account Settings</span>
+            </button>
+
+            {/* Support & Contact button */}
+            <button
+              type="button"
+              onClick={() => setIsSupportModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs transition-colors border border-white/10 cursor-pointer"
+              title="Open Support & Help Center"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Support</span>
             </button>
 
             {globalUser ? (
@@ -1258,6 +1272,12 @@ export const AccountView: React.FC = () => {
       <AccountSettingsModal
         isOpen={isAccountSettingsModalOpen}
         onClose={() => setIsAccountSettingsModalOpen(false)}
+      />
+
+      {/* Support & Help Center Modal */}
+      <SupportModal
+        isOpen={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
       />
     </div>
   );

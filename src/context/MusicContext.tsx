@@ -343,67 +343,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   }, []);
 
-  // Cross-device WebSocket & Redis Pub/Sub synchronization
+  // Multi-device playback synchronization listener
   useEffect(() => {
-    const unsubSuperseded = sessionManager.onSuperseded((evt) => {
-      if (audioRef.current && !audioRef.current.paused) {
-        audioRef.current.pause();
-      }
-      setIsPlaying(false);
-      setSupersededNotice(evt);
-      setIsRemotePlaybackActive(true);
-      setRemoteDeviceName(evt.byDevice);
-    });
+    // Unrestricted multi-device playback
+  }, []);
 
-    const unsubSync = sessionManager.onSyncUpdate((state) => {
-      const myDeviceId = sessionManager.getDeviceId();
-      const isRemote = Boolean(state.activeDeviceId && state.activeDeviceId !== myDeviceId);
-
-      if (isRemote) {
-        setIsRemotePlaybackActive(true);
-        setRemoteDeviceName(state.activeDeviceName || 'another device');
-        if (state.track) {
-          setActiveTrack(state.track);
-        }
-        if (typeof state.currentTime === 'number') {
-          setCurrentTime(state.currentTime);
-        }
-        if (state.duration > 0) {
-          setDuration(state.duration);
-        }
-        setIsPlaying(state.state === 'playing');
-
-        // Strictly keep audio element idle/paused on secondary device!
-        if (audioRef.current && !audioRef.current.paused) {
-          audioRef.current.pause();
-        }
-      } else if (state.activeDeviceId === myDeviceId) {
-        setIsRemotePlaybackActive(false);
-        setRemoteDeviceName(null);
-        setSupersededNotice(null);
-        if (state.state === 'paused') {
-          if (audioRef.current && !audioRef.current.paused) {
-            audioRef.current.pause();
-          }
-          setIsPlaying(false);
-        }
-      }
-    });
-
-    syncAccountPlaybackState();
-
-    return () => {
-      unsubSuperseded();
-      unsubSync();
-    };
-  }, [syncAccountPlaybackState]);
-
-  // Synchronize playback when user account changes (e.g. login in incognito or new session)
+  // Synchronize playback when user account changes
   useEffect(() => {
-    if (globalUser) {
-      syncAccountPlaybackState();
-    }
-  }, [globalUser, syncAccountPlaybackState]);
+    // Multi-device playback is fully unrestricted across devices
+  }, [globalUser]);
 
   // Playback state
   const [activeTrack, setActiveTrack] = useState<Track | null>(() => {
@@ -996,7 +944,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setGlobalUser(savedUser);
       setIsAuthGateOpen(false);
 
-      if (savedUser !== 'admin') {
+      if (savedUser) {
         const cached = restoreProfileFromCache(savedUser);
         if (cached) {
           if (cached.recentlyPlayed) {
@@ -1122,7 +1070,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       prof.lyricsGlow,
       prof.liquidGlassLevel
     );
-    if (!globalUser || globalUser === 'admin') {
+    if (!globalUser) {
       saveGuestProfile(prof);
       return;
     }
@@ -1306,7 +1254,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Two-way synchronization: pull latest cloud state, then push consolidated updates
   const forceProfileServerSync = useCallback(async (forcedProfile?: UserProfile): Promise<boolean> => {
-    if (!globalUser || globalUser === 'admin') return false;
+    if (!globalUser) return false;
     if (forcedProfile) {
       return flushProfileToServer(forcedProfile);
     }
@@ -1345,13 +1293,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         favouriteAlbums: cleanAlbums,
       };
       saveDeviceSettings(updated);
-      if (targetUser && targetUser !== 'admin') {
+      if (targetUser) {
         cacheProfileLocally(targetUser, updated);
       }
       return updated;
     });
 
-    if (targetUser && targetUser !== 'admin') {
+    if (targetUser) {
       const cleanProf: UserProfile = {
         ...userProfile,
         stats: resetStats,
@@ -1425,7 +1373,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       saveDeviceSettings(updated);
       const targetUser = globalUser || prev.username;
-      if (targetUser && targetUser !== 'admin') {
+      if (targetUser) {
         cacheProfileLocally(targetUser, updated);
         pendingSyncProfRef.current = updated;
         isSyncDirtyRef.current = true;
@@ -1499,7 +1447,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       saveDeviceSettings(updated);
       const targetUser = globalUser || prev.username;
-      if (targetUser && targetUser !== 'admin') {
+      if (targetUser) {
         cacheProfileLocally(targetUser, updated);
         pendingSyncProfRef.current = updated;
         isSyncDirtyRef.current = true;

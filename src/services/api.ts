@@ -1283,3 +1283,78 @@ export async function toggleUserEnabledStatus(username: string, enabled: boolean
     return { success: false, error: err.message || 'Network error' };
   }
 }
+
+export interface FeedbackItem {
+  id: string;
+  category: 'Report Problem' | 'Suggestion';
+  message: string;
+  username: string;
+  timestamp: number;
+}
+
+export async function submitFeedback(category: 'Report Problem' | 'Suggestion', message: string, username?: string): Promise<{ success: boolean; feedback?: FeedbackItem; error?: string }> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/feedback/submit`, 8000, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: JSON.stringify({ category, message, username }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || (data && data.error)) {
+      return { success: false, error: data?.error || 'Failed to submit feedback' };
+    }
+    return { success: true, feedback: data.feedback };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error' };
+  }
+}
+
+export async function fetchFeedbackList(): Promise<FeedbackItem[]> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/feedback`, 8000, {
+      headers: {
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.feedback) ? data.feedback : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteFeedbackItem(id: string): Promise<boolean> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/feedback/${encodeURIComponent(id)}`, 8000, {
+      method: 'DELETE',
+      headers: {
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function clearAllFeedback(): Promise<boolean> {
+  try {
+    const sessionToken = sessionManager.getSessionToken();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/feedback`, 8000, {
+      method: 'DELETE',
+      headers: {
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

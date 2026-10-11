@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { Track } from '../types';
-import { sessionManager, SupersededEvent, RemoteSyncState } from '../services/sessionManager';
+import { sessionManager, SupersededEvent } from '../services/sessionManager';
 
 export interface UsePlaybackSyncReturn {
   // Remote state
@@ -30,128 +30,39 @@ export interface UsePlaybackSyncReturn {
   dismissSupersededNotice: () => void;
 }
 
-/**
- * Client-Side State Hook: Server-Authoritative Playback Sync & Handover
- * Coordinates between active audio streaming on this device vs. remote display
- * synchronization when playback is active on a secondary device/tab.
- */
 export function usePlaybackSync(): UsePlaybackSyncReturn {
-  const [remoteSync, setRemoteSync] = useState<RemoteSyncState | null>(null);
-  const [supersededNotice, setSupersededNotice] = useState<SupersededEvent | null>(null);
-  const [connectionState, setConnectionState] = useState<'connected' | 'connecting' | 'disconnected'>('disconnected');
-  const [streamToken, setStreamToken] = useState<string | null>(sessionManager.getStreamToken());
-  const [leaseEpoch, setLeaseEpoch] = useState<number>(sessionManager.getLeaseEpoch());
-
   const currentDeviceId = sessionManager.getDeviceId();
   const currentDeviceName = sessionManager.getDeviceName();
 
-  // Determine if another device is currently holding the active playback lease
-  const isCurrentDeviceActive = sessionManager.isCurrentDeviceHoldingLease();
-  const isRemotePlaybackActive = Boolean(
-    remoteSync &&
-    remoteSync.activeDeviceId &&
-    remoteSync.activeDeviceId !== currentDeviceId &&
-    remoteSync.state === 'playing'
-  );
-
-  useEffect(() => {
-    // 1. Subscribe to WebSocket / SSE synchronization updates
-    const unsubscribeSync = sessionManager.onSyncUpdate((state: RemoteSyncState) => {
-      setRemoteSync(state);
-      setLeaseEpoch(state.leaseEpoch);
-      
-      // If server revoked our lease, reset stream token
-      if (state.activeDeviceId !== currentDeviceId) {
-        setStreamToken(null);
-      } else if (state.streamToken) {
-        setStreamToken(state.streamToken);
-      }
-    });
-
-    // 2. Subscribe to supersession notifications
-    const unsubscribeSuperseded = sessionManager.onSuperseded((evt: SupersededEvent) => {
-      setSupersededNotice(evt);
-      setStreamToken(null);
-    });
-
-    // 3. Monitor connection status
-    const unsubscribeConn = sessionManager.onConnectionStatusChange((status) => {
-      setConnectionState(status);
-    });
-
-    // 4. Initial status check
-    sessionManager.getSessionStatus().then((status) => {
-      if (status && status.lease) {
-        setRemoteSync(status.lease);
-        setLeaseEpoch(status.lease.leaseEpoch || 1);
-      }
-    });
-
-    return () => {
-      unsubscribeSync();
-      unsubscribeSuperseded();
-      unsubscribeConn();
-    };
-  }, [currentDeviceId]);
-
-  // Request atomic handover to this device
-  const claimPlayback = useCallback(async (track?: Track, startPos?: number): Promise<boolean> => {
-    setSupersededNotice(null);
-    const result = await sessionManager.claimPlaybackLease(
-      track ? { id: track.id, title: track.title, artist: track.artist, thumb: track.thumb } : undefined,
-      startPos
-    );
-
-    if (result.success && result.active) {
-      setStreamToken(result.streamToken || null);
-      if (result.leaseEpoch) setLeaseEpoch(result.leaseEpoch);
-      return true;
-    }
-    return false;
+  const claimPlayback = useCallback(async (): Promise<boolean> => {
+    return true;
   }, []);
 
-  // Voluntarily release playback lease
-  const releasePlayback = useCallback(async () => {
-    await sessionManager.releasePlaybackLease();
-    setStreamToken(null);
-  }, []);
+  const releasePlayback = useCallback(async () => {}, []);
 
-  // Broadcast throttled local time/state updates to secondary devices
-  const broadcastSync = useCallback((track: Track | null, currentTime: number, isPlaying: boolean) => {
-    if (sessionManager.isCurrentDeviceHoldingLease()) {
-      sessionManager.sendStateSync({
-        trackId: track?.id,
-        trackTitle: track?.title,
-        trackArtist: track?.artist,
-        trackThumb: track?.thumb,
-        currentTime,
-        isPlaying,
-      });
-    }
-  }, []);
+  const broadcastSync = useCallback(() => {}, []);
 
-  const dismissSupersededNotice = useCallback(() => {
-    setSupersededNotice(null);
-  }, []);
+  const dismissSupersededNotice = useCallback(() => {}, []);
 
   return {
-    isRemotePlaybackActive,
-    remoteDeviceName: remoteSync?.activeDeviceName || null,
-    remoteTrack: remoteSync?.track || null,
-    remoteCurrentTime: remoteSync?.currentTime || 0,
-    remoteDuration: remoteSync?.duration || 0,
-    remoteIsPlaying: remoteSync?.state === 'playing',
-    activeDeviceId: remoteSync?.activeDeviceId || null,
-    isCurrentDeviceActive,
+    isRemotePlaybackActive: false,
+    remoteDeviceName: null,
+    remoteTrack: null,
+    remoteCurrentTime: 0,
+    remoteDuration: 0,
+    remoteIsPlaying: false,
+    activeDeviceId: currentDeviceId,
+    isCurrentDeviceActive: true,
     currentDeviceName,
     currentDeviceId,
-    streamToken,
-    leaseEpoch,
+    streamToken: 'unrestricted_multi_device_stream',
+    leaseEpoch: 1,
     claimPlayback,
     releasePlayback,
     broadcastSync,
-    connectionState,
-    supersededNotice,
+    connectionState: 'connected',
+    supersededNotice: null,
     dismissSupersededNotice,
   };
 }
+

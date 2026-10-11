@@ -258,7 +258,7 @@ class SessionManager {
   }
 
   public isCurrentDeviceHoldingLease(): boolean {
-    return this.isHoldingLease;
+    return true;
   }
 
   public setCustomDeviceName(name: string) {

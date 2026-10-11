@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useMusic } from '../context/MusicContext';
 import {
   Settings,
@@ -39,6 +39,9 @@ import {
   Mail,
   ShieldAlert,
   AlertCircle,
+  Instagram,
+  Send,
+  MessageSquare,
 } from 'lucide-react';
 import { AccountSettingsModal } from '../components/AccountSettingsModal';
 import {
@@ -47,7 +50,7 @@ import {
   deleteAllDownloads,
   saveProgressBarStyle,
 } from '../services/storage';
-import { NEW_HUB_BACKEND, fetchWithTimeout } from '../services/api';
+import { NEW_HUB_BACKEND, fetchWithTimeout, submitFeedback } from '../services/api';
 import {
   LOGO_PRESETS,
   getAppLogoSrc,
@@ -350,6 +353,48 @@ export const SettingsView: React.FC = () => {
   const [isLyricsColorModalOpen, setIsLyricsColorModalOpen] = useState(false);
   const [isLyricsGalleryModalOpen, setIsLyricsGalleryModalOpen] = useState(false);
 
+  // Feedback form state
+  const [feedbackCategory, setFeedbackCategory] = useState<'Report Problem' | 'Suggestion'>('Report Problem');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackSentSuccess, setFeedbackSentSuccess] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const [feedbackCooldown, setFeedbackCooldown] = useState<number>(0);
+  const cooldownTimerRef = useRef<any>(null);
+
+  const handleSendFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedbackMessage.trim() || submittingFeedback || feedbackCooldown > 0) return;
+    setSubmittingFeedback(true);
+    setFeedbackError(null);
+    const res = await submitFeedback(feedbackCategory, feedbackMessage, globalUser || userProfile.username);
+    setSubmittingFeedback(false);
+    if (res.success) {
+      setFeedbackSentSuccess(true);
+      setFeedbackMessage('');
+      setFeedbackCooldown(30);
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+      cooldownTimerRef.current = setInterval(() => {
+        setFeedbackCooldown((prev) => {
+          if (prev <= 1) {
+            if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      setTimeout(() => setFeedbackSentSuccess(false), 5000);
+    } else {
+      setFeedbackError(res.error || 'Failed to submit feedback');
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (cooldownTimerRef.current) clearInterval(cooldownTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     const check =
       window.matchMedia('(display-mode: standalone)').matches ||
@@ -457,7 +502,6 @@ export const SettingsView: React.FC = () => {
       presetTint: preset.tint,
       activePreset: preset.id,
     });
-    showToast(`"${preset.name}" theme applied`);
   };
 
   const handleTriggerInstall = async () => {
@@ -536,12 +580,12 @@ export const SettingsView: React.FC = () => {
             </h3>
           </div>
 
-          {/* Manual Download Quality Card - ASCENDING ORDER */}
+          {/* Manual Download Quality Card */}
           <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <div>
                 <h4 className="font-bold text-sm text-white flex items-center gap-2">
-                  <span>{t('settings.downloadQuality', 'Download Audio Quality')}</span>
+                  <span>Manual Download Quality</span>
                   <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
                     {t('settings.offlineTracks', 'Offline Tracks')}
                   </span>
@@ -552,37 +596,12 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            {/* Ascending Order Quality Grid (Lowest data-saver to highest studio master) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+            {/* 3-Button Horizontal Selector matching Auto-download quality directly below */}
+            <div className="flex items-center justify-center bg-black/50 p-1.5 rounded-xl border border-white/10 gap-1.5 w-full">
               {[
-                {
-                  id: 'ultra',
-                  title: 'Ultra Saver',
-                  kbps: '48 kbps',
-                  desc: 'Minimal data & storage',
-                  badge: '48k',
-                },
-                {
-                  id: 'saver',
-                  title: 'Data Saver',
-                  kbps: '96 kbps',
-                  desc: 'Fast cellular download',
-                  badge: '96k',
-                },
-                {
-                  id: 'stable',
-                  title: 'Standard',
-                  kbps: '160 kbps',
-                  desc: 'Balanced studio sound',
-                  badge: '160k',
-                },
-                {
-                  id: 'high',
-                  title: 'Studio High',
-                  kbps: '320 kbps',
-                  desc: 'Maximum master fidelity',
-                  badge: '320k',
-                },
+                { id: 'saver', label: 'Data Saver', sub: '96k' },
+                { id: 'stable', label: 'Standard', sub: '160k' },
+                { id: 'high', label: 'Studio High', sub: '320k' },
               ].map((tier) => {
                 const current = userProfile.downloadQuality || 'stable';
                 const isSelected = current === tier.id;
@@ -598,25 +617,16 @@ export const SettingsView: React.FC = () => {
                         dataSaver: tier.id !== 'high' && tier.id !== 'stable',
                       });
                     }}
-                    className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-1.5 transition-all cursor-pointer ${
+                    className={`flex-1 text-center py-2.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       isSelected
-                        ? 'border-[var(--accent)] bg-[var(--accent)]/15 shadow-md shadow-[var(--accent)]/10'
-                        : 'border-white/5 bg-black/40 hover:bg-white/5'
+                        ? 'bg-[var(--accent)] text-black shadow-md font-extrabold scale-[1.02]'
+                        : 'text-white/60 hover:text-white hover:bg-white/5'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-1">
-                      <div className="font-bold text-xs text-white leading-tight">{tier.title}</div>
-                      {isSelected ? (
-                        <Check className="w-3.5 h-3.5 text-[var(--accent)] stroke-[3] flex-shrink-0" />
-                      ) : (
-                        <span className="text-[10px] text-white/30 font-medium">{tier.kbps}</span>
-                      )}
-                    </div>
-                    <p className="text-[10px] text-white/50 leading-snug line-clamp-1">{tier.desc}</p>
-                    <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[10px]">
-                      <span className="text-[var(--accent)] font-semibold">{tier.kbps}</span>
-                      <span className="text-white/40">{tier.badge}</span>
-                    </div>
+                    <span>{tier.label}</span>{' '}
+                    <span className={`text-[10px] ${isSelected ? 'text-black/70 font-bold' : 'text-white/40'}`}>
+                      ({tier.sub})
+                    </span>
                   </button>
                 );
               })}
@@ -830,11 +840,11 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+            <div className="grid grid-cols-3 gap-2.5 pt-1">
               {[
-                { id: 'en', name: t('settings.english', 'English'), native: 'English', flag: '🇬🇧' },
-                { id: 'fr', name: t('settings.french', 'Français'), native: 'Français', flag: '🇫🇷' },
-                { id: 'ar', name: t('settings.arabic', 'العربية'), native: 'العربية', flag: '🇹🇳' },
+                { id: 'en', name: 'English', flag: '🇬🇧' },
+                { id: 'fr', name: 'French', flag: '🇫🇷' },
+                { id: 'ar', name: 'Arabic', flag: '🇸🇦' },
               ].map((langOption) => {
                 const isSelected = (userProfile.language || 'en') === langOption.id;
                 return (
@@ -843,25 +853,19 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setLanguage(langOption.id as any);
-                      showToast(`Language changed to ${langOption.native}`, true);
                     }}
-                    className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                    className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col items-center justify-center text-center gap-1.5 transition-all cursor-pointer ${
                       isSelected
                         ? 'border-[var(--accent)] bg-[var(--accent)]/15 text-white font-extrabold shadow-lg scale-[1.02]'
                         : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10 hover:text-white'
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg">{langOption.flag}</span>
-                      <div className="flex flex-col">
-                        <span className="text-xs font-bold text-white">{langOption.native}</span>
-                        <span className="text-[10px] text-white/40">{langOption.name}</span>
-                      </div>
-                    </div>
+                    <span className="text-2xl sm:text-3xl">{langOption.flag}</span>
+                    <span className="text-xs font-bold text-white">{langOption.name}</span>
                     {isSelected && (
-                      <div className="w-4 h-4 rounded-full bg-[var(--accent)] text-black flex items-center justify-center flex-shrink-0">
-                        <Check className="w-2.5 h-2.5 stroke-[3]" />
-                      </div>
+                      <span className="text-[10px] font-extrabold text-[var(--accent)] flex items-center gap-1 mt-0.5">
+                        <Check className="w-3 h-3 stroke-[3]" /> Active
+                      </span>
                     )}
                   </button>
                 );
@@ -870,7 +874,17 @@ export const SettingsView: React.FC = () => {
           </div>
 
           {/* Liquid Glass Blur (Clean 3-Box Selector) */}
-          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+          <div id="liquid-glass-section" className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+            <div>
+              <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-[var(--accent)]" />
+                <span>iOS Liquid Glass</span>
+              </h4>
+              <p className="text-xs text-white/50 mt-0.5">
+                Translucent frosted glass blur effects across panels, player bars, and overlays.
+              </p>
+            </div>
+
             {/* Container with background element/graphic showcasing refractive blur */}
             <div className="relative rounded-2xl p-3 overflow-hidden border border-white/10 bg-[#09090c]">
               {/* Refractive background graphic elements */}
@@ -915,7 +929,6 @@ export const SettingsView: React.FC = () => {
                           liquidGlass: opt.id !== 'off',
                           liquidGlassLevel: opt.id as any,
                         });
-                        showToast(`Liquid glass set to ${opt.label}`);
                       }}
                       className={`p-3 rounded-xl border text-left flex flex-col justify-between gap-2.5 transition-all cursor-pointer ${
                         isSelected
@@ -1268,8 +1281,8 @@ export const SettingsView: React.FC = () => {
             </h3>
           </div>
 
-          {/* Consolidated 4-Square Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Consolidated 2x2 Square Grid */}
+          <div className="grid grid-cols-2 gap-3">
             {/* Square 1: Offline Storage Size + Clear */}
             <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col justify-between gap-3">
               <div>
@@ -1513,6 +1526,153 @@ export const SettingsView: React.FC = () => {
           </div>
         </section>
       )}
+
+      {/* 5. CONTACT & FEEDBACK SYSTEM */}
+      <section id="support-section" className="flex flex-col gap-4 scroll-mt-20">
+        <div className="flex items-center gap-2 pb-1 border-b border-white/10">
+          <MessageSquare className="w-4 h-4 text-[var(--accent)]" />
+          <h3 className="font-extrabold text-xs uppercase tracking-wider text-white/70">
+            Contact & Support
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Official Contact Links */}
+          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col justify-between gap-4">
+            <div>
+              <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                <Globe className="w-4 h-4 text-[var(--accent)]" />
+                <span>Official Contact & Socials</span>
+              </h4>
+              <p className="text-xs text-white/50 mt-1">
+                Follow our official handles for news, support, and feature updates.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2.5">
+              <a
+                href="https://www.instagram.com/mouziketna"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-between transition-all group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-md">
+                    <Instagram className="w-4 h-4" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-white group-hover:text-[var(--accent)] transition-colors">
+                      Instagram
+                    </span>
+                    <span className="text-[11px] font-mono text-white/50">@mouziketna</span>
+                  </div>
+                </div>
+                <ExternalLink className="w-4 h-4 text-white/30 group-hover:text-white transition-colors" />
+              </a>
+
+              <a
+                href="https://www.tiktok.com/@mouziketna.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-between transition-all group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-black border border-white/20 flex items-center justify-center text-white shadow-md">
+                    <svg className="w-4 h-4 fill-white" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12.525 0h3.08c.012 1.636.667 3.12 1.77 4.215 1.104 1.096 2.597 1.745 4.225 1.755v3.132a8.88 8.88 0 0 1-5.995-2.316v8.423c0 4.14-3.36 7.5-7.5 7.5a7.502 7.502 0 0 1-7.5-7.5c0-4.14 3.36-7.5 7.5-7.5.42 0 .83.035 1.23.102V10.93a4.34 4.34 0 0 0-1.23-.18 4.368 4.368 0 0 0-4.368 4.368 4.368 4.368 0 0 0 4.368 4.368c2.41 0 4.368-1.958 4.368-4.368V0z"/>
+                    </svg>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-white group-hover:text-[var(--accent)] transition-colors">
+                      TikTok
+                    </span>
+                    <span className="text-[11px] font-mono text-white/50">@mouziketna.app</span>
+                  </div>
+                </div>
+                <ExternalLink className="w-4 h-4 text-white/30 group-hover:text-white transition-colors" />
+              </a>
+            </div>
+          </div>
+
+          {/* Report Problem / Suggestion Submission Form */}
+          <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-3">
+            <div>
+              <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                <Send className="w-4 h-4 text-[var(--accent)]" />
+                <span>Submit Report or Suggestion</span>
+              </h4>
+              <p className="text-xs text-white/50 mt-0.5">
+                Have a feature idea or running into an issue? Send a message directly to the admin inbox.
+              </p>
+            </div>
+
+            <form onSubmit={handleSendFeedback} className="flex flex-col gap-3 pt-1">
+              {/* Category Selector */}
+              <div className="flex gap-2">
+                {(['Report Problem', 'Suggestion'] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setFeedbackCategory(cat)}
+                    className={`flex-1 py-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer ${
+                      feedbackCategory === cat
+                        ? 'bg-[var(--accent)] text-black border-[var(--accent)] shadow-md'
+                        : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    {cat === 'Report Problem' ? '🚨 Report Problem' : '💡 Suggestion'}
+                  </button>
+                ))}
+              </div>
+
+              {/* Message Textarea */}
+              <textarea
+                value={feedbackMessage}
+                onChange={(e) => setFeedbackMessage(e.target.value)}
+                placeholder={
+                  feedbackCategory === 'Report Problem'
+                    ? 'Describe the problem or error you experienced...'
+                    : 'Describe your recommendation or new feature idea...'
+                }
+                rows={3}
+                required
+                className="w-full p-3 rounded-xl bg-black/40 border border-white/15 focus:border-[var(--accent)] text-white text-xs font-medium placeholder:text-white/30 focus:outline-none resize-none transition-colors"
+              />
+
+              {feedbackSentSuccess && (
+                <div className="p-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>Thank you! Your message has been sent to the admin inbox.</span>
+                </div>
+              )}
+
+              {feedbackError && (
+                <div className="p-2.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                  <span>{feedbackError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submittingFeedback || feedbackCooldown > 0 || !feedbackMessage.trim()}
+                className="w-full py-2.5 rounded-xl bg-[var(--accent)] hover:brightness-110 active:scale-98 text-black font-extrabold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {submittingFeedback ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : feedbackCooldown > 0 ? (
+                  <span>Please wait {feedbackCooldown}s to submit again</span>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Send Message</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      </section>
 
       {/* Generous Bottom Clearance Spacer so all buttons scroll far above the floating mini player and nav bar */}
       <div className="w-full h-40 md:h-24 flex-shrink-0" />
@@ -1809,7 +1969,6 @@ export const SettingsView: React.FC = () => {
                     type="button"
                     onClick={() => {
                       syncProfile({ ...userProfile, lyricsFont: f.id as any });
-                      showToast(`Typography set to ${f.label}`);
                     }}
                     className={`p-3.5 rounded-2xl border text-left flex flex-col justify-between gap-2 transition-all cursor-pointer ${
                       isSelected

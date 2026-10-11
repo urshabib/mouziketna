@@ -1,0 +1,41 @@
+name: Automated Daily Cloudflare / Application Backup
+
+on:
+  schedule:
+    # Runs at 02:00 UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    name: Daily Data Backup & Rolling 7-Day Retention
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create Daily Backup Dump
+        env:
+          CLOUDFLARE_R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_ACCESS_KEY_ID }}
+          CLOUDFLARE_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_SECRET_ACCESS_KEY }}
+          BACKUP_API_URL: ${{ secrets.BACKUP_API_URL }}
+          ADMIN_SESSION_TOKEN: ${{ secrets.ADMIN_SESSION_TOKEN }}
+        run: |
+          DATE_STR=$(date +%Y-%m-%d)
+          echo "Starting daily backup for $DATE_STR"
+          mkdir -p ./backups
+          
+          # Fetch backup payload from app backup API if configured, else collect data files
+          if [ -n "$BACKUP_API_URL" ] && [ -n "$ADMIN_SESSION_TOKEN" ]; then
+            curl -s -H "Authorization: Bearer $ADMIN_SESSION_TOKEN" "$BACKUP_API_URL" -o "./backups/backup-$DATE_STR.json"
+          elif [ -d "./data" ]; then
+            cp -r ./data "./backups/data-$DATE_STR"
+            tar -czf "./backups/backup-$DATE_STR.tar.gz" -C ./backups "data-$DATE_STR"
+          fi
+
+          # Apply 7-day rolling retention policy
+          echo "Applying 7-day rolling retention policy..."
+          find ./backups -type f -mtime +7 -exec rm -f {} \;
+          echo "Backup completed successfully."

@@ -30,7 +30,18 @@ import {
   Download,
   FileText,
 } from 'lucide-react';
-import { NEW_HUB_BACKEND, fetchWithTimeout, fetchJsonRetry, fetchAdminSettings, updateAdminSettings, toggleUserEnabledStatus } from '../services/api';
+import {
+  NEW_HUB_BACKEND,
+  fetchWithTimeout,
+  fetchJsonRetry,
+  fetchAdminSettings,
+  updateAdminSettings,
+  toggleUserEnabledStatus,
+  FeedbackItem,
+  fetchFeedbackList,
+  deleteFeedbackItem,
+  clearAllFeedback,
+} from '../services/api';
 import { sessionManager } from '../services/sessionManager';
 
 interface AdminUserRecord {
@@ -68,6 +79,10 @@ export const AdminView: React.FC = () => {
   const [savingPassword, setSavingPassword] = useState(false);
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  // Inbox / Feedback state
+  const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
+  const [deletingFeedbackId, setDeletingFeedbackId] = useState<string | null>(null);
+  const [clearingAllFeedback, setClearingAllFeedback] = useState(false);
 
   // Cloudflare guide modal state
   const [showCloudflareGuide, setShowCloudflareGuide] = useState(false);
@@ -254,7 +269,7 @@ export const AdminView: React.FC = () => {
     setLoading(true);
     try {
       const sessionToken = sessionManager.getSessionToken();
-      const [usersData, settingsData] = await Promise.all([
+      const [usersData, settingsData, feedbackData] = await Promise.all([
         fetchJsonRetry<any>(
           `${NEW_HUB_BACKEND}/api/list-users`,
           3,
@@ -262,6 +277,7 @@ export const AdminView: React.FC = () => {
           sessionToken ? { headers: { Authorization: `Bearer ${sessionToken}` } } : undefined
         ).catch(() => ({ users: [] })),
         fetchAdminSettings().catch(() => ({ autoEnable: false })),
+        fetchFeedbackList().catch(() => []),
       ]);
 
       if (usersData && Array.isArray(usersData.users)) {
@@ -273,11 +289,42 @@ export const AdminView: React.FC = () => {
       }
 
       setAutoEnable(settingsData.autoEnable);
+      setFeedbackList(feedbackData);
     } catch {
-      showToast('Could not load users list from server', true);
+      showToast('Could not load admin data from server', true);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteFeedback = async (id: string) => {
+    setDeletingFeedbackId(id);
+    const ok = await deleteFeedbackItem(id);
+    setDeletingFeedbackId(null);
+    if (ok) {
+      setFeedbackList((prev) => prev.filter((f) => f.id !== id));
+      showToast('Message deleted');
+    } else {
+      showToast('Failed to delete message', true);
+    }
+  };
+
+  const handleClearAllFeedback = () => {
+    setModalConfirm({
+      title: 'Clear All Feedback Inbox Messages?',
+      text: 'Are you sure you want to permanently delete all incoming report and suggestion messages? This action cannot be undone.',
+      onConfirm: async () => {
+        setClearingAllFeedback(true);
+        const ok = await clearAllFeedback();
+        setClearingAllFeedback(false);
+        if (ok) {
+          setFeedbackList([]);
+          showToast('Feedback inbox cleared');
+        } else {
+          showToast('Failed to clear feedback inbox', true);
+        }
+      },
+    });
   };
 
   useEffect(() => {
@@ -758,57 +805,6 @@ export const AdminView: React.FC = () => {
                             </span>
                           </>
                         )}
-
-                        {u.password && u.password !== 'mouzika' ? (
-                          <>
-                            <span>•</span>
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/70">
-                              <Lock className="w-2.5 h-2.5 text-white/40" />
-                              <span className="font-mono text-[10px]">
-                                {revealedPasswords[u.username] ? u.password : '••••••••'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setRevealedPasswords((prev) => ({
-                                    ...prev,
-                                    [u.username]: !prev[u.username],
-                                  }))
-                                }
-                                className="text-white/40 hover:text-white"
-                                title={revealedPasswords[u.username] ? 'Hide password' : 'Show password'}
-                              >
-                                {revealedPasswords[u.username] ? (
-                                  <EyeOff className="w-3 h-3" />
-                                ) : (
-                                  <Eye className="w-3 h-3" />
-                                )}
-                              </button>
-                              {revealedPasswords[u.username] && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopy(u.password!, `pass_${u.username}`)}
-                                  className="text-white/40 hover:text-white ml-0.5"
-                                  title="Copy password"
-                                >
-                                  {copiedKey === `pass_${u.username}` ? (
-                                    <Check className="w-2.5 h-2.5 text-emerald-400" />
-                                  ) : (
-                                    <Copy className="w-2.5 h-2.5" />
-                                  )}
-                                </button>
-                              )}
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <span>•</span>
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-white/40 text-[10px] italic">
-                              <Lock className="w-2.5 h-2.5 text-white/30" />
-                              <span>Password not captured</span>
-                            </span>
-                          </>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -909,6 +905,95 @@ export const AdminView: React.FC = () => {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Admin Feedback Inbox (Reports & Suggestions) */}
+      <div className="p-6 sm:p-7 rounded-3xl bg-white/[0.03] glass-panel border border-white/10 flex flex-col gap-5 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-black text-lg text-white flex items-center gap-2.5">
+              <Mail className="w-5 h-5 text-[var(--accent)]" />
+              <span>Feedback Inbox ({feedbackList.length})</span>
+            </h3>
+            <p className="text-xs text-white/50 mt-0.5">
+              Incoming bug reports and feature suggestions submitted by users from Settings.
+            </p>
+          </div>
+
+          {feedbackList.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAllFeedback}
+              disabled={clearingAllFeedback}
+              className="px-3.5 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 hover:text-red-300 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 self-start sm:self-auto"
+            >
+              {clearingAllFeedback ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+              <span>Clear All Messages</span>
+            </button>
+          )}
+        </div>
+
+        {feedbackList.length === 0 ? (
+          <div className="p-8 text-center bg-white/[0.02] rounded-2xl border border-white/5">
+            <Mail className="w-8 h-8 mx-auto text-white/20 mb-2" />
+            <p className="text-sm font-bold text-white/70">Inbox is empty</p>
+            <p className="text-xs text-white/40 mt-1">
+              No reports or suggestions have been submitted yet.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {feedbackList.map((item) => (
+              <div
+                key={item.id}
+                className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col gap-2 relative group hover:bg-white/[0.05] transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                        item.category === 'Report Problem'
+                          ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                          : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      }`}
+                    >
+                      {item.category === 'Report Problem' ? '🚨 Report Problem' : '💡 Suggestion'}
+                    </span>
+                    <span className="text-xs font-extrabold text-white">@{item.username}</span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-mono text-white/40">
+                      {new Date(item.timestamp).toLocaleString()}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFeedback(item.id)}
+                      disabled={deletingFeedbackId === item.id}
+                      className="p-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-400 transition-colors cursor-pointer"
+                      title="Delete message"
+                    >
+                      {deletingFeedbackId === item.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-white/80 leading-relaxed font-medium whitespace-pre-wrap">
+                  {item.message}
+                </p>
+              </div>
+            ))}
           </div>
         )}
       </div>

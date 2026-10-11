@@ -41,7 +41,7 @@ type PlatformTab = 'android' | 'ios' | 'desktop';
 const INSTALL_TAB_STORAGE_KEY = 'install_modal_active_tab';
 
 export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) => {
-  const { userProfile, syncProfile } = useMusic();
+  const { userProfile, syncProfile, t } = useMusic();
   const [activeTab, setActiveTab] = useState<PlatformTab>(() => {
     try {
       const saved = localStorage.getItem(INSTALL_TAB_STORAGE_KEY);
@@ -202,10 +202,10 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
             </div>
             <div className="min-w-0">
               <h3 className="font-black text-base sm:text-lg text-white leading-tight truncate">
-                Install {appName || DEFAULT_APP_NAME}
+                {t('modal.installApp', 'Install App')} • {appName || DEFAULT_APP_NAME}
               </h3>
               <p className="text-[11px] text-[#ff6b1a] font-semibold">
-                Standalone App • Offline Ready
+                {t('common.offline', 'Standalone App • Offline Ready')}
               </p>
             </div>
           </div>
@@ -257,7 +257,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   className="flex items-center gap-1.5 text-xs font-bold text-white/90"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                  <span>Home Screen App Shortcut Name</span>
+                  <span>{t('settings.shortcutName', 'Home Screen App Shortcut Name')}</span>
                 </label>
                 {appName !== DEFAULT_APP_NAME && (
                   <button
@@ -296,7 +296,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 text-xs font-bold text-white/90">
                   <Palette className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                  <span>App Logo & Icon</span>
+                  <span>{t('settings.appIdentity', 'App Logo & Icon')}</span>
                 </span>
                 <button
                   type="button"
@@ -345,7 +345,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                 className="w-full py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white/90 flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <UploadCloud className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                <span>Upload & Crop Custom Picture</span>
+                <span>{t('settings.uploadCustomPic', 'Upload & Crop Custom Picture...')}</span>
               </button>
 
               {/* File placement instructions (if user wants to download/paste files) */}
@@ -412,7 +412,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   className="w-full py-3.5 px-5 rounded-2xl bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-[0.98] text-black font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#ff6b1a]/20 transition-all cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Install App Now</span>
+                  <span>{t('settings.installAppBtn', 'Install App Now')}</span>
                 </button>
 
                 <div className="flex flex-col gap-2.5 bg-white/[0.03] border border-white/5 p-3.5 rounded-2xl">

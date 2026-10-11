@@ -333,10 +333,109 @@ if (!fs.existsSync(DATA_DIR)) {
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+const FEEDBACK_FILE = path.join(DATA_DIR, 'feedback.json');
+const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
+
+if (!fs.existsSync(BACKUPS_DIR)) {
+  try { fs.mkdirSync(BACKUPS_DIR, { recursive: true }); } catch {}
+}
+
+export interface FeedbackRecord {
+  id: string;
+  category: 'Report Problem' | 'Suggestion';
+  message: string;
+  username: string;
+  timestamp: number;
+}
 
 const usersMap = new Map<string, UserRecord>();
 const profilesMap = new Map<string, any>();
+let feedbackList: FeedbackRecord[] = [];
 let serverSettings: ServerSettings = { autoEnable: false };
+
+function loadFeedbackStore() {
+  try {
+    if (fs.existsSync(FEEDBACK_FILE)) {
+      const raw = fs.readFileSync(FEEDBACK_FILE, 'utf-8');
+      const data = JSON.parse(raw);
+      if (Array.isArray(data)) {
+        feedbackList = data;
+      }
+    }
+  } catch (e) {
+    console.warn('[Server] Could not load feedback.json:', e);
+  }
+}
+
+function saveFeedbackStore() {
+  try {
+    fs.writeFileSync(FEEDBACK_FILE, JSON.stringify(feedbackList, null, 2));
+  } catch (e) {
+    console.warn('[Server] Could not save feedback.json:', e);
+  }
+}
+
+function runAutomatedDailyBackup() {
+  try {
+    const dateStr = new Date().toISOString().split('T')[0];
+    const backupFilePath = path.join(BACKUPS_DIR, `backup-${dateStr}.json`);
+
+    if (!fs.existsSync(backupFilePath)) {
+      const allUsersProfiles: any[] = [];
+      for (const u of usersMap.values()) {
+        const clean = cleanUsername(u.username);
+        let prof = profilesMap.get(clean) || {};
+        allUsersProfiles.push({
+          username: u.username,
+          password: u.password,
+          isAdmin: u.isAdmin,
+          enabled: u.enabled !== false,
+          createdAt: u.createdAt,
+          email: u.email || prof?.email,
+          displayName: prof?.displayName,
+          avatarUrl: prof?.avatarUrl,
+          customPlaylists: prof?.customPlaylists || [],
+          likedSongs: prof?.likedSongs || [],
+          favouriteArtists: prof?.favouriteArtists || [],
+          favouriteAlbums: prof?.favouriteAlbums || [],
+          recentlyPlayed: prof?.recentlyPlayed || [],
+          stats: prof?.stats,
+          updatedAt: Date.now(),
+        });
+      }
+      const dump = {
+        backup: true,
+        type: 'mouzika_all_users_backup',
+        date: dateStr,
+        generatedAt: Date.now(),
+        totalUsers: allUsersProfiles.length,
+        users: allUsersProfiles,
+        feedback: feedbackList,
+      };
+      fs.writeFileSync(backupFilePath, JSON.stringify(dump, null, 2), 'utf-8');
+      console.log(`[Backup] Automated daily backup created: backup-${dateStr}.json`);
+    }
+
+    // 7-day rolling retention policy: delete backups older than 7 days
+    const now = Date.now();
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const files = fs.readdirSync(BACKUPS_DIR);
+    for (const file of files) {
+      if (file.startsWith('backup-') && file.endsWith('.json')) {
+        const filePath = path.join(BACKUPS_DIR, file);
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs > SEVEN_DAYS_MS) {
+          try {
+            fs.unlinkSync(filePath);
+            console.log(`[Backup] Deleted backup older than 7 days: ${file}`);
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Backup] Failed to run automated daily backup:', err);
+  }
+}
 
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
@@ -629,6 +728,9 @@ async function syncUsersFromUpstream() {
 
 loadUsersStore();
 loadProfilesStore();
+loadFeedbackStore();
+runAutomatedDailyBackup();
+setInterval(runAutomatedDailyBackup, 24 * 60 * 60 * 1000);
 syncUsersFromUpstream().catch(() => {});
 
 // =========================================================================
@@ -2557,6 +2659,47 @@ app.post('/api/admin/settings', requireAdmin, (req: Request, res: Response) => {
     saveServerSettings();
   }
   return res.json({ success: true, autoEnable: Boolean(serverSettings.autoEnable) });
+});
+
+// Feedback / Report & Suggestion APIs
+app.post('/api/feedback/submit', (req: Request, res: Response) => {
+  const { category, message, username } = req.body || {};
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({ error: 'Message is required' });
+  }
+  const session = extractSession(req);
+  const sender = username || session?.username || 'Anonymous';
+  const item: FeedbackRecord = {
+    id: `fb_${Date.now()}_${generateSecureToken(6)}`,
+    category: category === 'Suggestion' ? 'Suggestion' : 'Report Problem',
+    message: message.trim(),
+    username: sender,
+    timestamp: Date.now(),
+  };
+  feedbackList.unshift(item);
+  saveFeedbackStore();
+  return res.json({ success: true, feedback: item });
+});
+
+app.get('/api/admin/feedback', requireAdmin, (_req: Request, res: Response) => {
+  return res.json({ feedback: feedbackList });
+});
+
+app.delete('/api/admin/feedback/:id', requireAdmin, (req: Request, res: Response) => {
+  const { id } = req.params;
+  const initialLen = feedbackList.length;
+  feedbackList = feedbackList.filter((f) => f.id !== id);
+  if (feedbackList.length < initialLen) {
+    saveFeedbackStore();
+    return res.json({ success: true, message: 'Feedback deleted successfully' });
+  }
+  return res.status(404).json({ error: 'Feedback not found' });
+});
+
+app.delete('/api/admin/feedback', requireAdmin, (_req: Request, res: Response) => {
+  feedbackList = [];
+  saveFeedbackStore();
+  return res.json({ success: true, message: 'All feedback cleared successfully' });
 });
 
 // 3. Logout & Session Revocation
