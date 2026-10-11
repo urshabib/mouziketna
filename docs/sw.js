@@ -116,13 +116,21 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Audio streams / media / dynamic APIs shouldn't break if offline or caching fails
-  const isAudioOrStream = event.request.destination === 'audio' ||
-                          pathname.includes('.mp3') ||
-                          pathname.includes('.m4a') ||
-                          pathname.includes('/api/');
+  // Audio streams & media requests (including Range headers)
+  // Let the browser's native network engine handle media streaming natively
+  const isAudioOrMedia =
+    event.request.destination === 'audio' ||
+    event.request.headers.has('range') ||
+    pathname.includes('.mp3') ||
+    pathname.includes('.m4a') ||
+    pathname.includes('.mp4');
 
-  if (isAudioOrStream) {
+  if (isAudioOrMedia) {
+    return;
+  }
+
+  // Dynamic APIs
+  if (pathname.includes('/api/')) {
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
     return;
   }

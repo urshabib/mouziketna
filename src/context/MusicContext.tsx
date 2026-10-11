@@ -705,6 +705,26 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 1800);
   }, []);
 
+  // WakeLock & Audio Session Management
+  const wakeLockRef = useRef<any>(null);
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator && (navigator as any).wakeLock?.request) {
+        if (!wakeLockRef.current) {
+          wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        }
+      }
+    } catch {}
+  };
+  const releaseWakeLock = async () => {
+    try {
+      if (wakeLockRef.current) {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      }
+    } catch {}
+  };
+
   // Initialize audio elements
   useEffect(() => {
     const audio = new Audio();
@@ -727,6 +747,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const onPlay = () => {
       setIsPlaying(true);
       ensureAudioGraph(audio);
+      requestWakeLock();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
       }
@@ -734,6 +755,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const onPause = () => {
       setIsPlaying(false);
       setIsBuffering(false);
+      releaseWakeLock();
       if (audio && audio.currentTime >= 0) {
         try {
           localStorage.setItem('mouzika_last_played_pos', String(Math.floor(audio.currentTime)));
@@ -762,6 +784,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const onPlaying = () => {
       isSeekingRef.current = false;
       setIsBuffering(false);
+      requestWakeLock();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
       }
@@ -817,10 +840,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Auto prefetch check: trigger at 25s left in song, or once track has played for 12s
+      // Auto prefetch check: trigger at 30s left in song, or once track has played for 8s
       if (
         !hasPrefetchedNextRef.current &&
-        ((audio.duration > 20 && audio.duration - audio.currentTime <= 25) || audio.currentTime >= 12)
+        ((audio.duration > 15 && audio.duration - audio.currentTime <= 30) || audio.currentTime >= 8)
       ) {
         hasPrefetchedNextRef.current = true;
         prefetchNextSong();
@@ -850,14 +873,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Auto-reconnect & self-heal if audio stream encounters an unexpected network stall or disconnect
     const onAudioError = () => {
       // NEVER reconnect or reload track if user was actively seeking or sought recently!
-      // When seeking, browser cancels previous stream range requests which dispatches transient error codes.
-      // Reconnecting here would restart the track and make audio play twice!
       const timeSinceSeek = Date.now() - lastSeekTimestampRef.current;
       if (isSeekingRef.current || (audio && audio.seeking) || timeSinceSeek < 6000) {
         console.warn('Ignoring transient audio range abort during/after seek');
         return;
       }
-      // If error is code 1 (MEDIA_ERR_ABORTED), it was intentionally aborted by the browser
       if (audio?.error?.code === 1) {
         console.warn('Ignoring MEDIA_ERR_ABORTED on audio element');
         return;
@@ -887,10 +907,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onAudioError);
 
-    // Keep background audio active when screen turns off or locks on iPhone / iOS
+    // Keep background audio active when screen turns off or locks on iPhone / iOS & Android
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'hidden' && audioRef.current) {
-        // If track was playing and screen is turned off, ensure playback stays active
+      if (document.visibilityState === 'visible') {
+        if (audioRef.current && !audioRef.current.paused) {
+          requestWakeLock();
+        }
+      } else if (document.visibilityState === 'hidden' && audioRef.current) {
         if (!audioRef.current.paused && audioRef.current.currentTime > 0) {
           if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'playing';
@@ -2359,11 +2382,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       artist: track.artist,
     }).catch(() => {});
 
-    // Immediately stop and reset previous audio to prevent playing wrong song
+    // Pause previous playback cleanly without destroying audio element session in background
     try {
       audio.pause();
-      audio.removeAttribute('src');
-      audio.load();
     } catch {}
 
     hasPrefetchedNextRef.current = false;
@@ -2572,8 +2593,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setIsBuffering(false);
         try {
           audio.pause();
-          audio.removeAttribute('src');
-          audio.load();
         } catch {}
         showToast('Sources are resolving. Please wait a moment or tap track again.', true);
       }
@@ -2614,8 +2633,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsBuffering(false);
       try {
         audio.pause();
-        audio.removeAttribute('src');
-        audio.load();
       } catch {}
       showToast('Playback connection issue. Tap track to retry.', true);
       return false;
