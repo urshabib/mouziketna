@@ -273,6 +273,30 @@ export const HomeView: React.FC = () => {
 
   return (
     <div className="flex flex-col gap-10 pb-20 select-none">
+      {/* Offline Mode Alert CTA Banner when disconnected */}
+      {(typeof navigator !== 'undefined' && !navigator.onLine) && (
+        <div className="w-full bg-amber-500/15 border border-amber-500/30 rounded-3xl p-5 shadow-xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <RefreshCw className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-sm text-white">You are currently offline</h4>
+              <p className="text-xs text-white/60 mt-0.5">
+                Listen to your downloaded songs and playlists in the Offline Hub.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActivePane('offline')}
+            className="px-5 py-2.5 rounded-2xl bg-amber-500 text-black font-extrabold text-xs shadow-lg hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+          >
+            Open Offline Hub
+          </button>
+        </div>
+      )}
+
       {/* SECTION 1 (TOP): Recently Played Horizontal 3-Row Carousel */}
       {recentlyPlayed.length > 0 && (
         <section className="flex flex-col gap-4">

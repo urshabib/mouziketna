@@ -277,6 +277,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return 'settings';
       }
     } catch {}
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return 'offline';
+    }
     return 'home';
   });
   const [navHistory, setNavHistory] = useState<NavigationPane[]>(['home']);

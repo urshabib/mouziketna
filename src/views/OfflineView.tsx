@@ -53,15 +53,28 @@ export const OfflineView: React.FC = () => {
     setLoading(true);
     try {
       const records = await listDownloads();
-      const tracks: Track[] = records.map((r) => ({
-        id: r.id,
-        title: r.title,
-        artist: r.artist,
-        thumb: r.thumbLowRes ? URL.createObjectURL(r.thumbLowRes) : null,
-        type: 'song',
-      }));
+      const tracks: Track[] = (records || []).map((r) => {
+        let thumbUrl: string | null = null;
+        if (r && r.thumbLowRes && r.thumbLowRes instanceof Blob) {
+          try {
+            thumbUrl = URL.createObjectURL(r.thumbLowRes);
+          } catch {}
+        }
+        if (!thumbUrl && r && r.id) {
+          if (r.id.length === 11) {
+            thumbUrl = `https://i.ytimg.com/vi/${r.id}/hqdefault.jpg`;
+          }
+        }
+        return {
+          id: r.id || '',
+          title: r.title || 'Untitled Song',
+          artist: r.artist || 'Unknown Artist',
+          thumb: thumbUrl,
+          type: 'song',
+        };
+      });
       setDownloadedTracks(tracks);
-      const totalBytes = await getTotalDownloadedSize();
+      const totalBytes = await getTotalDownloadedSize().catch(() => 0);
       setDownloadSize(formatBytes(totalBytes));
     } catch {
       setDownloadedTracks([]);
