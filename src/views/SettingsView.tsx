@@ -2168,7 +2168,7 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base text-white">Follow to Unlock Settings</h3>
-                  <p className="text-[11px] text-white/50">Verify your social follow to unlock settings</p>
+                  <p className="text-[11px] text-white/50">Follow on Instagram or TikTok to instantly unlock</p>
                 </div>
               </div>
               <button
@@ -2180,112 +2180,41 @@ export const SettingsView: React.FC = () => {
               </button>
             </div>
 
-            {/* Platform Selection */}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setSocialPlatform('instagram');
-                  setHasClickedFollow(false);
-                  setSocialHandleInput('');
-                  setSocialError(null);
-                }}
-                className={`p-3 rounded-2xl border flex items-center justify-center gap-2.5 font-extrabold text-xs transition-all cursor-pointer ${
-                  socialPlatform === 'instagram'
-                    ? 'bg-gradient-to-r from-purple-600/30 to-pink-600/30 border-pink-500/50 text-white shadow-lg scale-[1.02]'
-                    : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
-                }`}
-              >
-                <Instagram className="w-4 h-4 text-pink-400" />
-                <span>Instagram</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSocialPlatform('tiktok');
-                  setHasClickedFollow(false);
-                  setSocialHandleInput('');
-                  setSocialError(null);
-                }}
-                className={`p-3 rounded-2xl border flex items-center justify-center gap-2.5 font-extrabold text-xs transition-all cursor-pointer ${
-                  socialPlatform === 'tiktok'
-                    ? 'bg-black border-white/30 text-white shadow-lg scale-[1.02]'
-                    : 'bg-white/5 border-white/10 text-white/60 hover:text-white'
-                }`}
-              >
-                <MessageSquare className="w-4 h-4 text-cyan-400" />
-                <span>TikTok</span>
-              </button>
-            </div>
+            <p className="text-xs text-white/70 leading-relaxed">
+              Tap below to open our official profile page. Your customization settings will be unlocked instantly!
+            </p>
 
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-3">
-              <p className="text-xs text-white/70 leading-relaxed">
-                1. Click <strong className="text-white">Follow</strong> to open our official {socialPlatform === 'instagram' ? 'Instagram' : 'TikTok'} profile in a new tab.
-              </p>
-
+            <div className="flex flex-col gap-3 pt-1">
               <a
-                href={socialPlatform === 'instagram' ? 'https://instagram.com/mouziketna' : 'https://www.tiktok.com/@mouziketna.app'}
+                href="https://instagram.com/mouziketna"
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => setHasClickedFollow(true)}
-                className={`w-full py-3 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                  socialPlatform === 'instagram'
-                    ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white shadow-lg hover:opacity-95'
-                    : 'bg-black border border-white/20 text-white shadow-lg hover:bg-white/10'
-                }`}
+                onClick={async () => {
+                  await unlockSettingsWithSocial('instagram', 'mouziketna');
+                  setIsSocialUnlockModalOpen(false);
+                }}
+                className="w-full py-3.5 px-4 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white shadow-lg hover:opacity-95 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
               >
-                <span>Follow on {socialPlatform === 'instagram' ? 'Instagram' : 'TikTok'}</span>
-                <ExternalLink className="w-4 h-4" />
+                <Instagram className="w-5 h-5" />
+                <span>Follow on Instagram to Unlock Instantly</span>
+                <ExternalLink className="w-4 h-4 ml-auto opacity-70" />
               </a>
 
-              {hasClickedFollow && (
-                <div className="flex flex-col gap-2 pt-2 border-t border-white/10 animate-in fade-in">
-                  <p className="text-xs text-white/70">
-                    2. Enter your {socialPlatform === 'instagram' ? 'Instagram' : 'TikTok'} handle:
-                  </p>
-                  <input
-                    type="text"
-                    placeholder="@your_username"
-                    value={socialHandleInput}
-                    onChange={(e) => setSocialHandleInput(e.target.value)}
-                    className="w-full bg-black/40 border border-white/15 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors"
-                  />
-                </div>
-              )}
-            </div>
-
-            {socialError && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                <span>{socialError}</span>
-              </div>
-            )}
-
-            <button
-              type="button"
-              disabled={!hasClickedFollow || !socialHandleInput.trim() || socialVerifying}
-              onClick={async () => {
-                setSocialVerifying(true);
-                setSocialError(null);
-                const res = await unlockSettingsWithSocial(socialPlatform, socialHandleInput.trim());
-                setSocialVerifying(false);
-                if (res.success) {
+              <a
+                href="https://www.tiktok.com/@mouziketna.app"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={async () => {
+                  await unlockSettingsWithSocial('tiktok', 'mouziketna.app');
                   setIsSocialUnlockModalOpen(false);
-                } else {
-                  setSocialError(res.error || 'Verification failed. Please check your handle.');
-                }
-              }}
-              className="w-full py-3 bg-[var(--accent)] text-black font-extrabold text-sm rounded-xl flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg cursor-pointer"
-            >
-              {socialVerifying ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Verifying Handle…</span>
-                </>
-              ) : (
-                <span>Verify & Unlock Settings</span>
-              )}
-            </button>
+                }}
+                className="w-full py-3.5 px-4 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2.5 bg-black border border-white/20 text-white shadow-lg hover:bg-white/10 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+              >
+                <MessageSquare className="w-5 h-5 text-cyan-400" />
+                <span>Follow on TikTok to Unlock Instantly</span>
+                <ExternalLink className="w-4 h-4 ml-auto opacity-70" />
+              </a>
+            </div>
           </div>
         </div>
       )}

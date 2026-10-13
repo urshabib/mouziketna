@@ -3543,18 +3543,30 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     userProfile?.isSettingsUnlocked
   );
 
-  const unlockSettingsWithSocial = async (platform: 'instagram' | 'tiktok', handle: string) => {
-    const res = await verifySocialFollow(platform, handle, globalUser || undefined);
-    if (res.success && res.isSettingsUnlocked) {
-      setUserProfile((prev) => {
-        const next = { ...prev, isSettingsUnlocked: true };
-        if (globalUser) cacheProfileLocally(globalUser, next);
-        return next;
-      });
-      showToast('✓ Customization settings unlocked permanently!');
-      return { success: true };
-    }
-    return { success: false, error: res.error || 'Verification failed.' };
+  const unlockSettingsWithSocial = async (platform: 'instagram' | 'tiktok', handle?: string) => {
+    setUserProfile((prev) => {
+      const next = {
+        ...prev,
+        isSettingsUnlocked: true,
+        unlockedSocialHandle: handle || platform,
+        unlockedPlatform: platform,
+        unlockedAt: Date.now(),
+      };
+      if (globalUser) cacheProfileLocally(globalUser, next);
+      return next;
+    });
+
+    const updatedProfile = {
+      ...userProfile,
+      isSettingsUnlocked: true,
+      unlockedSocialHandle: handle || platform,
+      unlockedPlatform: platform,
+      unlockedAt: Date.now(),
+    };
+
+    syncProfile(updatedProfile);
+    showToast('✓ Customization settings unlocked permanently!');
+    return { success: true };
   };
 
   return (
