@@ -167,9 +167,9 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
     const ua = navigator.userAgent || '';
     if (/iPhone|iPad|iPod/i.test(ua)) {
       setActiveTab('ios');
-      setPromptNotice('iOS Safari uses the Share menu: Tap Share (⎋) then "Add to Home Screen".');
+      setPromptNotice(t('install.iosNotice', 'iOS Safari uses the Share menu: Tap Share (⎋) then "Add to Home Screen".'));
     } else {
-      setPromptNotice('Tap your browser menu (⋮) at the top right and select "Install app" (or "Add to Home screen").');
+      setPromptNotice(t('install.androidNotice', 'Tap your browser menu (⋮) at the top right and select "Install app" (or "Add to Home screen").'));
     }
   };
 
@@ -266,7 +266,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                     className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white transition-colors cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>Reset</span>
+                    <span>{t('install.reset', 'Reset')}</span>
                   </button>
                 )}
               </div>
@@ -282,12 +282,12 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                 />
                 {nameSavedToast && (
                   <span className="absolute right-3 top-2.5 text-[11px] font-bold text-[#28c76f]">
-                    Saved!
+                    {t('settings.saved', 'Saved!')}
                   </span>
                 )}
               </div>
               <p className="text-[10px] text-white/40 leading-snug">
-                Sets the title of the app shortcut icon on your phone's home screen.
+                {t('install.shortcutDesc', 'Sets the title of the app shortcut icon on your phone\'s home screen.')}
               </p>
             </div>
 
@@ -304,7 +304,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   className="text-[10px] text-white/50 hover:text-white transition-colors flex items-center gap-1"
                 >
                   <FileCode className="w-3 h-3" />
-                  <span>File Paths</span>
+                  <span>{t('install.filePaths', 'File Paths')}</span>
                 </button>
               </div>
 
@@ -412,20 +412,19 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   className="w-full py-3.5 px-5 rounded-2xl bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-[0.98] text-black font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#ff6b1a]/20 transition-all cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
-                  <span>{t('settings.installAppBtn', 'Install App Now')}</span>
+                  <span>{t('install.installAppNow', 'Install App Now')}</span>
                 </button>
 
                 <div className="flex flex-col gap-2.5 bg-white/[0.03] border border-white/5 p-3.5 rounded-2xl">
                   <span className="text-xs font-bold text-white/90">
-                    If 1-tap install doesn't appear:
+                    {t('install.androidAltTitle', "If 1-tap install doesn't appear:")}
                   </span>
                   <div className="flex items-start gap-2.5 text-xs text-white/80">
                     <span className="w-5 h-5 rounded-md bg-[#ff6b1a]/20 text-[#ff6b1a] flex items-center justify-center font-bold text-[11px] flex-shrink-0">
                       1
                     </span>
                     <span>
-                      Tap the <strong className="text-white">three dots menu (⋮)</strong> at the top
-                      right of Chrome.
+                      {t('install.androidStep1', 'Tap the three dots menu (⋮) at the top right of Chrome.')}
                     </span>
                   </div>
                   <div className="flex items-start gap-2.5 text-xs text-white/80">
@@ -433,8 +432,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                       2
                     </span>
                     <span>
-                      Tap <strong className="text-white">Install app</strong> or{' '}
-                      <strong className="text-white">Add to Home screen</strong>.
+                      {t('install.androidStep2', 'Tap Install app or Add to Home screen.')}
                     </span>
                   </div>
                 </div>
@@ -446,15 +444,14 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
               <div className="flex flex-col gap-3">
                 <div className="flex flex-col gap-2.5 bg-white/[0.03] border border-white/5 p-3.5 rounded-2xl">
                   <span className="text-xs font-bold text-white/90">
-                    How to install on iPhone & iPad (Safari):
+                    {t('install.iosTitle', 'How to install on iPhone & iPad (Safari):')}
                   </span>
                   <div className="flex items-start gap-2.5 text-xs text-white/80">
                     <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0 text-[#ff6b1a]">
                       <Share className="w-3.5 h-3.5" />
                     </div>
                     <span>
-                      1. Tap the <strong className="text-white">Share</strong> button at the bottom
-                      bar of Safari.
+                      {t('install.iosStep1', '1. Tap the Share button at the bottom bar of Safari.')}
                     </span>
                   </div>
                   <div className="flex items-start gap-2.5 text-xs text-white/80">
@@ -462,8 +459,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                       <PlusSquare className="w-3.5 h-3.5" />
                     </div>
                     <span>
-                      2. Scroll down and tap{' '}
-                      <strong className="text-white">Add to Home Screen</strong>.
+                      {t('install.iosStep2', '2. Scroll down and tap Add to Home Screen.')}
                     </span>
                   </div>
                   <div className="flex items-start gap-2.5 text-xs text-white/80">
@@ -471,8 +467,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                       <Check className="w-3.5 h-3.5" />
                     </div>
                     <span>
-                      3. Tap the title to change the name, then tap{' '}
-                      <strong className="text-white">Add</strong> at top right.
+                      {t('install.iosStep3', '3. Tap the title to change the name, then tap Add at top right.')}
                     </span>
                   </div>
                 </div>
@@ -487,16 +482,14 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
                   className="w-full py-3.5 px-5 rounded-2xl bg-[#ff6b1a] hover:bg-[#ff7d33] active:scale-[0.98] text-black font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#ff6b1a]/20 transition-all cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Install to Desktop</span>
+                  <span>{t('install.toDesktop', 'Install to Desktop')}</span>
                 </button>
                 <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/5 text-xs text-white/80 flex flex-col gap-2 leading-relaxed">
                   <p>
-                    In Chrome or Edge, click the <strong className="text-white">Install (⊕)</strong>{' '}
-                    icon on the right side of the address bar.
+                    {t('install.desktopDesc1', 'In Chrome or Edge, click the Install (⊕) icon on the right side of the address bar.')}
                   </p>
                   <p className="text-white/50 text-[11px]">
-                    Once installed, the app launches as its own standalone window on Windows, Mac,
-                    and Linux.
+                    {t('install.desktopDesc2', 'Once installed, the app launches as its own standalone window on Windows, Mac, and Linux.')}
                   </p>
                 </div>
               </div>
@@ -506,13 +499,13 @@ export const InstallModal: React.FC<InstallModalProps> = ({ isOpen, onClose }) =
             <div className="grid grid-cols-2 gap-2 text-xs pt-1">
               <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-1">
                 <Sparkles className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                <span className="font-bold text-white text-[11px]">Full Screen</span>
-                <span className="text-[10px] text-white/50">No browser address bar</span>
+                <span className="font-bold text-white text-[11px]">{t('install.fullScreen', 'Full Screen')}</span>
+                <span className="text-[10px] text-white/50">{t('install.fullScreenDesc', 'No browser address bar')}</span>
               </div>
               <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col gap-1">
                 <Smartphone className="w-3.5 h-3.5 text-[#ff6b1a]" />
-                <span className="font-bold text-white text-[11px]">Offline Audio</span>
-                <span className="text-[10px] text-white/50">Saved songs without WiFi</span>
+                <span className="font-bold text-white text-[11px]">{t('install.offlineAudio', 'Offline Audio')}</span>
+                <span className="text-[10px] text-white/50">{t('install.offlineAudioDesc', 'Saved songs without WiFi')}</span>
               </div>
             </div>
           </>

@@ -17,6 +17,9 @@ import {
   Eye,
   EyeOff,
   ExternalLink,
+  Globe,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import {
   importPlaylistFromYoutube,
@@ -55,8 +58,12 @@ export const Modals: React.FC = () => {
     syncProfile,
     forceProfileServerSync,
     showToast,
+    language,
+    setLanguage,
     t,
   } = useMusic();
+
+  const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
 
   // Add/Create Playlist state
   const [newPlaylistName, setNewPlaylistName] = useState('');
@@ -627,7 +634,68 @@ export const Modals: React.FC = () => {
       {/* 5. AUTH GATE MODAL (WITH PUBLIC SIGN UP) */}
       {isAuthGateOpen && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-xl flex items-center justify-center p-4 animate-in fade-in select-none">
-          <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4 relative overflow-hidden">
+          <div className="w-full max-w-sm bg-[#18181b] glass-panel border border-white/10 rounded-3xl p-7 shadow-2xl flex flex-col items-center text-center gap-4 relative overflow-visible">
+            
+            {/* Top Right Language Selector Button */}
+            <div className="absolute top-4 right-4 z-20">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsLangMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-bold text-white transition-all cursor-pointer shadow-md"
+                  title={t('settings.language', 'Language')}
+                >
+                  <Globe className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span className="uppercase text-[10px] font-extrabold">{language || 'en'}</span>
+                  <ChevronDown className="w-3 h-3 text-white/60" />
+                </button>
+
+                {isLangMenuOpen && (
+                  <div className="absolute right-0 mt-1.5 w-36 bg-[#18181b] border border-white/15 rounded-2xl p-1.5 shadow-2xl flex flex-col gap-1 z-30 animate-in fade-in zoom-in-95">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLanguage('en');
+                        setIsLangMenuOpen(false);
+                      }}
+                      className={`flex items-center justify-between w-full px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+                        language === 'en' ? 'bg-[var(--accent)] text-black font-extrabold' : 'text-white/80 hover:bg-white/10'
+                      }`}
+                    >
+                      <span>English</span>
+                      {language === 'en' && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLanguage('fr');
+                        setIsLangMenuOpen(false);
+                      }}
+                      className={`flex items-center justify-between w-full px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+                        language === 'fr' ? 'bg-[var(--accent)] text-black font-extrabold' : 'text-white/80 hover:bg-white/10'
+                      }`}
+                    >
+                      <span>Français</span>
+                      {language === 'fr' && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLanguage('ar');
+                        setIsLangMenuOpen(false);
+                      }}
+                      className={`flex items-center justify-between w-full px-3 py-1.5 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+                        language === 'ar' ? 'bg-[var(--accent)] text-black font-extrabold' : 'text-white/80 hover:bg-white/10'
+                      }`}
+                    >
+                      <span>العربية</span>
+                      {language === 'ar' && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center shadow-lg text-white mb-1">
               <Gift className="w-7 h-7" />
             </div>
@@ -666,7 +734,7 @@ export const Modals: React.FC = () => {
                 }`}
               >
                 <UserPlus className="w-3.5 h-3.5" />
-                <span>Sign Up</span>
+                <span>{t('modal.signUp', 'Sign Up')}</span>
               </button>
             </div>
 
@@ -743,9 +811,9 @@ export const Modals: React.FC = () => {
             ) : (
               <>
                 <div>
-                  <h3 className="font-black text-xl text-white">Create New Account</h3>
+                  <h3 className="font-black text-xl text-white">{t('modal.signUpTitle', 'Create New Account')}</h3>
                   <p className="text-xs text-white/50 mt-1">
-                    Sign up to stream tunes, create playlists, and save your offline music.
+                    {t('modal.signUpDesc', 'Sign up to stream tunes, create playlists, and save your offline music.')}
                   </p>
                 </div>
 
@@ -763,7 +831,7 @@ export const Modals: React.FC = () => {
                   </div>
                   <input
                     type="text"
-                    placeholder="Choose Username"
+                    placeholder={t('modal.chooseUsername', 'Choose Username')}
                     value={regUser}
                     onChange={(e) => setRegUser(e.target.value)}
                     autoCapitalize="none"
@@ -773,7 +841,7 @@ export const Modals: React.FC = () => {
                   <div className="relative w-full">
                     <input
                       type={showRegPass ? 'text' : 'password'}
-                      placeholder="Create Password"
+                      placeholder={t('modal.createPassword', 'Create Password')}
                       value={regPass}
                       onChange={(e) => setRegPass(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
@@ -791,7 +859,7 @@ export const Modals: React.FC = () => {
                   <div className="relative w-full">
                     <input
                       type={showRegConfirmPass ? 'text' : 'password'}
-                      placeholder="Confirm Password"
+                      placeholder={t('modal.confirmPassword', 'Confirm Password')}
                       value={regConfirmPass}
                       onChange={(e) => setRegConfirmPass(e.target.value)}
                       className="w-full bg-white/5 border border-white/10 rounded-xl pl-4 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-[var(--accent)] transition-colors text-center font-medium"
@@ -828,7 +896,7 @@ export const Modals: React.FC = () => {
                     {regLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <span>Register Account</span>
+                      <span>{t('modal.registerAccount', 'Register Account')}</span>
                     )}
                   </button>
                 </form>

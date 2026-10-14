@@ -3190,67 +3190,30 @@ async function checkUserInFollowers(
   };
 }
 
-// Social Follow Verification Endpoint
-app.post('/api/auth/verify-social-follow', rateLimit(15, 60000), async (req: Request, res: Response) => {
+// Social Follow Verification Endpoint (Instantly unlocks settings upon clicking social link)
+app.post('/api/auth/verify-social-follow', async (req: Request, res: Response) => {
   const { platform, handle, username } = req.body || {};
   const session = extractSession(req);
-  const targetUser = cleanUsername(username || session?.username || '');
+  const targetUser = cleanUsername(username || session?.username || 'user');
 
-  if (!targetUser) {
-    return res.status(401).json({ error: 'unauthorized', message: 'User session required' });
+  const cleanHandle = (handle || platform || 'social').trim().toLowerCase().replace(/^@/, '');
+
+  if (targetUser) {
+    let prof = profilesMap.get(targetUser) || { username: targetUser };
+    prof.isSettingsUnlocked = true;
+    prof.unlockedSocialHandle = cleanHandle;
+    prof.unlockedPlatform = platform || 'instagram';
+    prof.unlockedAt = Date.now();
+
+    profilesMap.set(targetUser, prof);
+    saveProfilesStore();
   }
-
-  if (!handle || typeof handle !== 'string' || !handle.trim()) {
-    return res.status(400).json({ error: 'Social media handle is required' });
-  }
-
-  const cleanHandle = handle.trim().toLowerCase().replace(/^@/, '');
-  if (!cleanHandle) {
-    return res.status(400).json({ error: 'Invalid handle provided' });
-  }
-
-  // Single-use constraint: check if handle was already used by another account
-  const existingUsage = usedSocialHandlesMap.get(cleanHandle);
-  if (existingUsage && existingUsage.username !== targetUser) {
-    return res.status(400).json({
-      error: 'handle_already_used',
-      message: `The @${cleanHandle} handle has already been used to unlock an account. Each handle can only be used once.`,
-    });
-  }
-
-  // Execute Follower Check Verification
-  const followCheck = await checkUserInFollowers(platform === 'tiktok' ? 'tiktok' : 'instagram', cleanHandle);
-  if (!followCheck.verified) {
-    return res.status(400).json({
-      error: 'follower_check_failed',
-      message: followCheck.error || `@${cleanHandle} was not found in the follower list. Please make sure you clicked Follow on ${platform === 'tiktok' ? 'TikTok' : 'Instagram'}.`,
-    });
-  }
-
-  // Record handle usage
-  usedSocialHandlesMap.set(cleanHandle, {
-    username: targetUser,
-    platform: platform === 'tiktok' ? 'tiktok' : 'instagram',
-    handle: cleanHandle,
-    timestamp: Date.now(),
-  });
-  saveSocialHandlesStore();
-
-  // Unlock user profile
-  let prof = profilesMap.get(targetUser) || { username: targetUser };
-  prof.isSettingsUnlocked = true;
-  prof.unlockedSocialHandle = cleanHandle;
-  prof.unlockedPlatform = platform;
-  prof.unlockedAt = Date.now();
-
-  profilesMap.set(targetUser, prof);
-  saveProfilesStore();
 
   return res.json({
     success: true,
     isSettingsUnlocked: true,
     handle: cleanHandle,
-    message: `✓ @${cleanHandle} verified! Customization settings unlocked permanently.`,
+    message: '✓ Customization settings unlocked permanently!',
   });
 });
 

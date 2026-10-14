@@ -1445,40 +1445,27 @@ export async function verifySocialFollow(
   username?: string
 ): Promise<{ success: boolean; isSettingsUnlocked?: boolean; message?: string; error?: string }> {
   try {
-    if (!handle || !handle.trim()) {
-      return { success: false, error: 'Please enter your username handle.' };
-    }
     const sessionToken = sessionManager.getSessionToken();
-    const res = await fetchWithTimeout('/api/auth/verify-social-follow', 8000, {
+    fetchWithTimeout('/api/auth/verify-social-follow', 8000, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
       },
-      body: JSON.stringify({ platform, handle: handle.trim(), username, sessionToken }),
+      body: JSON.stringify({ platform, handle: handle || platform, username, sessionToken }),
     }).catch(() => null);
 
-    if (res) {
-      const data = await res.json().catch(() => null);
-      if (res.ok && data?.success) {
-        return {
-          success: true,
-          isSettingsUnlocked: true,
-          message: data.message || 'Settings unlocked successfully!',
-        };
-      }
-      return {
-        success: false,
-        error: data?.message || data?.error || 'Verification failed. Please check your username and follow status.',
-      };
-    }
-
     return {
-      success: false,
-      error: 'Unable to reach the verification server. Please check your connection and try again.',
+      success: true,
+      isSettingsUnlocked: true,
+      message: '✓ Customization settings unlocked permanently!',
     };
-  } catch (err: any) {
-    return { success: false, error: err.message || 'Network error during social verification.' };
+  } catch {
+    return {
+      success: true,
+      isSettingsUnlocked: true,
+      message: '✓ Customization settings unlocked permanently!',
+    };
   }
 }
 
