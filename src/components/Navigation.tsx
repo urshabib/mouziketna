@@ -15,6 +15,7 @@ import {
   Loader2,
   Smartphone,
   WifiOff,
+  ChevronLeft,
 } from 'lucide-react';
 import { NavigationPane } from '../types';
 import { getAppLogoSrc } from '../services/pwa';
@@ -46,9 +47,9 @@ export const Sidebar: React.FC = () => {
   const followedArtists = userProfile.favouriteArtists || [];
 
   return (
-    <aside className="hidden md:flex w-64 flex-col gap-2 p-3 flex-shrink-0 select-none">
+    <aside className="hidden md:flex w-64 lg:w-72 flex-col gap-3 p-3 lg:p-4 flex-shrink-0 select-none">
       {/* Brand & Nav */}
-      <div className="bg-[#121212] glass-panel rounded-2xl p-5 border border-white/5">
+      <div className="bg-[#131317]/85 glass-panel rounded-3xl p-5 border border-white/10 shadow-2xl backdrop-blur-2xl">
         <button
           onClick={() => setActivePane('home')}
           className="logo hover:opacity-90 transition-opacity text-left mb-6 flex items-center gap-2.5 cursor-pointer"
@@ -60,33 +61,33 @@ export const Sidebar: React.FC = () => {
           </span>
         </button>
 
-        <nav className="flex flex-col gap-1">
+        <nav className="flex flex-col gap-1.5">
           <button
             onClick={() => setActivePane('home')}
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+            className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
               activePane === 'home'
-                ? 'bg-white/10 text-white shadow-sm'
-                : 'text-white/60 hover:text-white hover:bg-white/5'
+                ? 'bg-[var(--accent)] text-black font-extrabold shadow-lg shadow-[var(--accent)]/20 scale-[1.02]'
+                : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
             <Home className="w-5 h-5" /> {t('nav.home', 'Home')}
           </button>
           <button
             onClick={() => setActivePane('search')}
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+            className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
               activePane === 'search'
-                ? 'bg-white/10 text-white shadow-sm'
-                : 'text-white/60 hover:text-white hover:bg-white/5'
+                ? 'bg-[var(--accent)] text-black font-extrabold shadow-lg shadow-[var(--accent)]/20 scale-[1.02]'
+                : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
             <Search className="w-5 h-5" /> {t('nav.search', 'Search')}
           </button>
           <button
             onClick={() => setActivePane('settings')}
-            className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+            className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
               activePane === 'settings'
-                ? 'bg-white/10 text-white shadow-sm'
-                : 'text-white/60 hover:text-white hover:bg-white/5'
+                ? 'bg-[var(--accent)] text-black font-extrabold shadow-lg shadow-[var(--accent)]/20 scale-[1.02]'
+                : 'text-white/70 hover:text-white hover:bg-white/10'
             }`}
           >
             <Settings className="w-5 h-5" /> {t('nav.settings', 'Settings')}
@@ -95,7 +96,7 @@ export const Sidebar: React.FC = () => {
           {(typeof navigator !== 'undefined' && !navigator.onLine) && (
             <button
               onClick={() => setActivePane('offline')}
-              className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+              className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
                 activePane === 'offline'
                   ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30 shadow-sm'
                   : 'text-amber-400/80 hover:text-amber-400 hover:bg-amber-500/10'
@@ -108,7 +109,7 @@ export const Sidebar: React.FC = () => {
           <button
             id="sidebar-install-app-btn"
             onClick={() => setIsInstallModalOpen(true)}
-            className="flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all border border-[var(--accent)]/20 cursor-pointer"
+            className="flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl font-bold text-sm text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all border border-[var(--accent)]/20 cursor-pointer"
           >
             <Download className="w-5 h-5 text-[var(--accent)]" /> {t('modal.installApp', 'Install App')}
           </button>
@@ -116,9 +117,9 @@ export const Sidebar: React.FC = () => {
           {(globalUser === 'admin' || userProfile.isAdmin) && (
             <button
               onClick={() => setActivePane('admin')}
-              className={`flex items-center gap-3.5 px-3 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
+              className={`flex items-center gap-3.5 px-3.5 py-2.5 rounded-2xl font-bold text-sm transition-all cursor-pointer ${
                 activePane === 'admin'
-                  ? 'bg-red-500/20 text-red-400'
+                  ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                   : 'text-red-400/80 hover:text-red-400 hover:bg-red-500/10'
               }`}
             >
@@ -129,13 +130,13 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Library Shelf */}
-      <div className="bg-[#121212] glass-panel rounded-2xl p-4 flex-1 flex flex-col min-h-0 border border-white/5">
+      <div className="bg-[#131317]/85 glass-panel rounded-3xl p-4 flex-1 flex flex-col min-h-0 border border-white/10 shadow-2xl backdrop-blur-2xl">
         <div className="flex items-center justify-between pb-3 border-b border-white/5 px-1">
           <button
             onClick={() => setActivePane('library')}
-            className="flex items-center gap-2 text-white/70 hover:text-white font-bold text-sm transition-colors cursor-pointer"
+            className="flex items-center gap-2 text-white/80 hover:text-white font-bold text-sm transition-colors cursor-pointer"
           >
-            <Library className="w-4 h-4" /> {t('library.title', 'Your Library')}
+            <Library className="w-4 h-4 text-[var(--accent)]" /> {t('library.title', 'Your Library')}
           </button>
           <button
             onClick={() => setModalCreatePlaylistOpen(true)}
@@ -150,9 +151,9 @@ export const Sidebar: React.FC = () => {
           {/* Liked Songs */}
           <div
             onClick={() => openCollection('liked')}
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
+            className="flex items-center gap-3 p-2 rounded-2xl hover:bg-white/8 cursor-pointer group transition-all"
           >
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center flex-shrink-0 text-white shadow-md">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center flex-shrink-0 text-white shadow-md group-hover:scale-105 transition-transform">
               <Heart className="w-5 h-5 fill-white" />
             </div>
             <div className="min-w-0 flex-1">
@@ -168,9 +169,9 @@ export const Sidebar: React.FC = () => {
           {/* Downloaded Songs */}
           <div
             onClick={() => openCollection('downloads')}
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
+            className="flex items-center gap-3 p-2 rounded-2xl hover:bg-white/8 cursor-pointer group transition-all"
           >
-            <div className="w-10 h-10 rounded-lg bg-[#1c1c1e] flex items-center justify-center flex-shrink-0 text-[var(--accent)] shadow-md border border-white/5">
+            <div className="w-11 h-11 rounded-xl bg-[#1c1c20] flex items-center justify-center flex-shrink-0 text-[var(--accent)] shadow-md border border-white/10 group-hover:scale-105 transition-transform">
               <Download className="w-5 h-5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -186,15 +187,15 @@ export const Sidebar: React.FC = () => {
             <div
               key={pl.id}
               onClick={() => openCollection('custom-playlist', pl.id, pl.name, pl.thumb)}
-              className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
+              className="flex items-center gap-3 p-2 rounded-2xl hover:bg-white/8 cursor-pointer group transition-all"
             >
               <PlaylistCover
                 cover={pl.thumb}
                 tracks={pl.tracks}
-                sizeClass="w-10 h-10"
-                roundedClass="rounded-lg"
+                sizeClass="w-11 h-11"
+                roundedClass="rounded-xl"
                 alt={pl.name}
-                className="flex-shrink-0"
+                className="flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform"
               />
               <div className="min-w-0 flex-1">
                 <h5 className="text-sm font-semibold truncate text-white group-hover:text-[var(--accent)] transition-colors">
@@ -212,12 +213,12 @@ export const Sidebar: React.FC = () => {
             <div
               key={artist.id}
               onClick={() => openCollection('artist', artist.id, artist.title, artist.thumb)}
-              className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 cursor-pointer group transition-colors"
+              className="flex items-center gap-3 p-2 rounded-2xl hover:bg-white/8 cursor-pointer group transition-all"
             >
               {artist.thumb ? (
-                <img src={artist.thumb} alt={artist.title} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+                <img src={artist.thumb} alt={artist.title} className="w-11 h-11 rounded-full object-cover flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform" />
               ) : (
-                <div className="w-10 h-10 rounded-full bg-[#242426] flex items-center justify-center flex-shrink-0 text-white/40">
+                <div className="w-11 h-11 rounded-full bg-[#242426] flex items-center justify-center flex-shrink-0 text-white/40">
                   <User className="w-5 h-5" />
                 </div>
               )}
@@ -381,6 +382,7 @@ export const TopBar: React.FC = () => {
     userProfile,
     globalUser,
     setActivePane,
+    goBack,
     bulkDownloadState,
     openCollection,
     setIsAuthGateOpen,
@@ -411,27 +413,52 @@ export const TopBar: React.FC = () => {
     <header
       className={`sticky top-0 z-30 flex items-center justify-between transition-all select-none ${
         isLiquidGlass
-          ? 'mx-3 sm:mx-6 my-2 mt-[max(0.5rem,env(safe-area-inset-top))] px-4 sm:px-6 py-2.5 bg-[#141418]/75 glass-panel rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl'
-          : 'px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/80 border-b border-white/10 backdrop-blur-xl'
+          ? 'mx-3 sm:mx-6 my-2 mt-[max(0.5rem,env(safe-area-inset-top))] px-4 sm:px-6 py-2.5 bg-[#141418]/85 glass-panel rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl'
+          : 'px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/85 border-b border-white/10 backdrop-blur-xl'
       }`}
     >
-      <div className="flex items-center gap-3.5">
-        <button
-          onClick={() => setActivePane('home')}
-          className="logo hover:opacity-90 transition-opacity text-left flex items-center gap-2.5 cursor-pointer"
+      {/* Left side: Mobile Logo vs Desktop Navigation Cluster */}
+      <div className="flex items-center gap-3">
+        {/* Mobile-only Logo (hidden on desktop because sidebar has it) */}
+        <div className="md:hidden flex items-center">
+          <button
+            onClick={() => setActivePane('home')}
+            className="logo hover:opacity-90 transition-opacity text-left flex items-center gap-2 cursor-pointer"
+          >
+            <i className="ri-pulse-fill"></i>
+            <span className="logo-textblock text-xs">
+              MOUZIKETNA
+              <span className="logo-signature">by habib</span>
+            </span>
+          </button>
+        </div>
+
+        {/* Desktop Navigation Cluster */}
+        <div className="hidden md:flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={goBack}
+            className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/15 active:scale-95 text-white/70 hover:text-white flex items-center justify-center border border-white/10 transition-all cursor-pointer shadow-sm"
+            title="Go back"
+            aria-label="Go back"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+
+          <h2 className="font-extrabold text-sm text-white/80 max-w-[180px] lg:max-w-[260px] truncate pl-1">
+            {getGreeting()}{effectiveDisplayName ? `, ${effectiveDisplayName}` : ''}
+          </h2>
+        </div>
+
+        {/* Desktop Quick Search Pill */}
+        <div
+          onClick={() => setActivePane('search')}
+          className="hidden lg:flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 text-white/50 hover:text-white transition-all cursor-pointer w-60 xl:w-72 shadow-inner group ml-2"
+          title="Search songs, artists, playlists"
         >
-          <i className="ri-pulse-fill"></i>
-          <span className="logo-textblock">
-            MOUZIKETNA
-            <span className="logo-signature">by habib</span>
-          </span>
-        </button>
-
-        <span className="hidden sm:inline text-white/20">|</span>
-
-        <h2 className="hidden md:block font-semibold text-sm text-white/70 max-w-[180px] lg:max-w-[280px] truncate overflow-hidden whitespace-nowrap text-ellipsis">
-          {getGreeting()}{effectiveDisplayName ? `, ${effectiveDisplayName}` : ''}
-        </h2>
+          <Search className="w-3.5 h-3.5 text-white/40 group-hover:text-[var(--accent)] transition-colors" />
+          <span className="text-xs font-medium truncate">Search songs, artists...</span>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">

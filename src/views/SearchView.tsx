@@ -181,15 +181,22 @@ export const SearchView: React.FC = () => {
     }
   }, []);
 
-  // Click outside search container closes suggestions
+  // Click or touch outside search container closes suggestions and blurs input
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handlePointerOutside = (e: MouseEvent | TouchEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
         setShowSuggestions(false);
+        if (inputRef.current && document.activeElement === inputRef.current) {
+          inputRef.current.blur();
+        }
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handlePointerOutside);
+    document.addEventListener('touchstart', handlePointerOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handlePointerOutside);
+      document.removeEventListener('touchstart', handlePointerOutside);
+    };
   }, []);
 
   // Handle live suggestions
@@ -300,7 +307,7 @@ export const SearchView: React.FC = () => {
   return (
     <div className="flex flex-col gap-6 pb-20 select-none">
       {/* Search Input Bar */}
-      <div ref={searchContainerRef} className="relative w-full max-w-2xl">
+      <div ref={searchContainerRef} className="relative w-full max-w-2xl lg:max-w-3xl">
         <div className="relative flex items-center">
           <SearchIcon className="absolute left-4 w-5 h-5 text-white/40 pointer-events-none" />
           <input
@@ -318,7 +325,7 @@ export const SearchView: React.FC = () => {
               }
             }}
             onKeyDown={handleKeyDown}
-            className="w-full bg-[#1c1c1e] glass-panel border border-white/10 rounded-full pl-12 pr-24 py-3.5 text-white placeholder:text-white/40 text-sm font-medium focus:outline-none focus:border-[var(--accent)] transition-all shadow-lg"
+            className="w-full bg-[#16161c]/90 glass-panel border border-white/10 rounded-full pl-12 pr-24 py-3.5 sm:py-4 text-white placeholder:text-white/40 text-sm font-medium focus:outline-none focus:border-[var(--accent)] transition-all shadow-lg"
           />
 
           <div className="absolute right-3.5 flex items-center gap-1">
@@ -403,7 +410,7 @@ export const SearchView: React.FC = () => {
       {!loading && results.length > 0 && (
         <div className="flex flex-col gap-4 mt-2">
           <h3 className="text-xl font-bold text-white tracking-tight">{t('search.topResult', 'Top Results')}</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
             {results.map((tTrack) => (
               <TrackCard key={tTrack.id} track={tTrack} />
             ))}

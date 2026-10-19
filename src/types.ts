@@ -65,6 +65,7 @@ export interface UserProfile {
   lyricsColor: string;
   customLyricsHex?: string;
   lyricsGlow?: 'off' | 'default' | 'strong';
+  lyricsSignLanguage?: boolean;
   keyPartsDisplay?: 'off' | 'dots' | 'full';
   progressBarStyle?: 'default' | 'block' | 'wave' | 'aurora' | 'neon';
   progressBarColor?: string;

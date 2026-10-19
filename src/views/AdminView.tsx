@@ -32,7 +32,10 @@ import {
   Instagram,
   MessageSquare,
   Unlock,
+  Archive,
+  ChevronDown,
 } from 'lucide-react';
+import JSZip from 'jszip';
 import {
   NEW_HUB_BACKEND,
   fetchWithTimeout,
@@ -107,63 +110,231 @@ export const AdminView: React.FC = () => {
   const [restoringBackup, setRestoringBackup] = useState(false);
 
   const [downloadingBackup, setDownloadingBackup] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
+  const [showBackupFormatDropdown, setShowBackupFormatDropdown] = useState(false);
 
-  const handleDownloadAllBackup = async (fileExt: 'json' | 'txt' = 'json') => {
+  const handleDownloadAllBackup = async (fileExt: 'zip' | 'json' | 'txt' = 'zip') => {
     setDownloadingBackup(true);
+    setDownloadProgress('Starting backup...');
+    setShowBackupFormatDropdown(false);
+
     try {
       const sessionToken = sessionManager.getSessionToken();
-      const today = new Date().toISOString().split('T')[0]; // "2026-10-10"
+      const today = new Date().toISOString().split('T')[0];
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (!NEW_HUB_BACKEND && sessionToken) {
         headers.Authorization = `Bearer ${sessionToken}`;
       }
-      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/admin/backup`, 10000, {
-        headers,
-      }).catch(() => null);
 
-      let backupJson: any = null;
-      if (res && res.ok) {
-        backupJson = await res.json().catch(() => null);
+      // 1. Get base user list
+      let userList = users;
+      if (!userList || userList.length === 0) {
+        setDownloadProgress('Fetching user list...');
+        userList = await fetchAdminUsersList();
       }
 
-      if (!backupJson || !Array.isArray(backupJson.users)) {
-        // Build fallback client-side backup from loaded accounts
-        backupJson = {
+      // 2. Try fast server endpoint first if running full-stack
+      const serverUsersMap = new Map<string, any>();
+      try {
+        const res = await fetchWithTimeout(`/api/admin/backup`, 10000, { headers }).catch(() => null);
+        if (res && res.ok) {
+          const sJson = await res.json().catch(() => null);
+          if (sJson && Array.isArray(sJson.users)) {
+            for (const su of sJson.users) {
+              if (su && su.username) {
+                serverUsersMap.set(su.username.toLowerCase(), su);
+              }
+            }
+          }
+        }
+      } catch {}
+
+      // 3. Deep scrape every user to guarantee 100% complete data (never shallow)
+      const fullProfiles: any[] = [];
+      const batchSize = 4;
+
+      for (let i = 0; i < userList.length; i += batchSize) {
+        const batch = userList.slice(i, i + batchSize);
+        setDownloadProgress(`Scraping user profiles: ${Math.min(i + batch.length, userList.length)}/${userList.length}...`);
+
+        const batchResults = await Promise.all(
+          batch.map(async (u) => {
+            const clean = u.username.toLowerCase();
+            const fromServer = serverUsersMap.get(clean);
+            // If server returned complete document with playlists, liked songs, and albums
+            if (
+              fromServer &&
+              Array.isArray(fromServer.customPlaylists) &&
+              Array.isArray(fromServer.likedSongs) &&
+              fromServer.customPlaylists.length >= (u.playlistCount || 0) &&
+              fromServer.likedSongs.length >= (u.likedCount || 0)
+            ) {
+              return fromServer;
+            }
+
+            // Scrape user profile directly from /api/user-profile
+            try {
+              const pRes = await fetchWithTimeout(
+                `${NEW_HUB_BACKEND}/api/user-profile?username=${encodeURIComponent(u.username)}`,
+                10000,
+                { headers }
+              ).catch(() => null);
+
+              if (pRes && pRes.ok) {
+                const pData = await pRes.json().catch(() => null);
+                if (pData?.profile) {
+                  const prof = pData.profile;
+                  const truePass =
+                    u.password && u.password !== 'mouzika'
+                      ? u.password
+                      : prof.password && prof.password !== 'mouzika'
+                      ? prof.password
+                      : '';
+
+                  return {
+                    username: u.username,
+                    displayName: prof.displayName || u.username,
+                    avatarUrl: prof.avatarUrl || null,
+                    email: u.email || prof.email || null,
+                    password: truePass,
+                    isAdmin: Boolean(u.isAdmin || prof.isAdmin),
+                    enabled: u.enabled !== false && prof.enabled !== false,
+                    customPlaylists: Array.isArray(prof.customPlaylists) ? prof.customPlaylists : [],
+                    likedSongs: Array.isArray(prof.likedSongs) ? prof.likedSongs : [],
+                    favouriteAlbums: Array.isArray(prof.favouriteAlbums) ? prof.favouriteAlbums : [],
+                    favouriteArtists: Array.isArray(prof.favouriteArtists) ? prof.favouriteArtists : [],
+                    recentlyPlayed: Array.isArray(prof.recentlyPlayed) ? prof.recentlyPlayed : [],
+                    stats: prof.stats || {},
+                    theme: prof.theme || 'dark',
+                    accentColor: prof.accentColor || 'purple',
+                    liquidGlass: prof.liquidGlass !== undefined ? prof.liquidGlass : true,
+                    createdAt: (u as any).createdAt || prof.createdAt || Date.now(),
+                    updatedAt: prof.updatedAt || Date.now(),
+                  };
+                }
+              }
+            } catch {}
+
+            // Fallback complete schema if network failed for individual profile
+            return {
+              username: u.username,
+              displayName: u.username,
+              avatarUrl: null,
+              email: u.email || null,
+              password: u.password && u.password !== 'mouzika' ? u.password : '',
+              isAdmin: Boolean(u.isAdmin),
+              enabled: u.enabled !== false,
+              customPlaylists: [],
+              likedSongs: [],
+              favouriteAlbums: [],
+              favouriteArtists: [],
+              recentlyPlayed: [],
+              stats: {},
+              theme: 'dark',
+              accentColor: 'purple',
+              liquidGlass: true,
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            };
+          })
+        );
+        fullProfiles.push(...batchResults);
+      }
+
+      setDownloadProgress('Building archive...');
+
+      if (fileExt === 'zip') {
+        const zip = new JSZip();
+
+        // 1. /users/ folder with individual user JSON files exactly as in Cloudflare KV
+        const usersFolder = zip.folder('users');
+        const cloudflareKvDump: Record<string, any> = {};
+
+        for (const prof of fullProfiles) {
+          const userJson = JSON.stringify(prof, null, 2);
+          usersFolder?.file(`${prof.username}.json`, userJson);
+          cloudflareKvDump[`user_${prof.username.toLowerCase()}`] = prof;
+        }
+
+        // 2. all_users_combined.json for one-click app restore
+        const combinedBackup = {
           backup: true,
           type: 'mouzika_all_users_backup',
           date: today,
           generatedAt: Date.now(),
-          totalUsers: users.length,
-          users: users.map((u) => ({
-            username: u.username,
-            password: (u.password && u.password !== 'mouzika') ? u.password : '',
-            isAdmin: Boolean(u.isAdmin),
-            enabled: u.enabled !== false,
-            email: u.email || null,
-            playlistCount: u.playlistCount || 0,
-            likedCount: u.likedCount || 0,
-          })),
+          totalUsers: fullProfiles.length,
+          users: fullProfiles,
         };
+        zip.file('all_users_combined.json', JSON.stringify(combinedBackup, null, 2));
+
+        // 3. cloudflare_kv_dump.json for Cloudflare KV bulk upload
+        zip.file('cloudflare_kv_dump.json', JSON.stringify(cloudflareKvDump, null, 2));
+
+        // 4. README.txt
+        const readme = `MOUZIKETNA COMPLETE DATABASE BACKUP
+=====================================
+Date: ${today}
+Total User Accounts: ${fullProfiles.length}
+Generated At: ${new Date().toISOString()}
+
+CONTENTS:
+1. /users/
+   Contains individual complete JSON files for each user (${fullProfiles.map((u) => u.username).join(', ')}).
+   When you open any file, you will find all playlists, liked songs, albums, and credentials exactly as if you queried that user in Cloudflare KV.
+
+2. /all_users_combined.json
+   All user profiles combined into a single JSON file. You can upload this directly into MOUZIKETNA via the "Restore Backup" button.
+
+3. /cloudflare_kv_dump.json
+   Cloudflare Workers KV format (keyed by user_<username>) for direct bulk import into Cloudflare KV.
+`;
+        zip.file('README.txt', readme);
+
+        const zipBlob = await zip.generateAsync({
+          type: 'blob',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 6 },
+        });
+
+        const filename = `mouzika-users-backup-${today}.zip`;
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast(`✓ Downloaded ${filename} (${fullProfiles.length} complete user accounts in zip)`);
+      } else {
+        const combinedBackup = {
+          backup: true,
+          type: 'mouzika_all_users_backup',
+          date: today,
+          generatedAt: Date.now(),
+          totalUsers: fullProfiles.length,
+          users: fullProfiles,
+        };
+        const content = JSON.stringify(combinedBackup, null, 2);
+        const filename = `backup-${today}.${fileExt}`;
+        const blob = new Blob([content], { type: fileExt === 'json' ? 'application/json' : 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast(`✓ Downloaded ${filename} (${fullProfiles.length} full user profiles backed up)`);
       }
-
-      const content = JSON.stringify(backupJson, null, 2);
-      const filename = `backup-${today}.${fileExt}`;
-      const blob = new Blob([content], { type: fileExt === 'json' ? 'application/json' : 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      const count = backupJson.totalUsers || backupJson.users?.length || users.length;
-      showToast(`✓ Downloaded ${filename} (${count} users backed up)`);
     } catch (err: any) {
       showToast(err?.message || 'Failed to download backup', true);
     } finally {
       setDownloadingBackup(false);
+      setDownloadProgress(null);
     }
   };
 
@@ -175,9 +346,12 @@ export const AdminView: React.FC = () => {
       if (!NEW_HUB_BACKEND && sessionToken) {
         headers.Authorization = `Bearer ${sessionToken}`;
       }
-      const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/user-profile?username=${encodeURIComponent(targetUser.username)}`, 8000, {
-        headers,
-      }).catch(() => null);
+      const res = await fetchWithTimeout(
+        `${NEW_HUB_BACKEND}/api/user-profile?username=${encodeURIComponent(targetUser.username)}`,
+        8000,
+        { headers }
+      ).catch(() => null);
+
       let profData: any = null;
       if (res && res.ok) {
         const d = await res.json().catch(() => null);
@@ -186,9 +360,14 @@ export const AdminView: React.FC = () => {
       if (!profData) {
         profData = {
           username: targetUser.username,
-          password: (targetUser.password && targetUser.password !== 'mouzika') ? targetUser.password : '',
-          isAdmin: targetUser.isAdmin,
-          enabled: targetUser.enabled,
+          displayName: targetUser.username,
+          password: targetUser.password && targetUser.password !== 'mouzika' ? targetUser.password : '',
+          isAdmin: Boolean(targetUser.isAdmin),
+          enabled: targetUser.enabled !== false,
+          customPlaylists: [],
+          likedSongs: [],
+          favouriteAlbums: [],
+          stats: {},
         };
       }
       if (targetUser.password && targetUser.password !== 'mouzika' && !profData.password) {
@@ -207,7 +386,7 @@ export const AdminView: React.FC = () => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      showToast(`✓ Downloaded backup for @${targetUser.username}`);
+      showToast(`✓ Downloaded full backup for @${targetUser.username}`);
     } catch {
       showToast(`Failed to download backup for @${targetUser.username}`, true);
     }

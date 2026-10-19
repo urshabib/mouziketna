@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { SyncedLyricsLine, Track } from '../types';
+import { useMusic } from '../context/MusicContext';
 import {
   generateLyricsPlusPlan,
   getOfflineLyricsPlusPlan,
   ReelDirectorPlan,
   ReelWord,
 } from '../services/aiLyricsReel';
+import { getSignLanguageForWord } from '../services/signLanguage';
 
 interface LyricsPlusProps {
   activeTrack: Track;
@@ -14,6 +16,7 @@ interface LyricsPlusProps {
   syncedLines: SyncedLyricsLine[];
   onSeek: (time: number) => void;
   dominantColor?: { r: number; g: number; b: number };
+  isSignLanguageActive?: boolean;
 }
 
 /**
@@ -23,6 +26,7 @@ interface LyricsPlusProps {
  * - Dynamic emojis placed right inside the lyrics text alongside the words
  * - Clean, distraction-free view (no background sketches, no dropping particles)
  * - 100% offline capability (works instantly anywhere without internet or AI keys)
+ * - Sign Language Mode: Shows ASL hand signs & fingerspelling directly on top of words
  */
 export const LyricsPlus: React.FC<LyricsPlusProps> = ({
   activeTrack,
@@ -30,7 +34,14 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
   syncedLines,
   onSeek,
   dominantColor,
+  isSignLanguageActive,
 }) => {
+  const { userProfile } = useMusic();
+  const effectiveSignLanguage =
+    isSignLanguageActive !== undefined
+      ? isSignLanguageActive
+      : Boolean(userProfile.lyricsSignLanguage);
+
   const [plan, setPlan] = useState<ReelDirectorPlan | null>(null);
   const [resolvedColor, setResolvedColor] = useState<{ r: number; g: number; b: number }>(dominantColor || { r: 255, g: 107, b: 26 });
 
@@ -283,6 +294,7 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
 
               const animClass = isActive ? getAnimationClass(wordObj.anim) : '';
               const rotDegree = wordObj.rot || 0;
+              const signInfo = effectiveSignLanguage ? getSignLanguageForWord(wordObj.text) : null;
 
               return (
                 <span
@@ -292,7 +304,7 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
                       '--word-rot': `${rotDegree}deg`,
                     } as React.CSSProperties
                   }
-                  className={`relative inline-flex items-center gap-2.5 transition-all duration-150 ease-out select-none cursor-pointer ${
+                  className={`relative inline-flex flex-col items-center gap-1.5 transition-all duration-150 ease-out select-none cursor-pointer ${
                     isActive
                       ? `scale-115 sm:scale-125 z-30 font-black text-white ${animClass}`
                       : isPast
@@ -301,6 +313,27 @@ export const LyricsPlus: React.FC<LyricsPlusProps> = ({
                   }`}
                   onClick={() => onSeek(wordObj.startTime)}
                 >
+                  {/* Floating Sign Language Gesture badge above word */}
+                  {effectiveSignLanguage && signInfo && (
+                    <div
+                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border shadow-md transition-all select-none pointer-events-none mb-0.5 ${
+                        isActive
+                          ? 'bg-gradient-to-r from-[var(--accent)] via-amber-400 to-orange-400 text-black border-white/80 shadow-[0_0_15px_rgba(255,255,255,0.7)] scale-110'
+                          : 'bg-black/80 backdrop-blur-md text-white/85 border-white/15'
+                      }`}
+                      title={signInfo.label || signInfo.word}
+                    >
+                      <span className="text-sm sm:text-base leading-none">
+                        {signInfo.handSign}
+                      </span>
+                      {signInfo.label && (
+                        <span className="text-[8.5px] uppercase tracking-wider font-extrabold opacity-95">
+                          {signInfo.label}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* Glowing neon aura under active word */}
                   {isActive && (
                     <span

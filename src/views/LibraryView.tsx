@@ -62,7 +62,7 @@ export const LibraryView: React.FC = () => {
         </div>
 
         {/* Playlists Grid - Custom & Imported Playlists first */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
           {/* User's Custom Playlists (Priority) */}
           {customPlaylists.map((pl) => {
             const customCover = (pl.id ? getPersistentPlaylistCover(pl.id) : null) || pl.customCover;
@@ -70,14 +70,14 @@ export const LibraryView: React.FC = () => {
               <div
                 key={pl.id}
                 onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover)}
-                className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
+                className="group relative flex flex-col p-3 md:p-3.5 rounded-2xl md:rounded-3xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/20 transition-all cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1.5"
               >
-                <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md group-hover:scale-105 transition-transform duration-300">
+                <div className="relative w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md group-hover:scale-105 transition-transform duration-300">
                   <PlaylistCover
                     cover={customCover}
                     tracks={pl.tracks}
                     sizeClass="w-full h-full"
-                    roundedClass="rounded-xl"
+                    roundedClass="rounded-xl md:rounded-2xl"
                     alt={pl.name}
                   />
 
@@ -110,9 +110,9 @@ export const LibraryView: React.FC = () => {
           {/* Liked Songs Special Card */}
           <div
             onClick={() => openCollection('liked')}
-            className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
+            className="group relative flex flex-col p-3 md:p-3.5 rounded-2xl md:rounded-3xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/20 transition-all cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1.5"
           >
-            <div className="relative w-full aspect-square rounded-xl bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center text-white mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
+            <div className="relative w-full aspect-square rounded-xl md:rounded-2xl bg-gradient-to-br from-[var(--accent)] to-black/80 flex items-center justify-center text-white mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
               <Heart className="w-12 h-12 fill-white" />
             </div>
             <h4 className="font-bold text-sm text-white truncate">{t('library.likedSongs', 'Liked Songs')}</h4>
@@ -124,9 +124,9 @@ export const LibraryView: React.FC = () => {
           {/* Downloaded Songs Special Card */}
           <div
             onClick={() => openCollection('downloads')}
-            className="group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/10 transition-all cursor-pointer shadow-sm"
+            className="group relative flex flex-col p-3 md:p-3.5 rounded-2xl md:rounded-3xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/20 transition-all cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1.5"
           >
-            <div className="relative w-full aspect-square rounded-xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[var(--accent)] mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
+            <div className="relative w-full aspect-square rounded-xl md:rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[var(--accent)] mb-3 shadow-md group-hover:scale-105 transition-transform duration-300">
               <Download className="w-12 h-12" />
             </div>
             <h4 className="font-bold text-sm text-white truncate">{t('library.downloads', 'Downloaded')}</h4>
@@ -141,7 +141,7 @@ export const LibraryView: React.FC = () => {
       {followedArtists.length > 0 && (
         <section className="flex flex-col gap-4">
           <h3 className="text-2xl font-black text-white tracking-tight">{t('library.favoriteArtists', 'Favorite Artists')}</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
             {followedArtists.map((artist) => (
               <TrackCard key={artist.id} track={artist} />
             ))}

@@ -8,6 +8,7 @@ import {
   Activity,
   RotateCcw,
   Check,
+  Flame,
   ChevronRight,
   Wifi,
   Loader2,
@@ -1116,6 +1117,41 @@ export const SettingsView: React.FC = () => {
                 );
               })}
             </div>
+
+            {/* Song Key Moments Dots (Bring back the option to turn on or off) */}
+            <div className="pt-3 border-t border-white/5 flex items-center justify-between gap-3">
+              <div className="flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <Flame className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <h5 className="font-bold text-xs text-white">
+                    Song Key Moments (Milestone Dots)
+                  </h5>
+                </div>
+                <p className="text-[11px] text-white/50 mt-0.5">
+                  Shows interactive milestone dots on the player timeline for chorus, drop, and hook moments (Classic progress bar).
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const currentMode = userProfile.keyPartsDisplay || 'dots';
+                  const nextMode = currentMode === 'off' ? 'dots' : 'off';
+                  syncProfile({ ...userProfile, keyPartsDisplay: nextMode });
+                  showToast(nextMode === 'dots' ? '✓ Key moments dots enabled' : 'Key moments dots turned off', true);
+                }}
+                className={`w-12 h-7 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${
+                  (userProfile.keyPartsDisplay || 'dots') !== 'off' ? 'bg-[var(--accent)]' : 'bg-white/20'
+                }`}
+                aria-label="Toggle Key Moments Dots"
+              >
+                <span
+                  className={`w-5 h-5 rounded-full bg-white absolute top-1 transition-transform ${
+                    (userProfile.keyPartsDisplay || 'dots') !== 'off' ? 'left-6' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* Lyrics Settings with Top-Right Swatch and Bottom-Right Show More */}
@@ -1171,16 +1207,53 @@ export const SettingsView: React.FC = () => {
               })}
             </div>
 
-            {/* Bottom-Right "Show More" Button Opening Full Gallery */}
-            <div className="flex justify-end pt-1">
-              <button
-                type="button"
-                onClick={() => setIsLyricsGalleryModalOpen(true)}
-                className="flex items-center gap-1 text-xs font-extrabold text-[var(--accent)] hover:underline cursor-pointer px-2 py-1 rounded-lg bg-[var(--accent-soft)]"
-              >
-                <Type className="w-3.5 h-3.5" />
-                <span>Show More Styles Gallery...</span>
-              </button>
+            {/* Bottom Controls Row: Sign Language Option + Show More Styles */}
+            <div className="pt-3 border-t border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Sign Language Option */}
+              <div className="flex items-center justify-between sm:justify-start gap-3">
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base leading-none">🤟</span>
+                    <h5 className="font-bold text-xs text-white">
+                      Sign Language Lyrics (ASL / Hands)
+                    </h5>
+                  </div>
+                  <p className="text-[11px] text-white/50 mt-0.5">
+                    Shows hand signs and fingerspelling above each word in Lyrics+ Ultra.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !userProfile.lyricsSignLanguage;
+                    syncProfile({ ...userProfile, lyricsSignLanguage: next });
+                    showToast(next ? '✓ Sign language lyrics enabled' : 'Sign language lyrics disabled', true);
+                  }}
+                  className={`w-12 h-7 rounded-full transition-colors relative flex-shrink-0 cursor-pointer ${
+                    userProfile.lyricsSignLanguage ? 'bg-[var(--accent)]' : 'bg-white/20'
+                  }`}
+                  aria-label="Toggle Sign Language Lyrics"
+                >
+                  <span
+                    className={`w-5 h-5 rounded-full bg-white absolute top-1 transition-transform ${
+                      userProfile.lyricsSignLanguage ? 'left-6' : 'left-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* Show More Styles */}
+              <div className="flex justify-end pt-1 sm:pt-0">
+                <button
+                  type="button"
+                  onClick={() => setIsLyricsGalleryModalOpen(true)}
+                  className="flex items-center gap-1 text-xs font-extrabold text-[var(--accent)] hover:underline cursor-pointer px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)]"
+                >
+                  <Type className="w-3.5 h-3.5" />
+                  <span>Show More Styles Gallery...</span>
+                </button>
+              </div>
             </div>
           </div>
         </section>

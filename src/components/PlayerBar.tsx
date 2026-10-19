@@ -87,9 +87,9 @@ export const PlayerBar: React.FC = () => {
   };
 
   return (
-    <div className="hidden md:flex flex-col z-30 select-none">
+    <div className="hidden md:flex flex-col z-30 select-none pb-3 px-4 lg:px-6">
       {isRemotePlaybackActive && (
-        <div className="w-full bg-[#28c76f]/15 border-t border-b border-[#28c76f]/30 px-6 py-1.5 flex items-center justify-between text-xs text-[#28c76f] backdrop-blur-md">
+        <div className="w-full mb-2 rounded-2xl bg-[#28c76f]/15 border border-[#28c76f]/30 px-6 py-2 flex items-center justify-between text-xs text-[#28c76f] backdrop-blur-md shadow-lg">
           <div className="flex items-center gap-2">
             <Radio className="w-3.5 h-3.5 text-[#28c76f] animate-pulse flex-shrink-0" />
             <span className="font-bold">
@@ -107,12 +107,22 @@ export const PlayerBar: React.FC = () => {
           </button>
         </div>
       )}
-      <div className="h-24 bg-black/90 glass-panel border-t border-white/10 px-6 flex items-center justify-between">
+      <div
+        onMouseDown={() => {
+          if (typeof document !== 'undefined' && document.activeElement) {
+            const activeEl = document.activeElement as HTMLElement;
+            if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement || activeEl.isContentEditable) {
+              activeEl.blur();
+            }
+          }
+        }}
+        className="h-24 bg-[#131318]/92 glass-panel rounded-3xl border border-white/10 px-6 lg:px-8 flex items-center justify-between shadow-[0_16px_50px_rgba(0,0,0,0.65)] backdrop-blur-2xl transition-all"
+      >
       {/* Left: Track Info & Secondary Actions */}
       <div className="flex items-center gap-4 w-1/4 min-w-[220px]">
         <div
           onClick={() => setIsFullScreenOpen(true)}
-          className="relative w-14 h-14 rounded-xl overflow-hidden cursor-pointer shadow-lg group flex-shrink-0"
+          className="relative w-14 h-14 rounded-2xl overflow-hidden cursor-pointer shadow-lg group flex-shrink-0 border border-white/10"
         >
           <TrackThumbImage
             track={activeTrack}
@@ -363,6 +373,12 @@ export const MiniPlayer: React.FC = () => {
   const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
+    if (typeof document !== 'undefined' && document.activeElement) {
+      const activeEl = document.activeElement as HTMLElement;
+      if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement || activeEl.isContentEditable) {
+        activeEl.blur();
+      }
+    }
     const target = e.target as HTMLElement;
     if (target.closest('button, input, a')) return;
 

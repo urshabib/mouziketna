@@ -14,6 +14,8 @@ export const LyricsSheet: React.FC = () => {
     setIsLyricsOpen,
     currentLyrics,
     retryLyrics,
+    userProfile,
+    syncProfile,
     t,
   } = useMusic();
 
@@ -23,9 +25,22 @@ export const LyricsSheet: React.FC = () => {
 
   // Lyrics+ mode toggle (default off, switches to ultra motion lyrics with embedded emojis)
   const [isLyricsPlusActive, setIsLyricsPlusActive] = useState<boolean>(false);
+  const [isSignLanguageActive, setIsSignLanguageActive] = useState<boolean>(
+    Boolean(userProfile.lyricsSignLanguage)
+  );
+
+  useEffect(() => {
+    setIsSignLanguageActive(Boolean(userProfile.lyricsSignLanguage));
+  }, [userProfile.lyricsSignLanguage]);
 
   const handleToggleLyricsPlus = () => {
     setIsLyricsPlusActive((prev) => !prev);
+  };
+
+  const handleToggleSignLanguage = () => {
+    const next = !isSignLanguageActive;
+    setIsSignLanguageActive(next);
+    syncProfile({ ...userProfile, lyricsSignLanguage: next });
   };
 
   // User navigation state & 3s idle return timer (silent in background without showing popups)
@@ -174,7 +189,7 @@ export const LyricsSheet: React.FC = () => {
             <p className="text-xs text-white/50 truncate font-semibold mt-0.5">{activeTrack.artist}</p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Catchy, modern Lyrics+ Ultra Motion toggle */}
             <button
               type="button"
@@ -197,6 +212,25 @@ export const LyricsSheet: React.FC = () => {
               </span>
             </button>
 
+            {/* Quick Sign Language On/Off toggle inside Lyrics Ultra view */}
+            {isLyricsPlusActive && (
+              <button
+                type="button"
+                onClick={handleToggleSignLanguage}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-sm ${
+                  isSignLanguageActive
+                    ? 'bg-amber-400 text-black shadow-[0_0_12px_rgba(251,191,36,0.6)] scale-105'
+                    : 'bg-white/10 hover:bg-white/20 text-white/70 hover:text-white border border-white/10'
+                }`}
+                title={isSignLanguageActive ? 'Turn off Sign Language' : 'Turn on Sign Language'}
+              >
+                <span className="text-sm leading-none">🤟</span>
+                <span className="text-[10px] uppercase font-bold tracking-wider">
+                  Sign {isSignLanguageActive ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            )}
+
             <button
               onClick={retryLyrics}
               className="p-2 text-white/50 hover:text-white transition-colors cursor-pointer"
@@ -215,6 +249,7 @@ export const LyricsSheet: React.FC = () => {
             activeTrack={activeTrack}
             currentTime={currentTime}
             syncedLines={currentLyrics.mode === 'synced' && Array.isArray(currentLyrics.lines) ? currentLyrics.lines : []}
+            isSignLanguageActive={isSignLanguageActive}
             onSeek={(time) => {
               seekTo(time);
               resumeSyncNow();

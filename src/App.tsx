@@ -389,24 +389,24 @@ const AppShell: React.FC = () => {
       <Sidebar />
 
       {/* Main App Container */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative">
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative min-w-0">
         {/* Top Bar Header */}
         <TopBar />
 
         {/* Scrollable View Content */}
         <main
           id="main-scroll-container"
-          className={`flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-8 py-6 transition-all duration-200 ${
+          className={`flex-1 overflow-y-auto overflow-x-hidden scroll-smooth px-4 sm:px-8 py-5 transition-all duration-200 ${
             hasActiveMiniPlayer ? 'pb-56 md:pb-32' : 'pb-28 md:pb-24'
           }`}
         >
           <AnimatePresence mode="wait">
             <motion.div
               key={activePane}
-              initial={{ opacity: 0, y: 6 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
               className="w-full h-full"
             >
               {activePane === 'home' && <HomeView />}

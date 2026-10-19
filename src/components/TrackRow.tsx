@@ -91,12 +91,12 @@ export const TrackRow: React.FC<TrackRowProps> = ({
     <div
       onClick={(e) => handleLongPressClick(e)}
       data-track-row="true"
-      className={`track-row group flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer select-none gpu-layer ${
+      className={`track-row group flex items-center gap-2.5 sm:gap-3 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl md:rounded-2xl transition-all cursor-pointer select-none gpu-layer ${
         isSelected
           ? 'bg-white/15 border border-[var(--accent)]/40 shadow-sm'
           : isCurrent
           ? 'is-current-track bg-[var(--accent-soft)] hover:brightness-125'
-          : 'hover:bg-white/[0.06]'
+          : 'hover:bg-white/[0.07]'
       }`}
     >
       {/* 1. Left order/drag/select zone - EXCLUDED completely from song long-press */}
@@ -173,7 +173,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
         {...longPressHandlers}
       >
         {/* Art thumbnail */}
-        <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 bg-[#1f1f23] shadow-sm">
+        <div className="relative w-11 h-11 sm:w-12 sm:h-12 rounded-xl overflow-hidden flex-shrink-0 bg-[#1f1f23] shadow-sm">
           <img
             src={thumbSrc}
             alt={track.title}

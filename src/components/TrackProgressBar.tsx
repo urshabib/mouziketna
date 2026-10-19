@@ -45,11 +45,29 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
   const displayTime = isDragging && dragValue !== null ? dragValue : currentTime;
   const progressPct = duration > 0 ? Math.min(100, Math.max(0, (displayTime / duration) * 100)) : 0;
 
+  const dismissKeyboard = () => {
+    if (typeof document !== 'undefined') {
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (activeEl && typeof activeEl.blur === 'function') {
+        activeEl.blur();
+      }
+      const inputs = document.querySelectorAll<HTMLElement>(
+        'input:not([type="range"]), textarea, [contenteditable="true"]'
+      );
+      inputs.forEach((el) => {
+        try {
+          el.blur();
+        } catch {}
+      });
+    }
+  };
+
   const commitSeek = (targetSec: number) => {
     const now = Date.now();
     setIsDragging(false);
     setDragValue(null);
     isPointerDownRef.current = false;
+    dismissKeyboard();
     // Strictly deduplicate seek invocations within 350ms
     if (
       lastCommittedValueRef.current !== null &&
@@ -63,18 +81,21 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
     seekTo(targetSec);
   };
 
-  const handlePointerDown = () => {
+  const handlePointerDown = (e?: React.SyntheticEvent) => {
+    dismissKeyboard();
     isPointerDownRef.current = true;
     setIsDragging(true);
   };
 
   const handleSliderInput = (e: React.FormEvent<HTMLInputElement>) => {
+    dismissKeyboard();
     isPointerDownRef.current = true;
     setIsDragging(true);
     setDragValue(Number((e.target as HTMLInputElement).value));
   };
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    dismissKeyboard();
     const val = Number(e.target.value);
     // If pointer is already up or this was keyboard/discrete change, commit
     if (!isPointerDownRef.current) {
@@ -83,6 +104,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLInputElement>) => {
+    dismissKeyboard();
     const val = Number((e.target as HTMLInputElement).value);
     isPointerDownRef.current = false;
     commitSeek(val);
@@ -159,7 +181,25 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
           max={duration || 100}
           value={displayTime}
           step={0.1}
-          onPointerDown={handlePointerDown}
+          tabIndex={-1}
+          inputMode="none"
+          autoComplete="off"
+          onFocus={(e) => {
+            dismissKeyboard();
+            e.currentTarget.blur();
+          }}
+          onTouchStart={(e) => {
+            dismissKeyboard();
+            handlePointerDown(e);
+          }}
+          onMouseDown={(e) => {
+            dismissKeyboard();
+            handlePointerDown(e);
+          }}
+          onPointerDown={(e) => {
+            dismissKeyboard();
+            handlePointerDown(e);
+          }}
           onInput={handleSliderInput}
           onChange={handleSliderChange}
           onPointerUp={handlePointerUp}
@@ -190,7 +230,25 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             max={duration || 100}
             value={displayTime}
             step={0.1}
-            onPointerDown={handlePointerDown}
+            tabIndex={-1}
+            inputMode="none"
+            autoComplete="off"
+            onFocus={(e) => {
+              dismissKeyboard();
+              e.currentTarget.blur();
+            }}
+            onTouchStart={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
+            onMouseDown={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
+            onPointerDown={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
             onInput={handleSliderInput}
             onChange={handleSliderChange}
             onPointerUp={handlePointerUp}
@@ -234,7 +292,25 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             max={duration || 100}
             value={displayTime}
             step={0.1}
-            onPointerDown={handlePointerDown}
+            tabIndex={-1}
+            inputMode="none"
+            autoComplete="off"
+            onFocus={(e) => {
+              dismissKeyboard();
+              e.currentTarget.blur();
+            }}
+            onTouchStart={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
+            onMouseDown={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
+            onPointerDown={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
             onInput={handleSliderInput}
             onChange={handleSliderChange}
             onPointerUp={handlePointerUp}
@@ -273,7 +349,25 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
             max={duration || 100}
             value={displayTime}
             step={0.1}
-            onPointerDown={handlePointerDown}
+            tabIndex={-1}
+            inputMode="none"
+            autoComplete="off"
+            onFocus={(e) => {
+              dismissKeyboard();
+              e.currentTarget.blur();
+            }}
+            onTouchStart={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
+            onMouseDown={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
+            onPointerDown={(e) => {
+              dismissKeyboard();
+              handlePointerDown(e);
+            }}
             onInput={handleSliderInput}
             onChange={handleSliderChange}
             onPointerUp={handlePointerUp}
@@ -282,7 +376,7 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
         </div>
       )}
 
-      {/* BUILT-IN KEY MOMENTS PREVIEW (Miniature progress milestone indicator) */}
+      {/* BUILT-IN KEY MOMENTS PREVIEW (Milestone dots on progress bar - strictly only in classic 'default' style) */}
       {style === 'default' &&
         keyPartsMode !== 'off' &&
         duration > 0 &&
@@ -294,17 +388,23 @@ export const TrackProgressBar: React.FC<TrackProgressBarProps> = ({
               style={{ left: `${leftPct}%` }}
               className="group absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-20 pointer-events-auto flex flex-col items-center"
             >
-              {/* Miniature Milestone Indicator Bar */}
+              {/* Milestone Indicator Dot / Bar */}
               <button
                 type="button"
+                tabIndex={-1}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  dismissKeyboard();
+                }}
                 onClick={(e) => {
                   e.stopPropagation();
+                  dismissKeyboard();
                   seekTo(hl.startTime);
                 }}
-                className="w-2.5 h-3.5 rounded-sm bg-white/70 hover:bg-white active:scale-125 hover:shadow-[0_0_8px_rgba(255,255,255,0.9)] cursor-pointer transition-all border border-black/40 flex items-center justify-center"
+                className="w-2.5 h-3.5 rounded-sm bg-white/75 hover:bg-white active:scale-125 hover:shadow-[0_0_8px_rgba(255,255,255,0.9)] cursor-pointer transition-all border border-black/40 flex items-center justify-center"
                 title={`${hl.label} (${formatTime(hl.startTime)})`}
               >
-                <div className="w-0.5 h-2 bg-black/60 rounded-full" />
+                <div className="w-0.5 h-2 bg-black/70 rounded-full" />
               </button>
 
               {/* Mini hover milestone pill */}

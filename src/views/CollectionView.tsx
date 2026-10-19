@@ -547,14 +547,14 @@ export const CollectionView: React.FC = () => {
   const getHeroArt = () => {
     if (target.type === 'liked') {
       return (
-        <div className="w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-[#401500] flex items-center justify-center text-white shadow-2xl flex-shrink-0">
+        <div className="w-40 h-40 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-2xl md:rounded-3xl bg-gradient-to-br from-[var(--accent)] to-[#401500] flex items-center justify-center text-white shadow-2xl flex-shrink-0">
           <Heart className="w-20 h-20 fill-white" />
         </div>
       );
     }
     if (target.type === 'downloads') {
       return (
-        <div className="w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-[#1c1c1e] border border-white/10 flex items-center justify-center text-[var(--accent)] shadow-2xl flex-shrink-0">
+        <div className="w-40 h-40 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-2xl md:rounded-3xl bg-[#1c1c1e] border border-white/10 flex items-center justify-center text-[var(--accent)] shadow-2xl flex-shrink-0">
           <Download className="w-20 h-20" />
         </div>
       );
@@ -563,12 +563,12 @@ export const CollectionView: React.FC = () => {
       const pl = (userProfile.customPlaylists || []).find((p) => String(p.id) === String(target.id));
       const customCover = (target.id ? getPersistentPlaylistCover(target.id) : null) || pl?.customCover || target.thumb;
       return (
-        <div className="relative group w-40 h-40 sm:w-52 sm:h-52 rounded-2xl overflow-hidden shadow-2xl flex-shrink-0">
+        <div className="relative group w-40 h-40 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex-shrink-0">
           <PlaylistCover
             cover={customCover}
             tracks={tracks}
             sizeClass="w-full h-full"
-            roundedClass="rounded-2xl"
+            roundedClass="rounded-2xl md:rounded-3xl"
             alt={getTitle()}
           />
           <button
@@ -584,7 +584,7 @@ export const CollectionView: React.FC = () => {
     }
     if (target.thumb) {
       return (
-        <div className="relative group w-40 h-40 sm:w-52 sm:h-52 rounded-2xl overflow-hidden shadow-2xl flex-shrink-0">
+        <div className="relative group w-40 h-40 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex-shrink-0">
           <img
             src={target.thumb}
             alt={target.title || 'Collection'}
@@ -594,7 +594,7 @@ export const CollectionView: React.FC = () => {
       );
     }
     return (
-      <div className="relative group w-40 h-40 sm:w-52 sm:h-52 rounded-2xl bg-[#1f1f23] border border-white/10 flex items-center justify-center text-white/40 shadow-2xl flex-shrink-0">
+      <div className="relative group w-40 h-40 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-2xl md:rounded-3xl bg-[#1f1f23] border border-white/10 flex items-center justify-center text-white/40 shadow-2xl flex-shrink-0">
         <Play className="w-16 h-16" />
       </div>
     );
