@@ -388,8 +388,8 @@ const AppShell: React.FC = () => {
       {/* Desktop Sidebar */}
       <Sidebar />
 
-      {/* Main App Container */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden relative min-w-0">
+      {/* Main App Container (Beautifully rounded floating glass card on PC, full-bleed on mobile) */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden relative min-w-0 md:mr-3 lg:mr-4 md:my-3 lg:my-4 md:rounded-3xl md:border md:border-white/10 md:bg-[#121216]/85 md:glass-panel md:shadow-2xl md:backdrop-blur-2xl">
         {/* Top Bar Header */}
         <TopBar />
 

@@ -414,7 +414,7 @@ export const TopBar: React.FC = () => {
       className={`sticky top-0 z-30 flex items-center justify-between transition-all select-none ${
         isLiquidGlass
           ? 'mx-3 sm:mx-6 my-2 mt-[max(0.5rem,env(safe-area-inset-top))] px-4 sm:px-6 py-2.5 bg-[#141418]/85 glass-panel rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl'
-          : 'px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/85 border-b border-white/10 backdrop-blur-xl'
+          : 'px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/85 md:bg-white/[0.02] border-b border-white/10 md:border-white/5 backdrop-blur-xl'
       }`}
     >
       {/* Left side: Mobile Logo vs Desktop Navigation Cluster */}

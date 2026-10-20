@@ -179,25 +179,32 @@ function applyFilters() {
   }
 }
 
-export const isIOSDevice = () => {
+export const isMobileDevice = () => {
   if (typeof navigator === 'undefined') return false;
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const ua = navigator.userAgent || '';
+  return (
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
+    (typeof window !== 'undefined' && 'ontouchstart' in window && window.innerWidth < 1024)
+  );
 };
 
+export const isIOSDevice = isMobileDevice;
+
 export function isAudioGraphNeeded(): boolean {
-  // On iPhone / iOS devices, Web Audio AudioContext is forcefully suspended by iOS Safari
-  // whenever the screen is locked, turned off, or the app goes to the background.
-  // Bypassing Web Audio on iOS guarantees pure direct hardware audio that NEVER stops!
-  if (isIOSDevice()) {
+  // On mobile devices (Android, iPhone, iPad), Web Audio AudioContext is forcefully suspended
+  // by OS battery managers and background execution throttles whenever the screen is locked,
+  // turned off, or the app goes to the background.
+  // Bypassing Web Audio on all mobile platforms guarantees pure direct native hardware audio that NEVER stops!
+  if (isMobileDevice()) {
     return false;
   }
   return currentBassMode !== 'off' || currentVolumeBoost > 100;
 }
 
 export function ensureAudioGraph(audio: HTMLAudioElement) {
-  // If no DSP enhancer is active or if on iOS, keep audio in pure direct hardware playback
-  // to guarantee unbroken background playback on iOS/Safari and zero seek glitches!
+  // If no DSP enhancer is active or if on any mobile device (Android & iOS), keep audio in pure direct hardware playback
+  // to guarantee unbroken background playback on mobile browsers with zero sleep/lock pauses!
   if (!isAudioGraphNeeded()) {
     return;
   }

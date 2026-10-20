@@ -728,6 +728,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {}
   };
 
+  // Continuous Background Audio Continuity & Watchdog (Android & iOS)
+  const userIntentPlayingRef = useRef<boolean>(false);
+  const isLoadingTrackRef = useRef<boolean>(false);
+  const SILENT_AUDIO_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+
   // Initialize audio elements
   useEffect(() => {
     const audio = new Audio();
@@ -735,6 +740,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.crossOrigin = 'anonymous';
     (audio as any).playsInline = true;
     (audio as any).webkitPlaysInline = true;
+    audio.setAttribute('playsinline', 'true');
+    audio.setAttribute('webkit-playsinline', 'true');
+    audio.setAttribute('x-webkit-airplay', 'allow');
     audio.volume = volume / 100;
     audioRef.current = audio;
     ensureAudioGraph(audio);
@@ -745,9 +753,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     prefetchAudio.muted = true;
     (prefetchAudio as any).playsInline = true;
     (prefetchAudio as any).webkitPlaysInline = true;
+    prefetchAudio.setAttribute('playsinline', 'true');
+    prefetchAudio.setAttribute('webkit-playsinline', 'true');
     prefetchAudioRef.current = prefetchAudio;
 
     const onPlay = () => {
+      userIntentPlayingRef.current = true;
       setIsPlaying(true);
       ensureAudioGraph(audio);
       requestWakeLock();
@@ -756,6 +767,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
     const onPause = () => {
+      // If user still intends to listen, do not accept involuntary OS screen-lock / background tab pause
+      if (userIntentPlayingRef.current) {
+        if (!isLoadingTrackRef.current && !isSeekingRef.current) {
+          // Attempt auto-resume after momentary lock-screen / Bluetooth interruption
+          setTimeout(() => {
+            if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused) {
+              audioRef.current.play().catch(() => {});
+            }
+          }, 120);
+        }
+        return;
+      }
       setIsPlaying(false);
       setIsBuffering(false);
       releaseWakeLock();
@@ -899,6 +922,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
+    const onStalled = () => {
+      if (userIntentPlayingRef.current && audio && audio.paused && !isLoadingTrackRef.current && !isSeekingRef.current) {
+        audio.play().catch(() => {});
+      }
+    };
+
     audio.addEventListener('play', onPlay);
     audio.addEventListener('pause', onPause);
     audio.addEventListener('waiting', onWaiting);
@@ -909,22 +938,36 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onAudioError);
+    audio.addEventListener('stalled', onStalled);
+    audio.addEventListener('suspend', onStalled);
 
     // Keep background audio active when screen turns off or locks on iPhone / iOS & Android
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         if (audioRef.current && !audioRef.current.paused) {
           requestWakeLock();
+        } else if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isLoadingTrackRef.current) {
+          audioRef.current.play().catch(() => {});
         }
       } else if (document.visibilityState === 'hidden' && audioRef.current) {
-        if (!audioRef.current.paused && audioRef.current.currentTime > 0) {
+        if (userIntentPlayingRef.current) {
           if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'playing';
+          }
+          if (audioRef.current.paused && !isLoadingTrackRef.current) {
+            audioRef.current.play().catch(() => {});
           }
         }
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const onPageShow = () => {
+      if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isLoadingTrackRef.current) {
+        audioRef.current.play().catch(() => {});
+      }
+    };
+    window.addEventListener('pageshow', onPageShow);
 
     // Init downloads registry
     initDownloadsRegistry().then(() => {
@@ -993,6 +1036,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pageshow', onPageShow);
+      audio.removeEventListener('stalled', onStalled);
+      audio.removeEventListener('suspend', onStalled);
       audio.pause();
       audio.src = '';
     };
@@ -2385,10 +2432,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       artist: track.artist,
     }).catch(() => {});
 
-    // Pause previous playback cleanly without destroying audio element session in background
-    try {
-      audio.pause();
-    } catch {}
+    // Mark user playback intent and track loading transition
+    userIntentPlayingRef.current = true;
+    isLoadingTrackRef.current = true;
+
+    // In background or lock screen, keep audio element alive with tiny silent gap buffer
+    // so iOS Safari and Android Chrome NEVER revoke the background audio privilege during network fetch
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+      try {
+        if (!audio.src || audio.paused) {
+          audio.src = SILENT_AUDIO_WAV;
+          audio.play().catch(() => {});
+        }
+      } catch {}
+    }
 
     hasPrefetchedNextRef.current = false;
     const token = ++playTokenRef.current;
@@ -2619,6 +2676,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (token !== playTokenRef.current) return false;
 
     if (ok) {
+      isLoadingTrackRef.current = false;
+      userIntentPlayingRef.current = true;
       setActiveTrack(resolvedTrack);
       recordPlaybackSync(resolvedTrack);
       updateMediaSession(resolvedTrack);
@@ -2633,6 +2692,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return true;
     } else {
+      isLoadingTrackRef.current = false;
       setIsBuffering(false);
       try {
         audio.pause();
@@ -2686,8 +2746,38 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       navigator.mediaSession.playbackState = 'playing';
 
-      navigator.mediaSession.setActionHandler('play', togglePlay);
-      navigator.mediaSession.setActionHandler('pause', togglePlay);
+      navigator.mediaSession.setActionHandler('play', () => {
+        userIntentPlayingRef.current = true;
+        if (audioRef.current && audioRef.current.paused) {
+          audioRef.current.play().catch(() => {});
+        }
+        setIsPlaying(true);
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        userIntentPlayingRef.current = false;
+        if (audioRef.current && !audioRef.current.paused) {
+          audioRef.current.pause();
+        }
+        setIsPlaying(false);
+        releaseWakeLock();
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused';
+        }
+      });
+      navigator.mediaSession.setActionHandler('stop', () => {
+        userIntentPlayingRef.current = false;
+        if (audioRef.current && !audioRef.current.paused) {
+          audioRef.current.pause();
+        }
+        setIsPlaying(false);
+        releaseWakeLock();
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'paused';
+        }
+      });
       navigator.mediaSession.setActionHandler('nexttrack', playNext);
       navigator.mediaSession.setActionHandler('previoustrack', playPrevious);
       navigator.mediaSession.setActionHandler('seekto', (details) => {
@@ -2723,6 +2813,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) {
+      userIntentPlayingRef.current = true;
       setSupersededNotice(null);
       setIsRemotePlaybackActive(false);
       setRemoteDeviceName(null);
@@ -2759,8 +2850,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       }
     } else {
+      userIntentPlayingRef.current = false;
       audio.pause();
       setIsPlaying(false);
+      releaseWakeLock();
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
       sessionManager.releasePlaybackLease();
     }
   };
