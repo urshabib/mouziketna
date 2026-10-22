@@ -461,6 +461,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Audio elements & Synchronized Refs to avoid stale closures
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prefetchAudioRef = useRef<HTMLAudioElement | null>(null);
+  const carrierAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
   const playTokenRef = useRef(0);
   const hasPrefetchedNextRef = useRef(false);
@@ -746,6 +747,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isPreloadingNextRef = useRef<boolean>(false);
 
   // Generate a valid 1-second 8kHz mono 8-bit PCM silent WAV blob for unbroken background continuity
+  // Generate a valid 1-second 8kHz mono 8-bit PCM silent WAV blob with 1-bit dither
+  // The subtle +/- 1 LSB dither is completely inaudible (-48dBFS down at 1% volume),
+  // but registers as active PCM frames to Car Bluetooth DSP amplifiers and noise gates,
+  // preventing the car's A2DP receiver from ever sleeping, gating, or muting during track switches!
   const createSilentLoopAudioUrl = (): string => {
     try {
       const sampleRate = 8000;
@@ -766,7 +771,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       view.setUint32(36, 0x64617461, false); // 'data'
       view.setUint32(40, numSamples, true);
       const bytes = new Uint8Array(buffer, 44);
-      bytes.fill(128); // 8-bit PCM neutral silence
+      for (let i = 0; i < numSamples; i++) {
+        // Dither between 127 and 128 (1-bit LSB at 8kHz). Inaudible, but prevents DSP silence gate cutoff
+        bytes[i] = (i % 2 === 0) ? 128 : 127;
+      }
       const blob = new Blob([buffer], { type: 'audio/wav' });
       return URL.createObjectURL(blob);
     } catch {
@@ -774,10 +782,34 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Helper to ensure continuous Bluetooth A2DP carrier stream is active
+  const ensureCarrierActive = useCallback(() => {
+    if (carrierAudioRef.current && userIntentPlayingRef.current) {
+      if (carrierAudioRef.current.paused) {
+        carrierAudioRef.current.play().catch(() => {});
+      }
+    }
+  }, []);
+
   // Initialize audio elements
   useEffect(() => {
     silentLoopUrlRef.current = createSilentLoopAudioUrl();
 
+    // 1. Persistent Bluetooth A2DP Carrier Audio Anchor:
+    // Runs an inaudible, dithered silent loop that keeps the Bluetooth hardware stream and
+    // Android AudioTrack alive throughout track changes, preventing car stereos from entering sleep mode!
+    const carrierAudio = new Audio();
+    carrierAudio.loop = true;
+    carrierAudio.preload = 'auto';
+    (carrierAudio as any).playsInline = true;
+    (carrierAudio as any).webkitPlaysInline = true;
+    carrierAudio.setAttribute('playsinline', 'true');
+    carrierAudio.setAttribute('webkit-playsinline', 'true');
+    carrierAudio.volume = 0.01; // Inaudible 1% volume carrier
+    carrierAudio.src = silentLoopUrlRef.current;
+    carrierAudioRef.current = carrierAudio;
+
+    // 2. Primary Music Playback Element
     const audio = new Audio();
     audio.preload = 'auto';
     // Only set crossOrigin if Web Audio DSP is strictly needed (on desktop).
@@ -822,7 +854,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       let tickCount = 0;
       watchdogWorker.onmessage = () => {
         tickCount++;
-        // 1. Involuntary background pause self-healing:
+
+        // 1. Maintain Bluetooth A2DP Carrier Anchor while user intends to listen
+        if (userIntentPlayingRef.current && carrierAudioRef.current && carrierAudioRef.current.paused) {
+          carrierAudioRef.current.play().catch(() => {});
+        }
+
+        // 2. Involuntary background pause self-healing:
         // When screen is off / locked, Android battery manager or iOS WebKit may pause the audio element.
         // The Web Worker tick is NOT frozen on background audio.
         if (
@@ -838,9 +876,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         }
 
-        // 2. Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 & iOS Bluetooth A2DP):
+        // 3. Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 & iOS Bluetooth A2DP Car Kits):
         // When screen is turned off, Android AudioTrack's initial buffer finishes at ~3 seconds.
-        // If the track transitioned within the last 16s and reaches 2.5s - 4.5s, verify volume and re-anchor hardware stream
+        // If the track transitioned within the last 16s and reaches 2.5s - 4.5s, verify volume and flush hardware stream
         if (
           userIntentPlayingRef.current &&
           audioRef.current &&
@@ -855,15 +893,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               a.muted = false;
               a.volume = (volumeRef.current || 50) / 100;
               const cur = a.currentTime;
-              a.currentTime = cur;
+              // Shift position by 0.05s so Chromium does not no-op early return, executing an actual seek/flush
+              a.currentTime = cur + 0.05;
             } catch {}
           }
         }
 
-        // 3. Keep AudioContext active if present on desktop
+        // 4. Keep AudioContext active if present on desktop
         resumeAudioContext();
 
-        // 4. Periodic background lease heartbeat every 15s so server lease never expires
+        // 5. Periodic background lease heartbeat every 15s so server lease never expires
         if (tickCount % 18 === 0 && userIntentPlayingRef.current) {
           sessionManager.sendHeartbeat().catch(() => {});
         }
@@ -884,6 +923,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       userIntentPlayingRef.current = true;
       setIsPlaying(true);
       ensureAudioGraph(audio);
+      ensureCarrierActive();
       requestWakeLock();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
@@ -913,6 +953,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsPlaying(false);
       setIsBuffering(false);
       releaseWakeLock();
+      if (carrierAudioRef.current && !carrierAudioRef.current.paused) {
+        carrierAudioRef.current.pause();
+      }
       if (audio && audio.currentTime >= 0) {
         try {
           localStorage.setItem('mouzika_last_played_pos', String(Math.floor(audio.currentTime)));
@@ -943,6 +986,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       userIntentPlayingRef.current = true;
       isSeekingRef.current = false;
       setIsBuffering(false);
+      ensureCarrierActive();
       requestWakeLock();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
@@ -1002,10 +1046,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 / Bluetooth A2DP & iOS):
+      // Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 / Bluetooth A2DP Car Kits & iOS):
       // When screen is locked, Android AudioTrack's initial buffer finishes at ~3 seconds.
-      // Re-anchoring currentTime and verifying volume flushes Chromium's audio renderer
-      // and permanently secures the Bluetooth audio sink without audible stutter!
+      // Re-anchoring with an actual position shift (+0.05s) forces Chromium's Pipeline::Seek(),
+      // flushing the audio renderer and permanently locking the Bluetooth car stereo sink!
       if (
         !hasNudgedTransitionRef.current &&
         audio.currentTime >= 2.5 &&
@@ -1017,10 +1061,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (audio.volume === 0 && volumeRef.current > 0) {
           audio.volume = (volumeRef.current || 50) / 100;
         }
+        ensureCarrierActive();
         if (document.visibilityState === 'hidden' || isMobileDevice()) {
           try {
             const cur = audio.currentTime;
-            audio.currentTime = cur;
+            audio.currentTime = cur + 0.05;
           } catch {}
         }
       }
@@ -1117,6 +1162,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Keep background audio active when screen turns off or locks on iPhone / iOS & Android
     const onVisibilityChange = () => {
       resumeAudioContext();
+      if (userIntentPlayingRef.current) {
+        ensureCarrierActive();
+      }
       if (document.visibilityState === 'visible') {
         if (audioRef.current) {
           if (audioRef.current.muted) audioRef.current.muted = false;
@@ -1144,6 +1192,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const onPageShow = () => {
       resumeAudioContext();
+      if (userIntentPlayingRef.current) {
+        ensureCarrierActive();
+      }
       if (userIntentPlayingRef.current && audioRef.current) {
         if (audioRef.current.muted) audioRef.current.muted = false;
         if (audioRef.current.volume === 0 && volumeRef.current > 0) {
@@ -1229,6 +1280,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       audio.removeEventListener('suspend', onStalled);
       audio.pause();
       audio.src = '';
+      if (carrierAudioRef.current) {
+        carrierAudioRef.current.pause();
+        carrierAudioRef.current.src = '';
+      }
     };
   }, []);
 
@@ -2690,6 +2745,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     hasNudgedTransitionRef.current = false;
     audio.muted = false;
     audio.volume = (volumeRef.current || 50) / 100;
+    ensureCarrierActive();
 
     // Immediately anchor MediaSession metadata and declare 'playing' state to OS
     // Crucial for Android 17 / One UI 9 Background Audio Hardening and iOS WebKit audio persistence
@@ -2790,9 +2846,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     });
 
-    // Revoke previous blob URL
-    if (activeBlobUrlRef.current) {
-      try { URL.revokeObjectURL(activeBlobUrlRef.current); } catch {}
+    // Safely defer previous blob URL revocation so ongoing chunks are never cut off mid-decode
+    const oldBlob = activeBlobUrlRef.current;
+    if (oldBlob) {
+      setTimeout(() => {
+        try { URL.revokeObjectURL(oldBlob); } catch {}
+      }, 15000);
       activeBlobUrlRef.current = null;
     }
 
@@ -3039,6 +3098,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       navigator.mediaSession.setActionHandler('play', () => {
         userIntentPlayingRef.current = true;
+        ensureCarrierActive();
         if (audioRef.current && audioRef.current.paused) {
           audioRef.current.play().catch(() => {});
         }
@@ -3049,6 +3109,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       navigator.mediaSession.setActionHandler('pause', () => {
         userIntentPlayingRef.current = false;
+        if (carrierAudioRef.current && !carrierAudioRef.current.paused) {
+          carrierAudioRef.current.pause();
+        }
         if (audioRef.current && !audioRef.current.paused) {
           audioRef.current.pause();
         }
@@ -3060,6 +3123,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
       navigator.mediaSession.setActionHandler('stop', () => {
         userIntentPlayingRef.current = false;
+        if (carrierAudioRef.current && !carrierAudioRef.current.paused) {
+          carrierAudioRef.current.pause();
+        }
         if (audioRef.current && !audioRef.current.paused) {
           audioRef.current.pause();
         }
@@ -3105,6 +3171,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!audio) return;
     if (audio.paused) {
       userIntentPlayingRef.current = true;
+      ensureCarrierActive();
       setSupersededNotice(null);
       setIsRemotePlaybackActive(false);
       setRemoteDeviceName(null);
@@ -3142,6 +3209,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     } else {
       userIntentPlayingRef.current = false;
+      if (carrierAudioRef.current && !carrierAudioRef.current.paused) {
+        carrierAudioRef.current.pause();
+      }
       audio.pause();
       setIsPlaying(false);
       releaseWakeLock();
@@ -3294,10 +3364,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setQueueIndex(targetIdx);
       queueIndexRef.current = targetIdx;
 
-      // Revoke any previous active blob URL safely
-      if (activeBlobUrlRef.current && activeBlobUrlRef.current !== preloaded.url) {
-        try { URL.revokeObjectURL(activeBlobUrlRef.current); } catch {}
-        activeBlobUrlRef.current = null;
+      // Safely defer previous blob URL revocation so ongoing chunks are never cut off mid-decode
+      const oldBlob = activeBlobUrlRef.current;
+      if (oldBlob && oldBlob !== preloaded.url) {
+        setTimeout(() => {
+          try { URL.revokeObjectURL(oldBlob); } catch {}
+        }, 15000);
       }
       if (preloaded.isBlob) {
         activeBlobUrlRef.current = preloaded.url;
@@ -3305,6 +3377,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       lastTrackTransitionTimeRef.current = Date.now();
       hasNudgedTransitionRef.current = false;
+      ensureCarrierActive();
 
       // Synchronously set volume, un-mute, src, loop, and call play()
       audio.loop = Boolean(isLoopingRef.current);
