@@ -733,6 +733,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isLoadingTrackRef = useRef<boolean>(false);
   const silentLoopUrlRef = useRef<string | null>(null);
 
+  // Synchronous Pre-buffered Handoff for Android 17 / One UI 9 & iOS
+  interface PreloadedNext {
+    track: Track;
+    url: string;
+    isBlob: boolean;
+  }
+  const preloadedNextRef = useRef<PreloadedNext | null>(null);
+  const isPreloadingNextRef = useRef<boolean>(false);
+
   // Generate a valid 1-second 8kHz mono 8-bit PCM silent WAV blob for unbroken background continuity
   const createSilentLoopAudioUrl = (): string => {
     try {
@@ -959,14 +968,24 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Auto prefetch check: trigger smoothly when 25s left in current song
-      if (
-        !hasPrefetchedNextRef.current &&
-        audio.duration > 20 &&
-        audio.duration - audio.currentTime <= 25
-      ) {
+      // Early prefetch & pre-buffer: triggers early at 3s so the next track is fully resolved & prepared ahead of time
+      if (!hasPrefetchedNextRef.current && audio.currentTime >= 3) {
         hasPrefetchedNextRef.current = true;
         prefetchNextSong();
+      }
+
+      // Seamless Gapless Handoff at natural track finish (0.35s before duration):
+      // Prevents audio element from ever hitting 'ended' or dropping audio focus on Android 17 / One UI 9!
+      if (
+        !isLoopingRef.current &&
+        !(audioRef.current && audioRef.current.loop) &&
+        !isSeekingRef.current &&
+        audio.duration > 15 &&
+        audio.currentTime >= audio.duration - 0.35
+      ) {
+        if (playNextRef.current) {
+          playNextRef.current();
+        }
       }
     };
     const onLoadedMetadata = () => {
@@ -2080,19 +2099,82 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return null;
   };
 
-  // Prefetch stream for next queued or algorithmic song
+  // Prefetch & Pre-buffer stream for next queued or algorithmic song
   const prefetchNextSong = async () => {
-    if (!activeTrack) return;
-    let nextTrack: Track | null = null;
-    if (playbackQueue.length > 0 && queueIndex < playbackQueue.length - 1) {
-      nextTrack = playbackQueue[queueIndex + 1];
-    } else {
-      nextTrack = await getNextAlgorithmTrack(activeTrack);
-    }
-    if (nextTrack) {
+    const active = activeTrackRef.current;
+    if (!active) return;
+    if (isPreloadingNextRef.current) return;
+    isPreloadingNextRef.current = true;
+
+    try {
+      const queue = playbackQueueRef.current;
+      const idx = queueIndexRef.current;
+      const shuffle = isShuffleRef.current;
+      let nextTrack: Track | null = null;
+
+      if (queue && queue.length > 0) {
+        if (shuffle && queue.length > 1) {
+          const randomIdx = Math.floor(Math.random() * queue.length);
+          nextTrack = queue[randomIdx];
+        } else if (idx >= 0 && idx < queue.length - 1) {
+          nextTrack = queue[idx + 1];
+        }
+      }
+
+      if (!nextTrack) {
+        nextTrack = await getNextAlgorithmTrack(active);
+      }
+
+      if (!nextTrack || !nextTrack.id) {
+        isPreloadingNextRef.current = false;
+        return;
+      }
+
+      // 1. If downloaded offline track: preload Blob URL directly into preloadedNextRef
+      if (isDownloaded(nextTrack.id)) {
+        try {
+          const record = await getDownload(nextTrack.id);
+          if (record?.audioBlob) {
+            const blobUrl = URL.createObjectURL(record.audioBlob);
+            preloadedNextRef.current = {
+              track: nextTrack,
+              url: blobUrl,
+              isBlob: true,
+            };
+            isPreloadingNextRef.current = false;
+            return;
+          }
+        } catch {}
+      }
+
+      // 2. If online track: resolve and cache stream URL into preloadedNextRef
       const level = userProfile.dataSaverLevel || 'off';
       const q = level === 'ultra' ? '48' : level === 'saver' ? '96' : '320';
-      prefetchTrackStream(nextTrack, q).catch(() => {});
+
+      let streamUrl = getCachedStreamUrl(nextTrack.id);
+      if (!streamUrl) {
+        streamUrl = await resolveWorkerStream(nextTrack.id).catch(() => null);
+        if (!streamUrl) {
+          const mirrors = await resolveMirrorStreams(nextTrack.id).catch(() => []);
+          if (mirrors.length > 0) streamUrl = mirrors[0];
+        }
+        if (!streamUrl) {
+          const cleanT = cleanTitleForLyrics(nextTrack.title) || nextTrack.title;
+          const cleanA = cleanArtistName(nextTrack.artist);
+          streamUrl = await resolveSaavnStream(cleanT, cleanA, q, nextTrack.title, nextTrack.artist).catch(() => null);
+        }
+      }
+
+      if (streamUrl) {
+        cacheStreamUrl(nextTrack.id, streamUrl);
+        preloadedNextRef.current = {
+          track: nextTrack,
+          url: streamUrl,
+          isBlob: false,
+        };
+      }
+    } catch {} finally {
+      isPreloadingNextRef.current = false;
     }
   };
 
@@ -2662,6 +2744,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           try {
             localStorage.setItem('mouzika_last_played_track', JSON.stringify(persistentTrack));
           } catch {}
+          setTimeout(() => {
+            prefetchNextSong();
+          }, 2000);
           return true;
         }
       } catch (err) {
@@ -2682,6 +2767,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsBuffering(false);
       recordPlaybackSync(persistentInitialTrack);
       updateMediaSession(persistentInitialTrack);
+      setTimeout(() => {
+        prefetchNextSong();
+      }, 2000);
       return true;
     }
 
@@ -2806,6 +2894,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           downloadTrack(resolvedTrack, true, true).catch(() => {});
         }, 3000);
       }
+      setTimeout(() => {
+        prefetchNextSong();
+      }, 2000);
       return true;
     } else {
       isLoadingTrackRef.current = false;
@@ -3076,55 +3167,121 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const shuffle = isShuffleRef.current;
     const active = activeTrackRef.current;
 
+    let nextTrackToPlay: Track | null = null;
+    let targetIdx = idx;
+
     if (queue && queue.length > 0) {
       if (shuffle) {
-        const nextIdx = Math.floor(Math.random() * queue.length);
-        setQueueIndex(nextIdx);
-        queueIndexRef.current = nextIdx;
-        const ok = await playTrack(queue[nextIdx], true);
-        if (!ok && queue.length > 1) {
-          const fallbackIdx = (nextIdx + 1) % queue.length;
-          setQueueIndex(fallbackIdx);
-          queueIndexRef.current = fallbackIdx;
-          await playTrack(queue[fallbackIdx], true);
-        }
+        targetIdx = Math.floor(Math.random() * queue.length);
+        nextTrackToPlay = queue[targetIdx];
       } else if (idx >= 0 && idx < queue.length - 1) {
-        const nextIdx = idx + 1;
-        setQueueIndex(nextIdx);
-        queueIndexRef.current = nextIdx;
-        const ok = await playTrack(queue[nextIdx], true);
-        if (!ok && nextIdx < queue.length - 1) {
-          const nextNextIdx = nextIdx + 1;
-          setQueueIndex(nextNextIdx);
-          queueIndexRef.current = nextNextIdx;
-          await playTrack(queue[nextNextIdx], true);
-        }
+        targetIdx = idx + 1;
+        nextTrackToPlay = queue[targetIdx];
       } else if (active) {
-        // Queue ended or loop queue, let's discover next algorithm track
-        const next = await getNextAlgorithmTrack(active);
-        if (next) {
-          const newQueue = [...queue, next];
+        // Queue reached end: check if preloaded algorithm track is ready
+        if (preloadedNextRef.current && preloadedNextRef.current.track.id !== active.id) {
+          nextTrackToPlay = preloadedNextRef.current.track;
+          const newQueue = [...queue, nextTrackToPlay];
           setPlaybackQueue(newQueue);
           playbackQueueRef.current = newQueue;
-          const nextIdx = newQueue.length - 1;
-          setQueueIndex(nextIdx);
-          queueIndexRef.current = nextIdx;
-          await playTrack(next, true);
-        } else if (queue.length > 0) {
-          // Loop back to start of playlist
-          setQueueIndex(0);
-          queueIndexRef.current = 0;
-          await playTrack(queue[0], true);
+          targetIdx = newQueue.length - 1;
         }
+      }
+    } else if (active) {
+      if (preloadedNextRef.current && preloadedNextRef.current.track.id !== active.id) {
+        nextTrackToPlay = preloadedNextRef.current.track;
+        setPlaybackQueue([nextTrackToPlay]);
+        playbackQueueRef.current = [nextTrackToPlay];
+        targetIdx = 0;
+      }
+    }
+
+    const preloaded = preloadedNextRef.current;
+    const audio = audioRef.current;
+
+    // SYNCHRONOUS MEDIA CHAINING (ZERO ASYNC TICK):
+    // If next track is pre-resolved and audio element is ready, execute immediate source swap and play()!
+    // This executes synchronously within the ended / near-end handler, preserving browser user-activation
+    // and preventing Android 17 / One UI 9 background audio freeze!
+    if (audio && preloaded && nextTrackToPlay && preloaded.track.id === nextTrackToPlay.id) {
+      preloadedNextRef.current = null;
+      setQueueIndex(targetIdx);
+      queueIndexRef.current = targetIdx;
+
+      // Revoke any previous active blob URL safely
+      if (activeBlobUrlRef.current && activeBlobUrlRef.current !== preloaded.url) {
+        try { URL.revokeObjectURL(activeBlobUrlRef.current); } catch {}
+        activeBlobUrlRef.current = null;
+      }
+      if (preloaded.isBlob) {
+        activeBlobUrlRef.current = preloaded.url;
+      }
+
+      // Synchronously set src, loop, and call play()
+      audio.loop = Boolean(isLoopingRef.current);
+      audio.src = preloaded.url;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {});
+      }
+
+      // Synchronously update MediaSession with next track
+      updateMediaSession(preloaded.track);
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'playing';
+      }
+
+      setActiveTrack(preloaded.track);
+      userIntentPlayingRef.current = true;
+      isLoadingTrackRef.current = false;
+      setIsBuffering(false);
+      setCurrentTime(0);
+
+      // Non-blocking async background operations
+      recordPlaybackSync(preloaded.track);
+      sessionManager.claimPlaybackLease({
+        id: preloaded.track.id,
+        title: preloaded.track.title,
+        artist: preloaded.track.artist,
+      }).catch(() => {});
+      try {
+        localStorage.setItem('mouzika_last_played_track', JSON.stringify(preloaded.track));
+      } catch {}
+
+      // Preload next track for the subsequent cycle
+      setTimeout(() => {
+        hasPrefetchedNextRef.current = false;
+        prefetchNextSong();
+      }, 1500);
+
+      return;
+    }
+
+    // Fallback: standard playTrack flow if preloaded track was not ready
+    if (nextTrackToPlay) {
+      setQueueIndex(targetIdx);
+      queueIndexRef.current = targetIdx;
+      const ok = await playTrack(nextTrackToPlay, true);
+      if (!ok && queue && queue.length > 1) {
+        const fallbackIdx = (targetIdx + 1) % queue.length;
+        setQueueIndex(fallbackIdx);
+        queueIndexRef.current = fallbackIdx;
+        await playTrack(queue[fallbackIdx], true);
       }
     } else if (active) {
       const next = await getNextAlgorithmTrack(active);
       if (next) {
-        setPlaybackQueue([next]);
-        playbackQueueRef.current = [next];
+        const newQueue = queue ? [...queue, next] : [next];
+        setPlaybackQueue(newQueue);
+        playbackQueueRef.current = newQueue;
+        const nIdx = newQueue.length - 1;
+        setQueueIndex(nIdx);
+        queueIndexRef.current = nIdx;
+        await playTrack(next, true);
+      } else if (queue && queue.length > 0) {
         setQueueIndex(0);
         queueIndexRef.current = 0;
-        await playTrack(next, true);
+        await playTrack(queue[0], true);
       }
     }
   };
