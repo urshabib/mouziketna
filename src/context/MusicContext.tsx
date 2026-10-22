@@ -876,9 +876,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         }
 
-        // 3. Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 & iOS Bluetooth A2DP Car Kits):
-        // When screen is turned off, Android AudioTrack's initial buffer finishes at ~3 seconds.
-        // If the track transitioned within the last 16s and reaches 2.5s - 4.5s, verify volume and flush hardware stream
+        // 3. Autonomous Bluetooth & AudioTrack Continuity Verification:
+        // Ensure volume and carrier anchor remain fully engaged without artificial seeking
         if (
           userIntentPlayingRef.current &&
           audioRef.current &&
@@ -890,11 +889,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (a.currentTime >= 2.5 && a.currentTime <= 4.5 && !hasNudgedTransitionRef.current) {
             hasNudgedTransitionRef.current = true;
             try {
-              a.muted = false;
+              if (a.muted) a.muted = false;
               a.volume = (volumeRef.current || 50) / 100;
-              const cur = a.currentTime;
-              // Shift position by 0.05s so Chromium does not no-op early return, executing an actual seek/flush
-              a.currentTime = cur + 0.05;
+              ensureCarrierActive();
             } catch {}
           }
         }
@@ -1046,10 +1043,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 / Bluetooth A2DP Car Kits & iOS):
-      // When screen is locked, Android AudioTrack's initial buffer finishes at ~3 seconds.
-      // Re-anchoring with an actual position shift (+0.05s) forces Chromium's Pipeline::Seek(),
-      // flushing the audio renderer and permanently locking the Bluetooth car stereo sink!
+      // Autonomous Bluetooth & AudioTrack Continuity Verification:
+      // Verify audio un-mute and keep the Bluetooth carrier anchor active without artificial seeking
       if (
         !hasNudgedTransitionRef.current &&
         audio.currentTime >= 2.5 &&
@@ -1062,12 +1057,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           audio.volume = (volumeRef.current || 50) / 100;
         }
         ensureCarrierActive();
-        if (document.visibilityState === 'hidden' || isMobileDevice()) {
-          try {
-            const cur = audio.currentTime;
-            audio.currentTime = cur + 0.05;
-          } catch {}
-        }
       }
 
       // Safe prefetch & pre-buffer: triggers safely at 12s after current track is stable
@@ -2887,9 +2876,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           try {
             localStorage.setItem('mouzika_last_played_track', JSON.stringify(persistentTrack));
           } catch {}
-          setTimeout(() => {
-            prefetchNextSong();
-          }, 2000);
           return true;
         }
       } catch (err) {
@@ -2910,9 +2896,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsBuffering(false);
       recordPlaybackSync(persistentInitialTrack);
       updateMediaSession(persistentInitialTrack);
-      setTimeout(() => {
-        prefetchNextSong();
-      }, 2000);
       return true;
     }
 
@@ -3037,9 +3020,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           downloadTrack(resolvedTrack, true, true).catch(() => {});
         }, 3000);
       }
-      setTimeout(() => {
-        prefetchNextSong();
-      }, 2000);
       return true;
     } else {
       isLoadingTrackRef.current = false;
