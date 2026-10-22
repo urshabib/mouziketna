@@ -806,17 +806,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       watchdogWorker.onmessage = () => {
         tickCount++;
         // 1. Involuntary background pause self-healing:
+        // When screen is off / locked, Android battery manager or iOS WebKit may pause the audio element.
+        // The Web Worker tick is NOT frozen on background audio.
         if (
           userIntentPlayingRef.current &&
           audioRef.current &&
           audioRef.current.paused &&
-          !isLoadingTrackRef.current &&
           !isSeekingRef.current
         ) {
-          audioRef.current.play().catch(() => {});
+          const a = audioRef.current;
+          // Auto-resume if there is a valid audio source and song hasn't reached the end
+          if (a.src && a.src !== '' && !a.ended && (a.duration === 0 || isNaN(a.duration) || a.currentTime < a.duration - 0.5)) {
+            a.play().catch(() => {});
+          }
         }
         // 2. Periodic background lease heartbeat every 15s so server lease never expires
-        if (tickCount % 15 === 0 && userIntentPlayingRef.current) {
+        if (tickCount % 18 === 0 && userIntentPlayingRef.current) {
           sessionManager.sendHeartbeat().catch(() => {});
         }
       };
@@ -842,15 +847,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
     const onPause = () => {
+      // Natural track conclusion: if track reached or is within 0.5s of the end, do NOT re-play; allow onEnded to transition cleanly
+      if (audio.ended || (audio.duration > 0 && audio.currentTime >= audio.duration - 0.5)) {
+        return;
+      }
+
       // If user still intends to listen, do not accept involuntary OS screen-lock / background tab pause
       if (userIntentPlayingRef.current) {
-        if (!isLoadingTrackRef.current && !isSeekingRef.current) {
+        if (!isSeekingRef.current) {
           // Immediately attempt auto-resume without relying solely on delayed setTimeout
           try {
             audio.play().catch(() => {});
           } catch {}
           setTimeout(() => {
-            if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isLoadingTrackRef.current) {
+            if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isSeekingRef.current) {
               audioRef.current.play().catch(() => {});
             }
           }, 80);
@@ -886,6 +896,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }, 600);
     };
     const onPlaying = () => {
+      isLoadingTrackRef.current = false;
+      userIntentPlayingRef.current = true;
       isSeekingRef.current = false;
       setIsBuffering(false);
       requestWakeLock();
@@ -909,6 +921,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let lastTrackSec = 0;
     let lastSavedPosSec = 0;
     const onTimeUpdate = () => {
+      if (isLoadingTrackRef.current && audio.currentTime > 0.3) {
+        isLoadingTrackRef.current = false;
+      }
       setCurrentTime(audio.currentTime);
       updatePositionState();
 
@@ -1006,7 +1021,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const onStalled = () => {
-      if (userIntentPlayingRef.current && audio && audio.paused && !isLoadingTrackRef.current && !isSeekingRef.current) {
+      if (userIntentPlayingRef.current && audio && audio.paused && !isSeekingRef.current) {
         audio.play().catch(() => {});
       }
     };
@@ -1028,7 +1043,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (document.visibilityState === 'visible') {
         if (audioRef.current && !audioRef.current.paused) {
           requestWakeLock();
-        } else if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isLoadingTrackRef.current) {
+        } else if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isSeekingRef.current) {
           audioRef.current.play().catch(() => {});
         }
       } else if (document.visibilityState === 'hidden' && audioRef.current) {
@@ -1036,7 +1051,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'playing';
           }
-          if (audioRef.current.paused && !isLoadingTrackRef.current) {
+          if (audioRef.current.paused && !isSeekingRef.current && audioRef.current.src) {
             audioRef.current.play().catch(() => {});
           }
         }
@@ -1045,7 +1060,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     const onPageShow = () => {
-      if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isLoadingTrackRef.current) {
+      if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isSeekingRef.current && audioRef.current.src) {
         audioRef.current.play().catch(() => {});
       }
     };
@@ -2519,20 +2534,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     userIntentPlayingRef.current = true;
     isLoadingTrackRef.current = true;
 
-    // In background or lock screen, keep audio element alive with seamless silent looping buffer
-    // so iOS Safari and Android Chrome NEVER revoke the background audio privilege during network fetch
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-      try {
-        if (silentLoopUrlRef.current && (!audio.src || audio.paused)) {
-          audio.loop = true;
-          audio.src = silentLoopUrlRef.current;
-          audio.play().catch(() => {});
-        }
-      } catch {}
+    // Immediately anchor MediaSession metadata and declare 'playing' state to OS
+    // Crucial for Android 17 / One UI 9 Background Audio Hardening and iOS WebKit audio persistence
+    updateMediaSession(track);
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
     }
 
     hasPrefetchedNextRef.current = false;
     const token = ++playTokenRef.current;
+
+    // Safety timeout: ensure isLoadingTrackRef is never stuck true even if network or candidate resolution lags
+    const loadingSafetyTimer = setTimeout(() => {
+      if (token === playTokenRef.current) {
+        isLoadingTrackRef.current = false;
+      }
+    }, 3500);
 
     // When playing directly from outside queue (search or home), create autoplay queue
     if (!fromQueue) {
@@ -2621,9 +2638,14 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const blobUrl = URL.createObjectURL(record.audioBlob);
           activeBlobUrlRef.current = blobUrl;
           if (token !== playTokenRef.current) return false;
+          clearTimeout(loadingSafetyTimer);
           audio.loop = Boolean(isLoopingRef.current);
           audio.src = blobUrl;
           audio.play().catch(() => {});
+
+          isLoadingTrackRef.current = false;
+          userIntentPlayingRef.current = true;
+          setIsBuffering(false);
 
           let activeThumb = safeInitialThumb;
           if (record.thumbLowRes) {
@@ -2642,16 +2664,22 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           } catch {}
           return true;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to play offline download, falling back to online streams:', err);
+      }
     }
 
     // 2. Memory cached stream URL check
     const cachedUrl = getCachedStreamUrl(track.id);
     if (cachedUrl) {
       if (token !== playTokenRef.current) return false;
+      clearTimeout(loadingSafetyTimer);
       audio.loop = Boolean(isLoopingRef.current);
       audio.src = cachedUrl;
       audio.play().catch(() => {});
+      isLoadingTrackRef.current = false;
+      userIntentPlayingRef.current = true;
+      setIsBuffering(false);
       recordPlaybackSync(persistentInitialTrack);
       updateMediaSession(persistentInitialTrack);
       return true;
@@ -2759,11 +2787,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     clearTimeout(slowNoticeTimer);
+    clearTimeout(loadingSafetyTimer);
     if (token !== playTokenRef.current) return false;
 
     if (ok) {
       isLoadingTrackRef.current = false;
       userIntentPlayingRef.current = true;
+      setIsBuffering(false);
       setActiveTrack(resolvedTrack);
       recordPlaybackSync(resolvedTrack);
       updateMediaSession(resolvedTrack);
