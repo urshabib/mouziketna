@@ -69,7 +69,7 @@ import {
   getOfflineThumbUrlSync,
   downloadsRegistryReady,
 } from '../services/storage';
-import { ensureAudioGraph, setBaseAudioVolume, resumeAudioContext } from '../services/audioEnhancer';
+import { ensureAudioGraph, setBaseAudioVolume, resumeAudioContext, isAudioGraphNeeded, isMobileDevice } from '../services/audioEnhancer';
 import { sessionManager, SupersededEvent } from '../services/sessionManager';
 
 interface Toast {
@@ -477,6 +477,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const seekDebounceTimerRef = useRef<number | null>(null);
   const isSeekingRef = useRef(false);
   const lastSeekTimestampRef = useRef<number>(0);
+  const volumeRef = useRef<number>(volume);
+  const lastTrackTransitionTimeRef = useRef<number>(0);
+  const hasNudgedTransitionRef = useRef<boolean>(false);
 
   // Overlays
   const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
@@ -777,13 +780,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const audio = new Audio();
     audio.preload = 'auto';
-    audio.crossOrigin = 'anonymous';
+    // Only set crossOrigin if Web Audio DSP is strictly needed (on desktop).
+    // On mobile devices (Android & iOS), omitting crossOrigin allows native hardware audio playback
+    // with zero CORS range request stalls, ensuring unbroken background playback and rock-solid Bluetooth A2DP routing!
+    if (isAudioGraphNeeded()) {
+      audio.crossOrigin = 'anonymous';
+    }
     (audio as any).playsInline = true;
     (audio as any).webkitPlaysInline = true;
     audio.setAttribute('playsinline', 'true');
     audio.setAttribute('webkit-playsinline', 'true');
     audio.setAttribute('x-webkit-airplay', 'allow');
-    audio.volume = volume / 100;
+    audio.volume = (volumeRef.current || volume || 50) / 100;
     audioRef.current = audio;
     ensureAudioGraph(audio);
     setBaseAudioVolume(volume);
@@ -829,7 +837,33 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             a.play().catch(() => {});
           }
         }
-        // 2. Periodic background lease heartbeat every 15s so server lease never expires
+
+        // 2. Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 & iOS Bluetooth A2DP):
+        // When screen is turned off, Android AudioTrack's initial buffer finishes at ~3 seconds.
+        // If the track transitioned within the last 16s and reaches 2.5s - 4.5s, verify volume and re-anchor hardware stream
+        if (
+          userIntentPlayingRef.current &&
+          audioRef.current &&
+          !audioRef.current.paused &&
+          !isSeekingRef.current &&
+          Date.now() - lastTrackTransitionTimeRef.current < 16000
+        ) {
+          const a = audioRef.current;
+          if (a.currentTime >= 2.5 && a.currentTime <= 4.5 && !hasNudgedTransitionRef.current) {
+            hasNudgedTransitionRef.current = true;
+            try {
+              a.muted = false;
+              a.volume = (volumeRef.current || 50) / 100;
+              const cur = a.currentTime;
+              a.currentTime = cur;
+            } catch {}
+          }
+        }
+
+        // 3. Keep AudioContext active if present on desktop
+        resumeAudioContext();
+
+        // 4. Periodic background lease heartbeat every 15s so server lease never expires
         if (tickCount % 18 === 0 && userIntentPlayingRef.current) {
           sessionManager.sendHeartbeat().catch(() => {});
         }
@@ -968,8 +1002,31 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Early prefetch & pre-buffer: triggers early at 3s so the next track is fully resolved & prepared ahead of time
-      if (!hasPrefetchedNextRef.current && audio.currentTime >= 3) {
+      // Autonomous Bluetooth & AudioTrack Re-Sync (Android 17 / One UI 9 / Bluetooth A2DP & iOS):
+      // When screen is locked, Android AudioTrack's initial buffer finishes at ~3 seconds.
+      // Re-anchoring currentTime and verifying volume flushes Chromium's audio renderer
+      // and permanently secures the Bluetooth audio sink without audible stutter!
+      if (
+        !hasNudgedTransitionRef.current &&
+        audio.currentTime >= 2.5 &&
+        audio.currentTime <= 4.0 &&
+        Date.now() - lastTrackTransitionTimeRef.current < 20000
+      ) {
+        hasNudgedTransitionRef.current = true;
+        if (audio.muted) audio.muted = false;
+        if (audio.volume === 0 && volumeRef.current > 0) {
+          audio.volume = (volumeRef.current || 50) / 100;
+        }
+        if (document.visibilityState === 'hidden' || isMobileDevice()) {
+          try {
+            const cur = audio.currentTime;
+            audio.currentTime = cur;
+          } catch {}
+        }
+      }
+
+      // Safe prefetch & pre-buffer: triggers safely at 12s after current track is stable
+      if (!hasPrefetchedNextRef.current && audio.currentTime >= 12) {
         hasPrefetchedNextRef.current = true;
         prefetchNextSong();
       }
@@ -1059,11 +1116,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Keep background audio active when screen turns off or locks on iPhone / iOS & Android
     const onVisibilityChange = () => {
+      resumeAudioContext();
       if (document.visibilityState === 'visible') {
-        if (audioRef.current && !audioRef.current.paused) {
-          requestWakeLock();
-        } else if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isSeekingRef.current) {
-          audioRef.current.play().catch(() => {});
+        if (audioRef.current) {
+          if (audioRef.current.muted) audioRef.current.muted = false;
+          if (audioRef.current.volume === 0 && volumeRef.current > 0) {
+            audioRef.current.volume = (volumeRef.current || 50) / 100;
+          }
+          if (!audioRef.current.paused) {
+            requestWakeLock();
+          } else if (userIntentPlayingRef.current && !isSeekingRef.current) {
+            audioRef.current.play().catch(() => {});
+          }
         }
       } else if (document.visibilityState === 'hidden' && audioRef.current) {
         if (userIntentPlayingRef.current) {
@@ -1079,8 +1143,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     const onPageShow = () => {
-      if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isSeekingRef.current && audioRef.current.src) {
-        audioRef.current.play().catch(() => {});
+      resumeAudioContext();
+      if (userIntentPlayingRef.current && audioRef.current) {
+        if (audioRef.current.muted) audioRef.current.muted = false;
+        if (audioRef.current.volume === 0 && volumeRef.current > 0) {
+          audioRef.current.volume = (volumeRef.current || 50) / 100;
+        }
+        if (audioRef.current.paused && !isSeekingRef.current && audioRef.current.src) {
+          audioRef.current.play().catch(() => {});
+        }
       }
     };
     window.addEventListener('pageshow', onPageShow);
@@ -2615,12 +2686,25 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Mark user playback intent and track loading transition
     userIntentPlayingRef.current = true;
     isLoadingTrackRef.current = true;
+    lastTrackTransitionTimeRef.current = Date.now();
+    hasNudgedTransitionRef.current = false;
+    audio.muted = false;
+    audio.volume = (volumeRef.current || 50) / 100;
 
     // Immediately anchor MediaSession metadata and declare 'playing' state to OS
     // Crucial for Android 17 / One UI 9 Background Audio Hardening and iOS WebKit audio persistence
     updateMediaSession(track);
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = 'playing';
+      if ('setPositionState' in navigator.mediaSession) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: track.duration || 180,
+            playbackRate: 1,
+            position: 0.001,
+          });
+        } catch {}
+      }
     }
 
     hasPrefetchedNextRef.current = false;
@@ -3126,6 +3210,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setVolumeLevel = (vol: number) => {
     const v = Math.max(0, Math.min(100, vol));
     setVolume(v);
+    volumeRef.current = v;
     setIsMuted(v === 0);
     try {
       localStorage.setItem('hub_volume', String(v));
@@ -3133,6 +3218,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setBaseAudioVolume(v);
     if (audioRef.current) {
       audioRef.current.volume = v / 100;
+      audioRef.current.muted = v === 0;
     }
   };
 
@@ -3217,8 +3303,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         activeBlobUrlRef.current = preloaded.url;
       }
 
-      // Synchronously set src, loop, and call play()
+      lastTrackTransitionTimeRef.current = Date.now();
+      hasNudgedTransitionRef.current = false;
+
+      // Synchronously set volume, un-mute, src, loop, and call play()
       audio.loop = Boolean(isLoopingRef.current);
+      audio.muted = false;
+      audio.volume = (volumeRef.current || 50) / 100;
       audio.src = preloaded.url;
       const playPromise = audio.play();
       if (playPromise !== undefined) {
@@ -3229,6 +3320,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updateMediaSession(preloaded.track);
       if ('mediaSession' in navigator) {
         navigator.mediaSession.playbackState = 'playing';
+        if ('setPositionState' in navigator.mediaSession) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: preloaded.track.duration || 180,
+              playbackRate: 1,
+              position: 0.001,
+            });
+          } catch {}
+        }
       }
 
       setActiveTrack(preloaded.track);
@@ -3248,11 +3348,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         localStorage.setItem('mouzika_last_played_track', JSON.stringify(preloaded.track));
       } catch {}
 
-      // Preload next track for the subsequent cycle
-      setTimeout(() => {
-        hasPrefetchedNextRef.current = false;
-        prefetchNextSong();
-      }, 1500);
+      // Reset prefetch flag so onTimeUpdate will safely prefetch next track at 12s without competing for initial startup bandwidth
+      hasPrefetchedNextRef.current = false;
 
       return;
     }
@@ -3347,6 +3444,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     isLoopingRef.current = isLooping;
   }, [isLooping]);
+
+  useEffect(() => {
+    volumeRef.current = volume;
+  }, [volume]);
 
   useEffect(() => {
     playNextRef.current = playNext;

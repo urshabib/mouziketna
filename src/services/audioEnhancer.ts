@@ -182,20 +182,18 @@ function applyFilters() {
 export const isMobileDevice = () => {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent || '';
-  return (
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
-    (typeof window !== 'undefined' && 'ontouchstart' in window && window.innerWidth < 1024)
-  );
+  const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|SamsungBrowser|Mobile|Tablet/i.test(ua);
+  return isMobileUA || isTouch;
 };
 
 export const isIOSDevice = isMobileDevice;
 
 export function isAudioGraphNeeded(): boolean {
-  // On mobile devices (Android, iPhone, iPad), Web Audio AudioContext is forcefully suspended
+  // On mobile devices (Android, iPhone, iPad, Samsung One UI), Web Audio AudioContext is forcefully suspended
   // by OS battery managers and background execution throttles whenever the screen is locked,
   // turned off, or the app goes to the background.
-  // Bypassing Web Audio on all mobile platforms guarantees pure direct native hardware audio that NEVER stops!
+  // Bypassing Web Audio on all mobile platforms guarantees pure direct native hardware audio that NEVER stops or goes silent!
   if (isMobileDevice()) {
     return false;
   }
