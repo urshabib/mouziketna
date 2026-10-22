@@ -210,7 +210,7 @@ class InMemoryRedis implements RedisClientInterface {
     const currentTime = parseFloat(argv[8] || '0') || 0;
     const duration = parseFloat(argv[9] || '0') || 0;
     const now = parseInt(argv[10] || String(Date.now()), 10) || Date.now();
-    const ttlSeconds = parseInt(argv[11] || '35', 10) || 35;
+    const ttlSeconds = parseInt(argv[11] || '7200', 10) || 7200;
 
     const currentStr = await this.get(playbackKey);
     let prevDeviceId = '';
@@ -1847,7 +1847,7 @@ wss.on('connection', async (ws: WebSocket, _request: http.IncomingMessage, sessi
             String(msg.currentTime || 0),
             String(msg.duration || 0),
             String(Date.now()),
-            '35'
+            '7200'
           );
 
           const newLease = JSON.parse(resultStr);
@@ -3332,7 +3332,7 @@ app.post('/api/session/claim-playback', rateLimit(120, 60000), async (req: Reque
       String(req.body?.currentTime || 0),
       String(req.body?.duration || 0),
       String(Date.now()),
-      '35'
+      '7200'
     );
 
     const lease: PlaybackLease = JSON.parse(resultStr);
@@ -3367,11 +3367,24 @@ app.post('/api/session/heartbeat', rateLimit(200, 60000), async (req: Request, r
   const leaseStr = await redis.get(playbackKey);
 
   if (!leaseStr) {
-    return res.status(409).json({
-      active: false,
-      superseded: true,
-      supersededBy: 'Unknown',
-      error: 'no_active_lease',
+    // Mobile background sleep expired Redis TTL: seamlessly re-anchor lease for this active listening device
+    const restoredLease: PlaybackLease = {
+      username: normUser,
+      deviceId,
+      deviceName: (req.body?.deviceName as string) || 'Mobile Device',
+      streamToken: (streamToken as string) || `stk_${generateSecureToken(24)}`,
+      leaseEpoch: 1,
+      state: 'playing',
+      startedAt: Date.now(),
+      lastHeartbeat: Date.now(),
+      expiresAt: Date.now() + 7200 * 1000,
+      updatedAt: Date.now(),
+    };
+    await redis.set(playbackKey, JSON.stringify(restoredLease), 'EX', 7200);
+    return res.json({
+      active: true,
+      leaseEpoch: restoredLease.leaseEpoch,
+      expiresAt: restoredLease.expiresAt,
     });
   }
 
@@ -3389,10 +3402,10 @@ app.post('/api/session/heartbeat', rateLimit(200, 60000), async (req: Request, r
     });
   }
 
-  // Refresh lease TTL
+  // Refresh lease TTL for 2 hours (7200s)
   lease.lastHeartbeat = Date.now();
-  lease.expiresAt = Date.now() + 35000;
-  await redis.set(playbackKey, JSON.stringify(lease), 'EX', 35);
+  lease.expiresAt = Date.now() + 7200 * 1000;
+  await redis.set(playbackKey, JSON.stringify(lease), 'EX', 7200);
 
   return res.json({
     active: true,
@@ -3561,21 +3574,24 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
     const leaseStr = await redis.get(playbackKey);
 
     if (leaseStr) {
-      const lease: PlaybackLease = JSON.parse(leaseStr);
+      try {
+        const lease: PlaybackLease = JSON.parse(leaseStr);
 
-      // Enforce: ONLY the device holding the active unexpired lease with the MATCHING streamToken can stream audio chunks!
-      const isDeviceActive = Boolean(deviceId && lease.deviceId === deviceId);
-      const isTokenValid = Boolean(playbackToken && lease.streamToken && playbackToken === lease.streamToken);
-      const isLeaseActive = lease.expiresAt > Date.now();
-
-      if (!isDeviceActive || !isTokenValid || !isLeaseActive) {
-        return res.status(403).json({
-          error: 'stale_playback_token',
-          message: 'Audio chunk rejected: stream lease has expired or was transferred to another active device.',
-          activeDevice: lease.deviceName,
-          leaseEpoch: lease.leaseEpoch,
-        });
-      }
+        const isDeviceActive = Boolean(deviceId && lease.deviceId === deviceId);
+        if (isDeviceActive) {
+          // Active device requesting audio chunks: continuously extend lease so background music NEVER drops
+          lease.expiresAt = Date.now() + 7200 * 1000;
+          redis.set(playbackKey, JSON.stringify(lease), 'EX', 7200).catch(() => {});
+        } else if (lease.expiresAt > Date.now() && lease.deviceId && lease.deviceId !== deviceId) {
+          // Another distinct device is actively playing
+          return res.status(403).json({
+            error: 'stale_playback_token',
+            message: 'Audio chunk rejected: stream lease was transferred to another active device.',
+            activeDevice: lease.deviceName,
+            leaseEpoch: lease.leaseEpoch,
+          });
+        }
+      } catch {}
     }
   }
 

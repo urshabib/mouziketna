@@ -479,9 +479,9 @@ export const SearchView: React.FC = () => {
                     setQuery(vib.query);
                     executeSearch(vib.query);
                   }}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg sm:rounded-xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/10 hover:border-[var(--accent)]/40 text-[11px] sm:text-xs font-semibold text-white/90 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 md:px-3 md:py-2 rounded-lg sm:rounded-xl md:rounded-2xl bg-white/[0.04] hover:bg-white/[0.1] border border-white/10 hover:border-[var(--accent)]/40 text-[11px] sm:text-xs md:text-sm font-semibold text-white/90 hover:text-white transition-all cursor-pointer shadow-sm group active:scale-95"
                 >
-                  <Icon className="w-3 h-3 text-[var(--accent)] group-hover:scale-110 transition-transform flex-shrink-0" />
+                  <Icon className="w-3 h-3 md:w-3.5 md:h-3.5 text-[var(--accent)] group-hover:scale-110 transition-transform flex-shrink-0" />
                   <span className="truncate max-w-[150px] sm:max-w-none">{vib.label}</span>
                   <span className="px-1 py-0.5 rounded text-[8px] font-black uppercase bg-[var(--accent-soft)] text-[var(--accent)] flex-shrink-0">
                     {vib.tag}
@@ -500,7 +500,7 @@ export const SearchView: React.FC = () => {
             <h3 className="text-xl font-black text-white tracking-tight">{t('search.playlists', 'Browse Categories')}</h3>
             <span className="text-xs font-semibold text-white/40">{BROWSE_GENRES.length} genres</span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
             {BROWSE_GENRES.map((g) => {
               const Icon = g.icon;
               return (
@@ -509,7 +509,7 @@ export const SearchView: React.FC = () => {
                   onClick={() => {
                     openCollection('playlist', g.query, g.name);
                   }}
-                  className={`group relative rounded-2xl p-4 sm:p-5 aspect-[16/11] bg-gradient-to-br ${g.gradient} ${g.border} cursor-pointer hover:scale-[1.04] hover:-translate-y-1 hover:shadow-xl active:scale-95 transition-all duration-300 shadow-md flex flex-col justify-between overflow-hidden backdrop-blur-md`}
+                  className={`group relative rounded-2xl md:rounded-3xl p-4 sm:p-5 md:p-6 aspect-[16/11] bg-gradient-to-br ${g.gradient} ${g.border} cursor-pointer hover:scale-[1.03] hover:-translate-y-1 hover:shadow-xl active:scale-95 transition-all duration-300 shadow-md flex flex-col justify-between overflow-hidden backdrop-blur-md`}
                 >
                   {/* Decorative background watermark */}
                   <Icon className="absolute -bottom-2 -right-2 w-16 h-16 opacity-10 group-hover:opacity-25 group-hover:scale-125 group-hover:rotate-12 transition-all duration-300 pointer-events-none" />

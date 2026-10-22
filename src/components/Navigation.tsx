@@ -47,7 +47,7 @@ export const Sidebar: React.FC = () => {
   const followedArtists = userProfile.favouriteArtists || [];
 
   return (
-    <aside className="hidden md:flex w-64 lg:w-72 flex-col gap-3 p-3 lg:p-4 flex-shrink-0 select-none">
+    <aside className="hidden md:flex w-56 lg:w-64 xl:w-72 flex-col gap-3 p-3 lg:p-4 flex-shrink-0 select-none">
       {/* Brand & Nav */}
       <div className="bg-[#131317]/85 glass-panel rounded-3xl p-5 border border-white/10 shadow-2xl backdrop-blur-2xl">
         <button
@@ -413,8 +413,8 @@ export const TopBar: React.FC = () => {
     <header
       className={`sticky top-0 z-30 flex items-center justify-between transition-all select-none ${
         isLiquidGlass
-          ? 'mx-3 sm:mx-6 my-2 mt-[max(0.5rem,env(safe-area-inset-top))] px-4 sm:px-6 py-2.5 bg-[#141418]/85 glass-panel rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl'
-          : 'px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/85 md:bg-white/[0.02] border-b border-white/10 md:border-white/5 backdrop-blur-xl'
+          ? 'mx-3 sm:mx-6 my-2 mt-[max(0.5rem,env(safe-area-inset-top))] px-4 sm:px-6 py-2.5 bg-[#141418]/85 glass-panel rounded-full border border-white/10 shadow-2xl backdrop-blur-2xl md:mx-4 md:my-3 md:px-6 md:py-3'
+          : 'px-4 sm:px-8 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3.5 bg-black/85 md:bg-[#141418]/85 md:glass-panel md:rounded-full md:mx-4 md:my-3 md:px-6 md:py-3 md:border md:border-white/10 md:shadow-xl backdrop-blur-xl'
       }`}
     >
       {/* Left side: Mobile Logo vs Desktop Navigation Cluster */}
@@ -453,7 +453,7 @@ export const TopBar: React.FC = () => {
         {/* Desktop Quick Search Pill */}
         <div
           onClick={() => setActivePane('search')}
-          className="hidden lg:flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 text-white/50 hover:text-white transition-all cursor-pointer w-60 xl:w-72 shadow-inner group ml-2"
+          className="hidden md:flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 text-white/50 hover:text-white transition-all cursor-pointer w-44 lg:w-60 xl:w-72 shadow-inner group ml-2"
           title="Search songs, artists, playlists"
         >
           <Search className="w-3.5 h-3.5 text-white/40 group-hover:text-[var(--accent)] transition-colors" />

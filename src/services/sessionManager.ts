@@ -750,20 +750,15 @@ class SessionManager {
       });
 
       if (res.status === 409) {
-        // HTTP 409 Conflict: another device has taken over the lease!
         const data = await res.json().catch(() => null);
-        this.handleSuperseded({
-          byDevice: data?.supersededBy || 'Another device',
-          at: Date.now(),
-          reason: 'heartbeat_conflict_superseded',
-          leaseEpoch: data?.leaseEpoch,
-        });
-      } else if (res.status === 401 || res.status === 403) {
-        this.handleSuperseded({
-          byDevice: 'Server',
-          at: Date.now(),
-          reason: 'session_expired_or_invalid_stream_token',
-        });
+        if (data?.superseded && data.supersededBy && data.supersededBy !== this.deviceName) {
+          this.handleSuperseded({
+            byDevice: data.supersededBy,
+            at: Date.now(),
+            reason: 'heartbeat_conflict_superseded',
+            leaseEpoch: data?.leaseEpoch,
+          });
+        }
       }
     } catch {}
   }

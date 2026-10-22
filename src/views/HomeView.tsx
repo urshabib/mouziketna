@@ -49,9 +49,9 @@ const HomeRecentItem: React.FC<HomeRecentItemProps> = ({
     <div
       onClick={handleClick}
       {...handlers}
-      className="card-surface flex items-center gap-2.5 sm:gap-3 p-2 sm:p-2.5 rounded-xl md:rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 hover:border-white/20 cursor-pointer transition-all duration-200 group select-none overflow-hidden touch-pan-x hover:shadow-md hover:-translate-y-0.5"
+      className="card-surface flex items-center gap-2.5 sm:gap-3 md:gap-3.5 p-2 sm:p-2.5 md:p-3 rounded-xl md:rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/5 hover:border-white/20 cursor-pointer transition-all duration-200 group select-none overflow-hidden touch-pan-x hover:shadow-lg hover:-translate-y-0.5"
     >
-      <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl overflow-hidden flex-shrink-0 bg-transparent shadow-sm pointer-events-none">
+      <div className="relative w-10 h-10 sm:w-11 sm:h-11 md:w-13 md:h-13 rounded-xl md:rounded-2xl overflow-hidden flex-shrink-0 bg-transparent shadow-sm pointer-events-none">
         <TrackThumbImage
           track={track}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -98,12 +98,12 @@ const HomeTrendingItem: React.FC<HomeTrendingItemProps> = ({
     <div
       onClick={handleClick}
       {...handlers}
-      className="card-surface snap-start flex items-center gap-3 p-2 sm:p-2.5 md:p-3 rounded-xl md:rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] active:scale-[0.99] border border-white/5 hover:border-white/20 cursor-pointer transition-all duration-200 group select-none hover:shadow-md hover:-translate-y-0.5"
+      className="card-surface snap-start flex items-center gap-3 md:gap-3.5 p-2 sm:p-2.5 md:p-3 rounded-xl md:rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] active:scale-[0.99] border border-white/5 hover:border-white/20 cursor-pointer transition-all duration-200 group select-none hover:shadow-lg hover:-translate-y-0.5"
     >
-      <span className="w-5 text-center text-xs font-black text-white/40 group-hover:text-[var(--accent)]">
+      <span className="w-5 md:w-6 text-center text-xs md:text-sm font-black text-white/40 group-hover:text-[var(--accent)]">
         {index + 1}
       </span>
-      <div className="relative w-11 h-11 rounded-xl overflow-hidden flex-shrink-0 bg-transparent shadow-sm">
+      <div className="relative w-11 h-11 md:w-13 md:h-13 rounded-xl md:rounded-2xl overflow-hidden flex-shrink-0 bg-transparent shadow-sm">
         <TrackThumbImage
           track={track}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
@@ -431,7 +431,7 @@ export const HomeView: React.FC = () => {
           <div
             ref={trendingCarouselRef}
             onScroll={handleTrendingScroll}
-            className="grid grid-flow-col grid-rows-3 auto-cols-[85%] sm:auto-cols-[48%] md:auto-cols-[32%] lg:auto-cols-[24%] xl:auto-cols-[19%] overflow-x-auto gap-2.5 md:gap-3 pb-2 scrollbar-none snap-x snap-mandatory"
+            className="grid grid-flow-col grid-rows-3 auto-cols-[85%] sm:auto-cols-[48%] md:auto-cols-[36%] lg:auto-cols-[26%] xl:auto-cols-[20%] overflow-x-auto gap-2.5 md:gap-3.5 pb-2 scrollbar-none snap-x snap-mandatory"
           >
             {trendingTracks.slice(0, 18).map((track, i) => (
               <HomeTrendingItem
@@ -505,7 +505,7 @@ export const HomeView: React.FC = () => {
         </div>
 
         {recommendedSongs.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4 md:gap-5">
             {recommendedSongs.slice(0, 6).map((tTrack) => (
               <TrackCard key={tTrack.id} track={tTrack} />
             ))}

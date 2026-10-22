@@ -731,10 +731,41 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Continuous Background Audio Continuity & Watchdog (Android & iOS)
   const userIntentPlayingRef = useRef<boolean>(false);
   const isLoadingTrackRef = useRef<boolean>(false);
-  const SILENT_AUDIO_WAV = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+  const silentLoopUrlRef = useRef<string | null>(null);
+
+  // Generate a valid 1-second 8kHz mono 8-bit PCM silent WAV blob for unbroken background continuity
+  const createSilentLoopAudioUrl = (): string => {
+    try {
+      const sampleRate = 8000;
+      const numSamples = sampleRate; // 1 second
+      const buffer = new ArrayBuffer(44 + numSamples);
+      const view = new DataView(buffer);
+      view.setUint32(0, 0x52494646, false); // 'RIFF'
+      view.setUint32(4, 36 + numSamples, true);
+      view.setUint32(8, 0x57415645, false); // 'WAVE'
+      view.setUint32(12, 0x666d7420, false); // 'fmt '
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, 1, true); // Mono
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate, true);
+      view.setUint16(32, 1, true);
+      view.setUint16(34, 8, true);
+      view.setUint32(36, 0x64617461, false); // 'data'
+      view.setUint32(40, numSamples, true);
+      const bytes = new Uint8Array(buffer, 44);
+      bytes.fill(128); // 8-bit PCM neutral silence
+      const blob = new Blob([buffer], { type: 'audio/wav' });
+      return URL.createObjectURL(blob);
+    } catch {
+      return 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+    }
+  };
 
   // Initialize audio elements
   useEffect(() => {
+    silentLoopUrlRef.current = createSilentLoopAudioUrl();
+
     const audio = new Audio();
     audio.preload = 'auto';
     audio.crossOrigin = 'anonymous';
@@ -747,6 +778,50 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audioRef.current = audio;
     ensureAudioGraph(audio);
     setBaseAudioVolume(volume);
+
+    // Dedicated Web Worker Watchdog:
+    // Mobile browsers (Android Chromium & iOS WebKit) heavily throttle or freeze main thread
+    // setTimeout and setInterval when screen is locked. A Web Worker timer is NOT frozen
+    // while audio is actively playing, allowing us to guarantee unbroken background continuity.
+    let watchdogWorker: Worker | null = null;
+    try {
+      const workerCode = `
+        let timer = null;
+        self.onmessage = function(e) {
+          if (e.data === 'start') {
+            if (timer) clearInterval(timer);
+            timer = setInterval(function() {
+              self.postMessage('watchdog_tick');
+            }, 1000);
+          } else if (e.data === 'stop') {
+            if (timer) clearInterval(timer);
+            timer = null;
+          }
+        };
+      `;
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      const workerUrl = URL.createObjectURL(blob);
+      watchdogWorker = new Worker(workerUrl);
+      let tickCount = 0;
+      watchdogWorker.onmessage = () => {
+        tickCount++;
+        // 1. Involuntary background pause self-healing:
+        if (
+          userIntentPlayingRef.current &&
+          audioRef.current &&
+          audioRef.current.paused &&
+          !isLoadingTrackRef.current &&
+          !isSeekingRef.current
+        ) {
+          audioRef.current.play().catch(() => {});
+        }
+        // 2. Periodic background lease heartbeat every 15s so server lease never expires
+        if (tickCount % 15 === 0 && userIntentPlayingRef.current) {
+          sessionManager.sendHeartbeat().catch(() => {});
+        }
+      };
+      watchdogWorker.postMessage('start');
+    } catch {}
 
     const prefetchAudio = new Audio();
     prefetchAudio.preload = 'auto';
@@ -770,12 +845,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // If user still intends to listen, do not accept involuntary OS screen-lock / background tab pause
       if (userIntentPlayingRef.current) {
         if (!isLoadingTrackRef.current && !isSeekingRef.current) {
-          // Attempt auto-resume after momentary lock-screen / Bluetooth interruption
+          // Immediately attempt auto-resume without relying solely on delayed setTimeout
+          try {
+            audio.play().catch(() => {});
+          } catch {}
           setTimeout(() => {
-            if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused) {
+            if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isLoadingTrackRef.current) {
               audioRef.current.play().catch(() => {});
             }
-          }, 120);
+          }, 80);
         }
         return;
       }
@@ -866,10 +944,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       }
 
-      // Auto prefetch check: trigger at 30s left in song, or once track has played for 8s
+      // Auto prefetch check: trigger smoothly when 25s left in current song
       if (
         !hasPrefetchedNextRef.current &&
-        ((audio.duration > 15 && audio.duration - audio.currentTime <= 30) || audio.currentTime >= 8)
+        audio.duration > 20 &&
+        audio.duration - audio.currentTime <= 25
       ) {
         hasPrefetchedNextRef.current = true;
         prefetchNextSong();
@@ -881,6 +960,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       updatePositionState();
     };
     const onEnded = () => {
+      // Ignore ended events if audio is currently playing the temporary silent bridging gap
+      if (silentLoopUrlRef.current && audio.src === silentLoopUrlRef.current) {
+        return;
+      }
       try {
         localStorage.setItem('mouzika_last_played_pos', '0');
       } catch {}
@@ -939,7 +1022,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onAudioError);
     audio.addEventListener('stalled', onStalled);
-    audio.addEventListener('suspend', onStalled);
 
     // Keep background audio active when screen turns off or locks on iPhone / iOS & Android
     const onVisibilityChange = () => {
@@ -2050,6 +2132,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       audio.addEventListener('error', onError, { once: true });
 
       try {
+        audio.loop = Boolean(isLoopingRef.current);
         audio.src = url;
         audio.load();
         const playPromise = audio.play();
@@ -2436,12 +2519,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     userIntentPlayingRef.current = true;
     isLoadingTrackRef.current = true;
 
-    // In background or lock screen, keep audio element alive with tiny silent gap buffer
+    // In background or lock screen, keep audio element alive with seamless silent looping buffer
     // so iOS Safari and Android Chrome NEVER revoke the background audio privilege during network fetch
     if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
       try {
-        if (!audio.src || audio.paused) {
-          audio.src = SILENT_AUDIO_WAV;
+        if (silentLoopUrlRef.current && (!audio.src || audio.paused)) {
+          audio.loop = true;
+          audio.src = silentLoopUrlRef.current;
           audio.play().catch(() => {});
         }
       } catch {}
@@ -2537,6 +2621,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const blobUrl = URL.createObjectURL(record.audioBlob);
           activeBlobUrlRef.current = blobUrl;
           if (token !== playTokenRef.current) return false;
+          audio.loop = Boolean(isLoopingRef.current);
           audio.src = blobUrl;
           audio.play().catch(() => {});
 
@@ -2564,6 +2649,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const cachedUrl = getCachedStreamUrl(track.id);
     if (cachedUrl) {
       if (token !== playTokenRef.current) return false;
+      audio.loop = Boolean(isLoopingRef.current);
       audio.src = cachedUrl;
       audio.play().catch(() => {});
       recordPlaybackSync(persistentInitialTrack);

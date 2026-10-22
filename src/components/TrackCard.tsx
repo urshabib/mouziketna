@@ -94,7 +94,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
               if (onPlay) onPlay();
               else playTrack(track);
             }}
-            className="absolute right-2.5 bottom-2.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[var(--accent)] text-black flex items-center justify-center shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:scale-110 active:scale-95 transition-all duration-200 z-10 cursor-pointer"
+            className="absolute right-2.5 bottom-2.5 w-10 h-10 sm:w-11 sm:h-11 md:w-12 md:h-12 rounded-full bg-[var(--accent)] text-black flex items-center justify-center shadow-2xl opacity-0 translate-y-2 group-hover:opacity-100 group-hover:translate-y-0 hover:scale-110 active:scale-95 transition-all duration-200 z-10 cursor-pointer"
             title="Play"
           >
             <Play className="w-5 h-5 fill-black ml-0.5" />
@@ -103,7 +103,7 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
 
         {/* Live EQ Indicator */}
         {isCurrent && (
-          <div className="absolute left-2.5 bottom-2.5 flex items-end gap-0.5 h-4 bg-black/40 backdrop-blur-md border border-white/10 px-2 py-1 rounded-md shadow-md">
+          <div className="absolute left-2.5 bottom-2.5 flex items-end gap-0.5 h-4 md:h-5 bg-black/50 backdrop-blur-md border border-white/10 px-2 py-1 rounded-lg shadow-md">
             <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-1" />
             <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-2" />
             <span className="w-1 bg-[var(--accent)] rounded-sm animate-eq-3" />
