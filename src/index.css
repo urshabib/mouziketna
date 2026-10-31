@@ -151,7 +151,7 @@ body.liquid-glass {
 }
 
 body.liquid-glass .glass-panel,
-body.liquid-glass [class*="bg-white/"]:not([class*="w-10"]):not([class*="w-11"]):not([class*="aspect-square"]):not([class*="rounded-full"]):not([class*="rounded-lg"]):not([data-preset-swatch]):not(button),
+body.liquid-glass [class*="bg-white/"]:not([class*="w-10"]):not([class*="w-11"]):not([class*="aspect-square"]):not([class*="rounded-full"]):not([class*="rounded-lg"]):not([data-preset-swatch]):not(button):not([data-track-row]):not(.track-row):not([data-track-index]),
 body.liquid-glass .card-surface {
   background: rgba(255, 255, 255, 0.05) !important;
   backdrop-filter: blur(28px) saturate(180%) brightness(1.04);
@@ -170,8 +170,8 @@ body.liquid-glass-ultra {
 body.liquid-glass-ultra .glass-panel,
 body.liquid-glass-ultra .card-surface,
 body.liquid-glass-ultra .popover-menu,
-body.liquid-glass-ultra div[class*="rounded-2xl"][class*="bg-white/"]:not([data-preset-swatch]),
-body.liquid-glass-ultra div[class*="rounded-xl"][class*="bg-white/"]:not([data-preset-swatch]):not(button):not([class*="aspect-square"]) {
+body.liquid-glass-ultra div[class*="rounded-2xl"][class*="bg-white/"]:not([data-preset-swatch]):not([data-track-row]):not(.track-row):not([data-track-index]),
+body.liquid-glass-ultra div[class*="rounded-xl"][class*="bg-white/"]:not([data-preset-swatch]):not(button):not([class*="aspect-square"]):not([data-track-row]):not(.track-row):not([data-track-index]) {
   background: rgba(255, 255, 255, 0.08) !important;
   backdrop-filter: blur(52px) saturate(230%) brightness(1.12) contrast(1.04);
   -webkit-backdrop-filter: blur(52px) saturate(230%) brightness(1.12) contrast(1.04);
@@ -233,10 +233,21 @@ body.liquid-glass-ultra .playlist-tracks-container {
 body.liquid-glass .playlist-tracks-container .track-row,
 body.liquid-glass .playlist-tracks-container [data-track-row="true"],
 body.liquid-glass-ultra .playlist-tracks-container .track-row,
-body.liquid-glass-ultra .playlist-tracks-container [data-track-row="true"] {
+body.liquid-glass-ultra .playlist-tracks-container [data-track-row="true"],
+.track-row,
+[data-track-row="true"] {
   border-radius: 0.5rem !important;
-  border: none !important;
+  border: 1px solid transparent !important;
   box-shadow: none !important;
+  outline: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.playlist-tracks-container .track-row,
+.playlist-tracks-container [data-track-row="true"] {
   background: transparent !important;
 }
 
@@ -249,6 +260,18 @@ body.liquid-glass-ultra .playlist-tracks-container [data-track-row="true"]:hover
   background: rgba(255, 255, 255, 0.06) !important;
 }
 
+.playlist-tracks-container .track-row:active,
+.playlist-tracks-container [data-track-row="true"]:active,
+.track-row:active,
+[data-track-row="true"]:active,
+.track-row:focus,
+[data-track-row="true"]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
 .playlist-tracks-container .track-row.is-current-track,
 .playlist-tracks-container [data-track-row="true"].is-current-track,
 body.liquid-glass .playlist-tracks-container .track-row.is-current-track,
@@ -256,6 +279,13 @@ body.liquid-glass .playlist-tracks-container [data-track-row="true"].is-current-
 body.liquid-glass-ultra .playlist-tracks-container .track-row.is-current-track,
 body.liquid-glass-ultra .playlist-tracks-container [data-track-row="true"].is-current-track {
   background: var(--accent-soft, rgba(255, 107, 26, 0.15)) !important;
+}
+
+img {
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
 }
 
 /* Brand Logo & Habib Signature */

@@ -75,13 +75,15 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
       className="card-surface group relative flex flex-col p-3 md:p-3.5 rounded-2xl md:rounded-3xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/20 transition-all duration-300 cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1.5 gpu-layer"
     >
       {/* Artwork container */}
-      <div className="relative w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md">
+      <div className="relative w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md pointer-events-none select-none">
         <img
           src={displayThumb}
           alt={track.title}
           onError={handleThumbError}
           loading="lazy"
-          className={`w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 ${
+          draggable={false}
+          onContextMenu={(e) => e.preventDefault()}
+          className={`w-full h-full object-cover pointer-events-none select-none transition-transform duration-300 group-hover:scale-105 ${
             track.type === 'artist' ? 'rounded-full' : ''
           }`}
         />

@@ -202,7 +202,9 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
         }
         setCurrentSrc(FALLBACK_ART);
       }}
-      className={className}
+      className={`select-none pointer-events-none ${className || ''}`}
+      draggable={false}
+      onContextMenu={(e) => e.preventDefault()}
       {...props}
     />
   );

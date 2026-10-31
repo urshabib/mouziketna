@@ -78,10 +78,8 @@ export function useLongPress({
   );
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (isLongPressTriggered.current) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+    e.preventDefault();
+    e.stopPropagation();
   }, []);
 
   return {

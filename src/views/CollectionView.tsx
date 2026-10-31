@@ -92,11 +92,14 @@ export const CollectionView: React.FC = () => {
   const touchHoldTimerRef = useRef<any>(null);
   const touchActiveReorderIndexRef = useRef<number | null>(null);
   const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const currentTouchPosRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const autoScrollRafRef = useRef<number | null>(null);
   const [reorderingTrackIndex, setReorderingTrackIndex] = useState<number | null>(null);
 
   useEffect(() => {
     return () => {
       if (touchHoldTimerRef.current) clearTimeout(touchHoldTimerRef.current);
+      if (autoScrollRafRef.current) cancelAnimationFrame(autoScrollRafRef.current);
     };
   }, []);
 
@@ -367,13 +370,82 @@ export const CollectionView: React.FC = () => {
     }
   };
 
-  const checkAutoScroll = (clientY: number) => {
-    const threshold = 100;
-    const scrollStep = 15;
-    if (clientY < threshold) {
-      window.scrollBy({ top: -scrollStep, behavior: 'auto' });
-    } else if (window.innerHeight - clientY < threshold) {
-      window.scrollBy({ top: scrollStep, behavior: 'auto' });
+  const updateDetectedRow = (clientY: number) => {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-track-index]'));
+    let detectedIdx = -1;
+    for (const r of rows) {
+      const rect = r.getBoundingClientRect();
+      if (clientY >= rect.top && clientY <= rect.bottom) {
+        const parsed = parseInt(r.getAttribute('data-track-index') || '', 10);
+        if (!isNaN(parsed)) {
+          detectedIdx = parsed;
+          break;
+        }
+      }
+    }
+
+    if (detectedIdx === -1 && rows.length > 0) {
+      const firstRect = rows[0].getBoundingClientRect();
+      const lastRect = rows[rows.length - 1].getBoundingClientRect();
+      if (clientY < firstRect.top) detectedIdx = 0;
+      else if (clientY > lastRect.bottom) detectedIdx = rows.length - 1;
+    }
+
+    if (detectedIdx >= 0 && detectedIdx !== touchCurrentIndexRef.current) {
+      touchCurrentIndexRef.current = detectedIdx;
+      setDragOverIndex(detectedIdx);
+      if (navigator.vibrate) {
+        try {
+          navigator.vibrate(15);
+        } catch {}
+      }
+    }
+  };
+
+  const startAutoScroll = () => {
+    if (autoScrollRafRef.current) return;
+
+    const step = () => {
+      const touch = currentTouchPosRef.current;
+      if (!touch || touchActiveReorderIndexRef.current === null) {
+        autoScrollRafRef.current = null;
+        return;
+      }
+
+      const scrollContainer =
+        document.getElementById('main-scroll-container') ||
+        document.querySelector('main') ||
+        document.documentElement;
+
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const topThreshold = Math.min(containerRect.top + 130, 160);
+      const bottomThreshold = Math.max(containerRect.bottom - 130, window.innerHeight - 150);
+
+      let scrollSpeed = 0;
+      if (touch.clientY < topThreshold) {
+        const factor = Math.min(1, Math.max(0.15, (topThreshold - touch.clientY) / 100));
+        scrollSpeed = -Math.round(4 + factor * 16);
+      } else if (touch.clientY > bottomThreshold) {
+        const factor = Math.min(1, Math.max(0.15, (touch.clientY - bottomThreshold) / 100));
+        scrollSpeed = Math.round(4 + factor * 16);
+      }
+
+      if (scrollSpeed !== 0) {
+        scrollContainer.scrollTop += scrollSpeed;
+        window.scrollBy({ top: scrollSpeed, behavior: 'instant' });
+        updateDetectedRow(touch.clientY);
+      }
+
+      autoScrollRafRef.current = requestAnimationFrame(step);
+    };
+
+    autoScrollRafRef.current = requestAnimationFrame(step);
+  };
+
+  const stopAutoScroll = () => {
+    if (autoScrollRafRef.current) {
+      cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
     }
   };
 
@@ -382,15 +454,15 @@ export const CollectionView: React.FC = () => {
       clearTimeout(touchHoldTimerRef.current);
       touchHoldTimerRef.current = null;
     }
+    stopAutoScroll();
     touchActiveReorderIndexRef.current = null;
 
     const touch = e.touches[0];
     if (!touch) return;
     touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+    currentTouchPosRef.current = { clientX: touch.clientX, clientY: touch.clientY };
 
-    // Responsive 500ms (0.5s) hold on the 6-dots button to unlock reordering
-    // Once 0.5s has elapsed, reordering is permanently active until finger is released
-    touchHoldTimerRef.current = setTimeout(() => {
+    const activateDrag = () => {
       touchActiveReorderIndexRef.current = index;
       touchStartIndexRef.current = index;
       touchCurrentIndexRef.current = index;
@@ -399,71 +471,45 @@ export const CollectionView: React.FC = () => {
       setReorderingTrackIndex(index);
       if (navigator.vibrate) {
         try {
-          navigator.vibrate([35, 30, 35]);
+          navigator.vibrate([30, 25, 30]);
         } catch {}
       }
-    }, 500);
+      startAutoScroll();
+    };
+
+    // Instant grab detection: responsive 80ms hold
+    touchHoldTimerRef.current = setTimeout(activateDrag, 80);
 
     const onGlobalTouchMove = (moveEvt: TouchEvent) => {
       const curTouch = moveEvt.touches[0];
       if (!curTouch) return;
+      currentTouchPosRef.current = { clientX: curTouch.clientX, clientY: curTouch.clientY };
 
-      // If hold hasn't triggered yet (under 0.5s):
+      // If user starts dragging right away before 80ms, activate immediately!
       if (touchActiveReorderIndexRef.current === null) {
         if (touchStartPosRef.current) {
-          const dx = Math.abs(curTouch.clientX - touchStartPosRef.current.x);
           const dy = Math.abs(curTouch.clientY - touchStartPosRef.current.y);
-          // Finger moved > 25px before 0.5s hold: user is scrolling page
-          if (dx > 25 || dy > 25) {
+          const dx = Math.abs(curTouch.clientX - touchStartPosRef.current.x);
+          if (dy > 6 || dx > 6) {
             if (touchHoldTimerRef.current) {
               clearTimeout(touchHoldTimerRef.current);
               touchHoldTimerRef.current = null;
             }
+            activateDrag();
           }
         }
         return;
       }
 
-      // 0.5s+ elapsed: user held the grip and is now dragging
       if (moveEvt.cancelable) moveEvt.preventDefault();
-      checkAutoScroll(curTouch.clientY);
-
-      // Locate destination row using reliable bounding client rects
-      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-track-index]'));
-      let detectedIdx = -1;
-      for (const r of rows) {
-        const rect = r.getBoundingClientRect();
-        if (curTouch.clientY >= rect.top && curTouch.clientY <= rect.bottom) {
-          const parsed = parseInt(r.getAttribute('data-track-index') || '', 10);
-          if (!isNaN(parsed)) {
-            detectedIdx = parsed;
-            break;
-          }
-        }
-      }
-
-      if (detectedIdx === -1 && rows.length > 0) {
-        const firstRect = rows[0].getBoundingClientRect();
-        const lastRect = rows[rows.length - 1].getBoundingClientRect();
-        if (curTouch.clientY < firstRect.top) detectedIdx = 0;
-        else if (curTouch.clientY > lastRect.bottom) detectedIdx = rows.length - 1;
-      }
-
-      if (detectedIdx >= 0 && detectedIdx !== touchCurrentIndexRef.current) {
-        touchCurrentIndexRef.current = detectedIdx;
-        setDragOverIndex(detectedIdx);
-        if (navigator.vibrate) {
-          try {
-            navigator.vibrate(15);
-          } catch {}
-        }
-      }
+      updateDetectedRow(curTouch.clientY);
     };
 
     const onGlobalTouchEnd = () => {
       window.removeEventListener('touchmove', onGlobalTouchMove);
       window.removeEventListener('touchend', onGlobalTouchEnd);
       window.removeEventListener('touchcancel', onGlobalTouchEnd);
+      stopAutoScroll();
 
       if (touchHoldTimerRef.current) {
         clearTimeout(touchHoldTimerRef.current);
@@ -492,6 +538,7 @@ export const CollectionView: React.FC = () => {
       touchStartIndexRef.current = null;
       touchCurrentIndexRef.current = null;
       touchStartPosRef.current = null;
+      currentTouchPosRef.current = null;
       setDraggedIndex(null);
       setDragOverIndex(null);
       setReorderingTrackIndex(null);
@@ -503,14 +550,13 @@ export const CollectionView: React.FC = () => {
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    // Handled seamlessly by window touchmove listener
     if (touchActiveReorderIndexRef.current !== null && e.cancelable) {
       e.preventDefault();
     }
   };
 
   const handleTouchEnd = () => {
-    // Handled seamlessly by window touchend listener
+    // Handled cleanly by global listener
   };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
@@ -520,7 +566,18 @@ export const CollectionView: React.FC = () => {
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    checkAutoScroll(e.clientY);
+    const scrollContainer =
+      document.getElementById('main-scroll-container') ||
+      document.querySelector('main') ||
+      document.documentElement;
+    const rect = scrollContainer.getBoundingClientRect();
+    if (e.clientY < rect.top + 100) {
+      scrollContainer.scrollTop -= 14;
+      window.scrollBy({ top: -14, behavior: 'instant' });
+    } else if (e.clientY > rect.bottom - 100) {
+      scrollContainer.scrollTop += 14;
+      window.scrollBy({ top: 14, behavior: 'instant' });
+    }
     if (dragOverIndex !== index) {
       setDragOverIndex(index);
     }
@@ -911,7 +968,7 @@ export const CollectionView: React.FC = () => {
         <div className="sticky top-16 z-30 flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[var(--accent-soft)] backdrop-blur-xl border border-[var(--accent)]/40 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-150">
           <div className="flex items-center gap-2 text-xs font-bold text-white">
             <ArrowUpDown className="w-4 h-4 text-[var(--accent)] flex-shrink-0" />
-            <span>{t('collection.reorderHelp', 'Hold handle 0.5s or tap ▲/▼ to reorder songs.')}</span>
+            <span>{t('collection.reorderHelp', 'Drag handle ⠿ or tap ▲/▼ to reorder songs.')}</span>
           </div>
           <button
             onClick={() => setIsReorderMode(false)}
@@ -1020,11 +1077,13 @@ export const CollectionView: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-white/5">
+                    <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 bg-white/5 pointer-events-none select-none">
                       <img
                         src={sug.thumb || FALLBACK_ART}
                         alt={sug.title}
-                        className="w-full h-full object-cover"
+                        draggable={false}
+                        onContextMenu={(e) => e.preventDefault()}
+                        className="w-full h-full object-cover pointer-events-none select-none"
                       />
                       <div
                         className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity ${

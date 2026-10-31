@@ -712,6 +712,7 @@ export const FullScreenPlayer: React.FC = () => {
                         }}
                         className="w-full h-full object-cover rounded-full pointer-events-none select-none"
                         draggable={false}
+                        onContextMenu={(e) => e.preventDefault()}
                       />
                       {/* Center Spindle Hole */}
                       <div className="absolute w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#0d0905] border-[3px] border-zinc-400 shadow-inner flex items-center justify-center z-10">
@@ -749,6 +750,7 @@ export const FullScreenPlayer: React.FC = () => {
                     className="w-full h-full object-cover rounded-3xl select-none pointer-events-none"
                     style={{ aspectRatio: '1 / 1' }}
                     draggable={false}
+                    onContextMenu={(e) => e.preventDefault()}
                   />
                 </div>
               )}

@@ -91,12 +91,12 @@ export const TrackRow: React.FC<TrackRowProps> = ({
     <div
       onClick={(e) => handleLongPressClick(e)}
       data-track-row="true"
-      className={`track-row group flex items-center gap-2.5 sm:gap-3 md:gap-3.5 px-2.5 sm:px-3.5 md:px-4 py-1.5 sm:py-2 md:py-2.5 rounded-xl md:rounded-2xl transition-all cursor-pointer select-none gpu-layer ${
+      className={`track-row group flex items-center gap-2.5 sm:gap-3 md:gap-3.5 px-2.5 sm:px-3.5 md:px-4 py-1.5 sm:py-2 md:py-2.5 rounded-xl md:rounded-2xl cursor-pointer select-none gpu-layer outline-none transition-colors duration-150 ${
         isSelected
-          ? 'bg-white/15 border border-[var(--accent)]/40 shadow-sm'
+          ? 'bg-white/15 !border-[var(--accent)]/40 shadow-sm'
           : isCurrent
           ? 'is-current-track bg-[var(--accent-soft)] hover:brightness-125'
-          : 'hover:bg-white/[0.07]'
+          : 'hover:bg-white/[0.06] active:bg-white/[0.08]'
       }`}
     >
       {/* 1. Left order/drag/select zone - EXCLUDED completely from song long-press */}
@@ -123,9 +123,9 @@ export const TrackRow: React.FC<TrackRowProps> = ({
         ) : dragHandleProps ? (
           <div
             {...dragHandleProps}
-            className="w-8 h-9 -ml-2 mr-0.5 text-white/50 hover:text-white active:text-[var(--accent)] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-all rounded-lg hover:bg-white/10 active:bg-[var(--accent-soft)] flex-shrink-0 z-10"
-            title="Hold (0.5s) to reorder"
-            aria-label="Hold to reorder"
+            className="w-8 h-9 -ml-2 mr-0.5 text-white/50 hover:text-white active:text-[var(--accent)] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors rounded-lg hover:bg-white/10 active:bg-[var(--accent-soft)] flex-shrink-0 z-10"
+            title="Drag to reorder"
+            aria-label="Drag to reorder"
             onClick={(e) => {
               e.stopPropagation();
               dragHandleProps.onClick?.(e);
@@ -172,14 +172,16 @@ export const TrackRow: React.FC<TrackRowProps> = ({
         className="flex items-center gap-2.5 flex-1 min-w-0"
         {...longPressHandlers}
       >
-        {/* Art thumbnail */}
-        <div className="relative w-11 h-11 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-xl md:rounded-2xl overflow-hidden flex-shrink-0 bg-[#1f1f23] shadow-sm">
+        {/* Art thumbnail - iPhone protected with pointer-events-none & select-none */}
+        <div className="relative w-11 h-11 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-xl md:rounded-2xl overflow-hidden flex-shrink-0 bg-[#1f1f23] shadow-sm pointer-events-none select-none">
           <img
             src={thumbSrc}
             alt={track.title}
             onError={handleThumbError}
             loading="lazy"
-            className="w-full h-full object-cover"
+            draggable={false}
+            onContextMenu={(e) => e.preventDefault()}
+            className="w-full h-full object-cover pointer-events-none select-none"
           />
         </div>
 

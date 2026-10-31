@@ -223,11 +223,13 @@ export const QueueDrawer: React.FC = () => {
                       : 'hover:bg-white/5 border border-transparent text-white/80'
                   }`}
                 >
-                  <div className="relative w-11 h-11 flex-shrink-0">
+                  <div className="relative w-11 h-11 flex-shrink-0 pointer-events-none select-none">
                     <img
                       src={track.thumb || canonicalThumbUrl(track.id)}
                       alt={track.title}
-                      className="w-full h-full rounded-xl object-cover pointer-events-none"
+                      draggable={false}
+                      onContextMenu={(e) => e.preventDefault()}
+                      className="w-full h-full rounded-xl object-cover pointer-events-none select-none"
                     />
                     {isCurrent && (
                       <div className="absolute inset-0 bg-black/40 rounded-xl flex items-center justify-center">

@@ -744,6 +744,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }
   const preloadedNextRef = useRef<PreloadedNext | null>(null);
   const isPreloadingNextRef = useRef<boolean>(false);
+  const playNextCountRef = useRef<number>(0);
 
   // Generate a valid 1-second 8kHz mono 8-bit PCM silent WAV blob for unbroken background continuity
   // Generate a valid 1-second 8kHz mono 8-bit PCM silent WAV blob with 1-bit dither
@@ -2729,6 +2730,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     isLoadingTrackRef.current = true;
     lastTrackTransitionTimeRef.current = Date.now();
     hasNudgedTransitionRef.current = false;
+    playNextCountRef.current = 0;
     audio.muted = false;
     audio.volume = (volumeRef.current || 50) / 100;
     ensureCarrierActive();
@@ -3496,17 +3498,60 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   const addToQueue = (track: Track, playNext = false) => {
+    if (!track || !track.id) return;
+
     setPlaybackQueue((prev) => {
+      // Find where the currently playing track is situated
+      const activeId = activeTrackRef.current?.id;
+      let curIdx = activeId ? prev.findIndex((t) => t.id === activeId) : -1;
+      if (curIdx === -1) {
+        curIdx = queueIndexRef.current >= 0 ? queueIndexRef.current : 0;
+      }
+
+      // Check if track is already in the queue before our insertion point
+      const existingIdx = prev.findIndex((t) => t.id === track.id);
+      let adjustedCurIdx = curIdx;
+      if (existingIdx !== -1 && existingIdx < curIdx) {
+        adjustedCurIdx = Math.max(0, curIdx - 1);
+      }
+
       const filtered = prev.filter((t) => t.id !== track.id);
+
       if (playNext) {
-        const insertAt = queueIndex >= 0 ? queueIndex + 1 : 0;
+        // Place consecutive "Play Next" songs in chronological order right after the active track
+        const nextBatchOffset = playNextCountRef.current || 0;
+        const insertAt = Math.min(
+          filtered.length,
+          Math.max(0, adjustedCurIdx + 1 + nextBatchOffset)
+        );
+        playNextCountRef.current = nextBatchOffset + 1;
+
         const copy = [...filtered];
         copy.splice(insertAt, 0, track);
         playbackQueueRef.current = copy;
+
+        // Synchronize queueIndex so it matches where activeTrack now sits
+        const newActiveIdx = copy.findIndex((t) => t.id === activeId);
+        if (newActiveIdx >= 0) {
+          queueIndexRef.current = newActiveIdx;
+          setQueueIndex(newActiveIdx);
+        }
+
+        // Invalidate stale preloaded stream for previous next track & re-prefetch this newly scheduled next song!
+        preloadedNextRef.current = null;
+        hasPrefetchedNextRef.current = false;
+        setTimeout(() => {
+          prefetchNextSong();
+        }, 50);
+
+        showToast(`Will play next: "${track.title}"`);
         return copy;
       }
+
+      // Standard append to end of queue
       const copy = [...filtered, track];
       playbackQueueRef.current = copy;
+      showToast(`Added to queue: "${track.title}"`);
       return copy;
     });
   };
