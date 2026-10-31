@@ -13,12 +13,8 @@ export const NEW_HUB_BACKEND =
 
 export const STREAM_MIRRORS = [
   'https://invidious.schenkel.eti.br/api/v1/videos/',
-  'https://invidious.kemonomimi.nl/api/v1/videos/',
-  'https://yt.omada.cafe/api/v1/videos/',
-  'https://invidious.no-logs.com/api/v1/videos/',
-  'https://inv.tux.pizza/api/v1/videos/',
-  'https://invidious.private.coffee/api/v1/videos/',
-  'https://vid.priv.au/api/v1/videos/',
+  'https://yt.drgnz.club/api/v1/videos/',
+  'https://invidious.projectsegfau.lt/api/v1/videos/',
 ];
 
 export const FALLBACK_ART = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300';
@@ -30,6 +26,11 @@ const streamUrlCache = new Map<string, { url: string; expires: number }>();
 export function getCachedStreamUrl(trackId: string): string | null {
   const cached = streamUrlCache.get(trackId);
   if (cached && cached.expires > Date.now()) {
+    // Purge any legacy Saavn audio URLs that caused mismatched song playback
+    if (cached.url.includes('saavncdn.com')) {
+      streamUrlCache.delete(trackId);
+      return null;
+    }
     return cached.url;
   }
   if (cached) streamUrlCache.delete(trackId);
@@ -449,12 +450,14 @@ export async function resolveWorkerStream(id: string): Promise<string | null> {
     const token = sessionManager.getSessionToken();
     const streamToken = sessionManager.getStreamToken();
     const query = new URLSearchParams({
+      format: 'json',
       deviceId: devId,
       ...(token ? { sessionToken: token } : {}),
       ...(streamToken ? { streamToken } : {}),
     }).toString();
-    const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}?${query}`, 5500, {
+    const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}?${query}`, 4500, {
       headers: {
+        Accept: 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(streamToken ? { 'X-Playback-Token': streamToken } : {}),
       },
@@ -476,12 +479,15 @@ export async function resolveMirrorStreams(id: string): Promise<string[]> {
   const settled = await Promise.allSettled(
     STREAM_MIRRORS.map(async (base) => {
       let r: Response | null = null;
+      const targetUrl = base.includes('?')
+        ? `${base}${encodeURIComponent(id)}`
+        : `${base}${encodeURIComponent(id)}?local=true`;
       try {
-        r = await fetchWithTimeout(base + id, 5000);
+        r = await fetchWithTimeout(targetUrl, 4000);
       } catch {
         // Fallback through CORS proxy if direct connection had CORS or transport blocks
         try {
-          r = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(base + id)}`, 5500);
+          r = await fetchWithTimeout(`https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`, 4500);
         } catch {}
       }
       if (!r || !r.ok) throw new Error('bad');
@@ -547,7 +553,7 @@ export function probeStreamPlayable(url: string, timeoutMs = 3500): Promise<stri
 }
 
 // Prefetches next track stream and caches in memory
-export async function prefetchTrackStream(track: Track, quality = '320'): Promise<string | null> {
+export async function prefetchTrackStream(track: Track, _quality = '320'): Promise<string | null> {
   if (!track || !track.id) return null;
   const cached = getCachedStreamUrl(track.id);
   if (cached) return cached;
@@ -565,21 +571,6 @@ export async function prefetchTrackStream(track: Track, quality = '320'): Promis
     if (mirrors.length > 0) {
       cacheStreamUrl(track.id, mirrors[0]);
       return mirrors[0];
-    }
-  } catch {}
-
-  const cleanedArtist = cleanArtistName(track.artist);
-  try {
-    const saavnUrl = await resolveSaavnStream(
-      cleanTitleForLyrics(track.title) || track.title,
-      cleanedArtist,
-      quality,
-      track.title,
-      track.artist
-    );
-    if (saavnUrl) {
-      cacheStreamUrl(track.id, saavnUrl);
-      return saavnUrl;
     }
   } catch {}
 

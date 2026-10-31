@@ -12,7 +12,6 @@ import {
   cacheStreamUrl,
   prefetchTrackStream,
   resolveMirrorStreams,
-  resolveSaavnStream,
   resolveWorkerStream,
   canonicalThumbUrl,
   fetchArtworkBlob,
@@ -2274,9 +2273,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (mirrors.length > 0) streamUrl = mirrors[0];
         }
         if (!streamUrl) {
-          const cleanT = cleanTitleForLyrics(nextTrack.title) || nextTrack.title;
-          const cleanA = cleanArtistName(nextTrack.artist);
-          streamUrl = await resolveSaavnStream(cleanT, cleanA, q, nextTrack.title, nextTrack.artist).catch(() => null);
+          streamUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${nextTrack.id}`;
         }
       }
 
@@ -2913,7 +2910,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 1400);
 
     // If track has an imported ID (like Spotify "sp_...") or is still resolving metadata, resolve properly
-    if (!resolvedTrack.id || resolvedTrack.title === 'Loading...' || resolvedTrack.id.startsWith('sp_') || resolvedTrack.id.length !== 11) {
+    if (!resolvedTrack.id || resolvedTrack.title === 'Loading...' || resolvedTrack.id.startsWith('sp_') || resolvedTrack.id.startsWith('import_')) {
       try {
         const queryTerm = `${resolvedTrack.title !== 'Loading...' ? resolvedTrack.title : ''} ${cleanedArtist}`.trim();
         if (queryTerm) {
@@ -2929,22 +2926,20 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const candidates: string[] = [];
 
-    // Parallel Stream Resolution across Worker Proxy, JioSaavn and Global Invidious/Piped Mirrors
-    const [workerUrl, saavnUrl, mirrors] = await Promise.all([
+    // Parallel Stream Resolution across Server Worker Proxy and Global Invidious Mirrors (Authentic YouTube Music)
+    const [workerUrl, mirrors] = await Promise.all([
       resolveWorkerStream(resolvedTrack.id).catch(() => null),
-      resolveSaavnStream(
-        cleanTitleForLyrics(resolvedTrack.title) || resolvedTrack.title,
-        cleanedArtist,
-        quality,
-        resolvedTrack.title,
-        resolvedTrack.artist
-      ).catch(() => null),
       resolveMirrorStreams(resolvedTrack.id).catch(() => []),
     ]);
 
     if (workerUrl) candidates.push(workerUrl);
-    if (saavnUrl) candidates.push(saavnUrl);
     if (mirrors && mirrors.length > 0) candidates.push(...mirrors);
+
+    // Guaranteed direct server audio stream proxy candidate
+    const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${resolvedTrack.id}`;
+    if (!candidates.includes(serverProxyUrl)) {
+      candidates.push(serverProxyUrl);
+    }
 
     if (token !== playTokenRef.current) {
       clearTimeout(slowNoticeTimer);
@@ -2955,22 +2950,15 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (candidates.length === 0) {
       try {
         const fallbackSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
-        if (fallbackSearch.length > 0 && fallbackSearch[0].id) {
+        if (fallbackSearch.length > 0 && fallbackSearch[0].id && fallbackSearch[0].id !== resolvedTrack.id) {
           const fbTrack = fallbackSearch[0];
-          const [altWorker, altSaavn, altMirrors] = await Promise.all([
+          const [altWorker, altMirrors] = await Promise.all([
             resolveWorkerStream(fbTrack.id).catch(() => null),
-            resolveSaavnStream(
-              cleanTitleForLyrics(fbTrack.title) || fbTrack.title,
-              cleanArtistName(fbTrack.artist),
-              quality,
-              fbTrack.title,
-              fbTrack.artist
-            ).catch(() => null),
             resolveMirrorStreams(fbTrack.id).catch(() => []),
           ]);
           if (altWorker) candidates.push(altWorker);
-          if (altSaavn) candidates.push(altSaavn);
           if (altMirrors && altMirrors.length > 0) candidates.push(...altMirrors);
+          candidates.push(`${NEW_HUB_BACKEND}/api/stream-proxy/${fbTrack.id}`);
         }
       } catch {}
     }
@@ -3628,9 +3616,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ensurePersistentStorageOnce();
     const cleanedArtist = cleanArtistName(track.artist);
 
-    // Resolve real YouTube ID if track has external/Spotify ID
+    // Resolve real YouTube ID only if track has external/Spotify ID
     let ytTrackId = track.id;
-    if (!ytTrackId || ytTrackId.startsWith('sp_') || ytTrackId.length !== 11) {
+    if (!ytTrackId || ytTrackId.startsWith('sp_') || ytTrackId.startsWith('import_')) {
       try {
         const found = await searchTracks(`${track.title} ${cleanedArtist}`, 'song');
         if (found.length > 0 && found[0].id) {
@@ -3647,31 +3635,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const cached = getCachedStreamUrl(track.id);
       if (cached) candidates.push(cached);
 
-      // 2. Parallel stream resolution for maximum speed (Saavn + Mirrors + Worker proxy)
-      const [saavnRes, mirrorRes, workerRes] = await Promise.allSettled([
-        resolveSaavnStream(
-          cleanTitleForLyrics(track.title) || track.title,
-          cleanedArtist,
-          quality,
-          track.title,
-          track.artist
-        ),
-        resolveMirrorStreams(ytTrackId || track.id),
-        fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${ytTrackId || track.id}`, 6000).then(async (r) => {
-          if (!r.ok) return null;
-          const j = await r.json();
-          const audio = (j?.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
-          if (audio.length) {
-            audio.sort((a: any, b: any) => parseInt(b.bitrate) - parseInt(a.bitrate));
-            return audio[0].url;
-          }
-          return null;
-        }),
+      // 2. Authentic YouTube stream resolution (Worker Proxy + Invidious Mirrors)
+      const targetId = ytTrackId || track.id;
+      const [workerRes, mirrorRes] = await Promise.allSettled([
+        resolveWorkerStream(targetId),
+        resolveMirrorStreams(targetId),
       ]);
 
-      if (saavnRes.status === 'fulfilled' && saavnRes.value && !candidates.includes(saavnRes.value)) {
-        candidates.push(saavnRes.value);
-      }
       if (workerRes.status === 'fulfilled' && workerRes.value && !candidates.includes(workerRes.value)) {
         candidates.push(workerRes.value);
       }
@@ -3681,6 +3651,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             candidates.push(m);
           }
         }
+      }
+
+      // 3. Direct server audio stream proxy as reliable candidate
+      const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${targetId}`;
+      if (!candidates.includes(serverProxyUrl)) {
+        candidates.push(serverProxyUrl);
       }
 
       if (candidates.length === 0) throw new Error('No stream source available');

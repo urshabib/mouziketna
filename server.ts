@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import http from 'http';
+import { Readable } from 'stream';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -3539,6 +3540,8 @@ app.get('/api/geo/check', (req: Request, res: Response) => {
 // 7. SERVER-AUTHORITATIVE AUDIO CHUNK STREAM VALIDATION
 // =========================================================================
 
+const serverAudioStreamCache = new Map<string, { url: string; expires: number }>();
+
 // Validates playback server-side: rejects audio chunk requests from unauthenticated requests or stale tokens
 app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -3595,13 +3598,105 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
     }
   }
 
-  // Proxy audio stream from upstream worker with Range header support
+  // In-memory server cache for resolved YouTube audio stream URLs
+  const isJsonRequest = req.query.format === 'json' || (req.headers.accept && req.headers.accept.includes('application/json'));
+
+  // 1. Resolve authentic YouTube Music audio stream directly
+  try {
+    let resolvedAudioUrl: string | null = null;
+    const cached = serverAudioStreamCache.get(id);
+    if (cached && cached.expires > Date.now()) {
+      resolvedAudioUrl = cached.url;
+    } else {
+      const mirrors = [
+        'https://invidious.schenkel.eti.br/api/v1/videos/',
+        'https://yt.drgnz.club/api/v1/videos/',
+        'https://invidious.projectsegfau.lt/api/v1/videos/',
+      ];
+
+      for (const base of mirrors) {
+        try {
+          const ctrl = new AbortController();
+          const t = setTimeout(() => ctrl.abort(), 3500);
+          const mirrorRes = await fetch(`${base}${encodeURIComponent(id)}?local=true`, {
+            signal: ctrl.signal,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+          }).finally(() => clearTimeout(t));
+
+          if (mirrorRes.ok) {
+            const data = await mirrorRes.json();
+            const audios = (data.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
+            if (audios.length > 0) {
+              audios.sort((a: any, b: any) => parseInt(b.bitrate || 0) - parseInt(a.bitrate || 0));
+              resolvedAudioUrl = audios[0].url;
+              if (resolvedAudioUrl) {
+                serverAudioStreamCache.set(id, { url: resolvedAudioUrl, expires: Date.now() + 25 * 60 * 1000 });
+                break;
+              }
+            }
+          }
+        } catch {}
+      }
+    }
+
+    if (resolvedAudioUrl) {
+      if (isJsonRequest) {
+        return res.json({
+          status: 'ok',
+          trackId: id,
+          adaptiveFormats: [
+            {
+              type: 'audio/mp4; codecs="mp4a.40.2"',
+              bitrate: 131226,
+              url: resolvedAudioUrl,
+            },
+          ],
+        });
+      }
+
+      // Stream audio chunks with Range support directly to browser audio element
+      const rangeHeader = req.headers.range;
+      const streamRes = await fetch(resolvedAudioUrl, {
+        headers: {
+          ...(rangeHeader ? { range: rangeHeader } : {}),
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+      });
+
+      res.status(streamRes.status);
+      for (const [k, v] of streamRes.headers.entries()) {
+        if (['content-type', 'content-length', 'content-range', 'accept-ranges'].includes(k.toLowerCase())) {
+          res.setHeader(k, v);
+        }
+      }
+
+      if (req.method === 'HEAD') {
+        return res.end();
+      }
+
+      if (streamRes.body) {
+        // @ts-ignore
+        const nodeStream = Readable.fromWeb(streamRes.body as any);
+        req.on('close', () => {
+          try { nodeStream.destroy(); } catch {}
+        });
+        nodeStream.pipe(res);
+        return;
+      } else {
+        return res.end();
+      }
+    }
+  } catch (err: any) {
+    console.warn('[StreamProxy] Direct stream resolution warning:', err?.message || err);
+  }
+
+  // 2. Upstream Cloudflare Worker Fallback
   try {
     const upstreamUrl = `${UPSTREAM_WORKER}/api/stream-proxy/${id}`;
     const rangeHeader = req.headers.range;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
+    const timeout = setTimeout(() => controller.abort(), 3000);
 
     const upstreamRes = await fetch(upstreamUrl, {
       signal: controller.signal,
@@ -3611,52 +3706,42 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
       },
     }).finally(() => clearTimeout(timeout)).catch(() => null);
 
-    if (!upstreamRes) {
-      // Upstream worker unreachable or timed out - respond with valid dummy audio stream or 404
-      return res.status(200).json({ status: 'stream_ready', trackId: id });
-    }
+    if (upstreamRes && upstreamRes.ok) {
+      const contentType = upstreamRes.headers.get('content-type') || 'application/json';
 
-    if (!upstreamRes.ok) {
-      return res.status(upstreamRes.status).json({ error: 'Upstream stream failed' });
-    }
+      if (contentType.includes('application/json')) {
+        const data = await upstreamRes.json();
+        return res.json(data);
+      }
 
-    const contentType = upstreamRes.headers.get('content-type') || 'application/json';
+      res.status(upstreamRes.status);
+      for (const [k, v] of upstreamRes.headers.entries()) {
+        if (['content-type', 'content-length', 'content-range', 'accept-ranges'].includes(k.toLowerCase())) {
+          res.setHeader(k, v);
+        }
+      }
 
-    if (contentType.includes('application/json')) {
-      const data = await upstreamRes.json();
-      return res.json(data);
-    }
+      if (req.method === 'HEAD') {
+        return res.end();
+      }
 
-    res.status(upstreamRes.status);
-    for (const [k, v] of upstreamRes.headers.entries()) {
-      if (['content-type', 'content-length', 'content-range', 'accept-ranges'].includes(k.toLowerCase())) {
-        res.setHeader(k, v);
+      if (upstreamRes.body) {
+        // @ts-ignore
+        const nodeStream = Readable.fromWeb(upstreamRes.body as any);
+        req.on('close', () => {
+          try { nodeStream.destroy(); } catch {}
+        });
+        nodeStream.pipe(res);
+        return;
+      } else {
+        return res.end();
       }
     }
-
-    if (upstreamRes.body) {
-      // @ts-ignore
-      const reader = upstreamRes.body.getReader();
-      const pump = async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            res.write(Buffer.from(value));
-          }
-          res.end();
-        } catch {
-          res.end();
-        }
-      };
-      await pump();
-    } else {
-      res.end();
-    }
   } catch (err: any) {
-    console.error('[StreamProxy] Error proxying stream:', err);
-    res.status(502).json({ error: 'Stream proxy error' });
+    console.error('[StreamProxy] Upstream worker fallback error:', err?.message || err);
   }
+
+  return res.status(502).json({ error: 'Stream resolution failed' });
 });
 
 // Proxy for all other /api/* requests to Upstream Cloudflare Worker
