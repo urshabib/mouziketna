@@ -2305,13 +2305,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       let streamUrl = getCachedStreamUrl(nextTrack.id);
       if (!streamUrl) {
-        streamUrl = await resolveWorkerStream(nextTrack.id).catch(() => null);
+        streamUrl = await resolveWorkerStream(nextTrack.id, nextTrack.title, nextTrack.artist).catch(() => null);
         if (!streamUrl) {
           const mirrors = await resolveMirrorStreams(nextTrack.id).catch(() => []);
           if (mirrors.length > 0) streamUrl = mirrors[0];
         }
         if (!streamUrl) {
-          streamUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${nextTrack.id}`;
+          const params = new URLSearchParams({
+            deviceId: sessionManager.getDeviceId(),
+            ...(sessionManager.getUsername() ? { username: sessionManager.getUsername() } : {}),
+            ...(nextTrack.title ? { title: nextTrack.title } : {}),
+            ...(nextTrack.artist ? { artist: nextTrack.artist } : {}),
+          }).toString();
+          streamUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${nextTrack.id}?${params}`;
         }
       }
 
@@ -2967,7 +2973,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Parallel Stream Resolution across Server Worker Proxy and Global Invidious Mirrors (Authentic YouTube Music)
     const [workerUrl, mirrors] = await Promise.all([
-      resolveWorkerStream(resolvedTrack.id).catch(() => null),
+      resolveWorkerStream(resolvedTrack.id, resolvedTrack.title, cleanedArtist).catch(() => null),
       resolveMirrorStreams(resolvedTrack.id).catch(() => []),
     ]);
 
@@ -2975,7 +2981,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (mirrors && mirrors.length > 0) candidates.push(...mirrors);
 
     // Guaranteed direct server audio stream proxy candidate
-    const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${resolvedTrack.id}`;
+    const serverProxyQuery = new URLSearchParams({
+      deviceId: sessionManager.getDeviceId(),
+      ...(sessionManager.getUsername() ? { username: sessionManager.getUsername() } : {}),
+      ...(resolvedTrack.title ? { title: resolvedTrack.title } : {}),
+      ...(cleanedArtist ? { artist: cleanedArtist } : {}),
+    }).toString();
+    const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${resolvedTrack.id}?${serverProxyQuery}`;
     if (!candidates.includes(serverProxyUrl)) {
       candidates.push(serverProxyUrl);
     }
@@ -3720,7 +3732,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // 2. Authentic YouTube stream resolution (Worker Proxy + Invidious Mirrors)
       const targetId = ytTrackId || track.id;
       const [workerRes, mirrorRes] = await Promise.allSettled([
-        resolveWorkerStream(targetId),
+        resolveWorkerStream(targetId, track.title, track.artist),
         resolveMirrorStreams(targetId),
       ]);
 
@@ -3736,7 +3748,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       // 3. Direct server audio stream proxy as reliable candidate
-      const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${targetId}`;
+      const dlProxyQuery = new URLSearchParams({
+        deviceId: sessionManager.getDeviceId(),
+        ...(sessionManager.getUsername() ? { username: sessionManager.getUsername() } : {}),
+        ...(track.title ? { title: track.title } : {}),
+        ...(track.artist ? { artist: track.artist } : {}),
+      }).toString();
+      const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${targetId}?${dlProxyQuery}`;
       if (!candidates.includes(serverProxyUrl)) {
         candidates.push(serverProxyUrl);
       }

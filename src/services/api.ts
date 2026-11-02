@@ -443,19 +443,23 @@ export async function resolveSaavnStream(
   }
 }
 
-export async function resolveWorkerStream(id: string): Promise<string | null> {
-  if (!id || id.length < 5) return null;
+export async function resolveWorkerStream(id: string, title?: string, artist?: string): Promise<string | null> {
+  if (!id || id.length < 3) return null;
   try {
     const devId = sessionManager.getDeviceId();
     const token = sessionManager.getSessionToken();
     const streamToken = sessionManager.getStreamToken();
+    const currentUser = sessionManager.getUsername();
     const query = new URLSearchParams({
       format: 'json',
       deviceId: devId,
+      ...(currentUser ? { username: currentUser } : {}),
       ...(token ? { sessionToken: token } : {}),
       ...(streamToken ? { streamToken } : {}),
+      ...(title ? { title } : {}),
+      ...(artist ? { artist } : {}),
     }).toString();
-    const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}?${query}`, 4500, {
+    const r = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/stream-proxy/${id}?${query}`, 6500, {
       headers: {
         Accept: 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
