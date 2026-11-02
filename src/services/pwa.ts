@@ -546,12 +546,13 @@ export interface UpdateCheckResult {
  */
 export async function forceAppUpdateAndRefresh(targetSha?: string): Promise<void> {
   try {
-    if (targetSha) {
-      try {
-        localStorage.setItem(GITHUB_COMMIT_KEY, targetSha);
-        localStorage.setItem(LAST_APPLIED_VERSION_KEY, targetSha);
-      } catch {}
-    }
+    const appliedVal = targetSha || `applied_${Date.now()}`;
+    try {
+      localStorage.setItem(GITHUB_COMMIT_KEY, appliedVal);
+      localStorage.setItem(LAST_APPLIED_VERSION_KEY, appliedVal);
+      localStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
+      sessionStorage.setItem(UPDATE_ATTEMPT_KEY, String(Date.now()));
+    } catch {}
 
     // 1. Trigger Service Worker update checks & message them to purge HTTP caches
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
@@ -671,18 +672,22 @@ export async function checkForAppUpdates(options?: {
     return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'You are currently offline' };
   }
 
-  // Reload cooldown only applies to automatic background checks (bypassed if forceCheck is true)
-  if (!options?.forceCheck) {
-    const lastAttemptSession = Number(sessionStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
-    const lastAttemptLocal = Number(localStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
-    const mostRecentAttempt = Math.max(lastAttemptSession, lastAttemptLocal);
-    if (Date.now() - mostRecentAttempt < UPDATE_COOLDOWN_MS) {
-      return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'Update cooldown active' };
-    }
+  // Reload cooldown applies to all update checks (15 minutes anti-loop protection)
+  const lastAttemptSession = Number(sessionStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
+  const lastAttemptLocal = Number(localStorage.getItem(UPDATE_ATTEMPT_KEY) || '0');
+  const mostRecentAttempt = Math.max(lastAttemptSession, lastAttemptLocal);
+  if (!options?.forceCheck && Date.now() - mostRecentAttempt < 15 * 60 * 1000) {
+    return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none', message: 'Update cooldown active' };
   }
 
-  // Skip auto background polling inside AI Studio dev preview port 3000 unless manually forced
-  if (!options?.forceCheck && (import.meta.env.DEV || window.location.port === '3000' || window.location.hostname.includes('run.app'))) {
+  // Skip update polling inside AI Studio dev/preview environments entirely
+  if (
+    import.meta.env.DEV ||
+    window.location.port === '3000' ||
+    window.location.hostname.includes('run.app') ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1'
+  ) {
     return { hasUpdate: false, currentVersion: APP_VERSION, reason: 'none' };
   }
 

@@ -2307,10 +2307,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!streamUrl) {
         streamUrl = await resolveWorkerStream(nextTrack.id, nextTrack.title, nextTrack.artist).catch(() => null);
         if (!streamUrl) {
-          const mirrors = await resolveMirrorStreams(nextTrack.id).catch(() => []);
-          if (mirrors.length > 0) streamUrl = mirrors[0];
-        }
-        if (!streamUrl) {
           const params = new URLSearchParams({
             deviceId: sessionManager.getDeviceId(),
             ...(sessionManager.getUsername() ? { username: sessionManager.getUsername() } : {}),
@@ -2971,15 +2967,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const candidates: string[] = [];
 
-    // Parallel Stream Resolution across Server Worker Proxy and Global Invidious Mirrors (Authentic YouTube Music)
-    const [workerUrl, mirrors] = await Promise.all([
-      resolveWorkerStream(resolvedTrack.id, resolvedTrack.title, cleanedArtist).catch(() => null),
-      resolveMirrorStreams(resolvedTrack.id).catch(() => []),
-    ]);
-
-    if (workerUrl) candidates.push(workerUrl);
-    if (mirrors && mirrors.length > 0) candidates.push(...mirrors);
-
     // Guaranteed direct server audio stream proxy candidate
     const serverProxyQuery = new URLSearchParams({
       deviceId: sessionManager.getDeviceId(),
@@ -2988,6 +2975,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ...(cleanedArtist ? { artist: cleanedArtist } : {}),
     }).toString();
     const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${resolvedTrack.id}?${serverProxyQuery}`;
+
+    // Fast-path stream resolution (returns in ~250ms with 2.5s cap without blocking on dead mirrors)
+    try {
+      const workerUrl = await Promise.race([
+        resolveWorkerStream(resolvedTrack.id, resolvedTrack.title, cleanedArtist),
+        new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+      ]);
+      if (workerUrl) candidates.push(workerUrl);
+    } catch {}
+
     if (!candidates.includes(serverProxyUrl)) {
       candidates.push(serverProxyUrl);
     }
@@ -3666,6 +3663,49 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     playTrack(tracks[clampedIndex], true);
   };
 
+  // Background Download Keep-Alive Engine
+  // Prevents mobile OS and browsers from suspending downloads when screen is locked or app is in background
+  const activeDownloadsCountRef = useRef(0);
+  const wakeLockSentinelRef = useRef<any>(null);
+
+  const acquireDownloadKeepAlive = async () => {
+    activeDownloadsCountRef.current++;
+    // Request Screen Wake Lock so background downloads are not suspended by device sleep
+    if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !wakeLockSentinelRef.current) {
+      try {
+        wakeLockSentinelRef.current = await (navigator as any).wakeLock.request('screen');
+        wakeLockSentinelRef.current.addEventListener('release', () => {
+          wakeLockSentinelRef.current = null;
+        });
+      } catch {}
+    }
+    // Keep media process active when music is paused so mobile background downloads run uninterrupted
+    if (carrierAudioRef.current && (!userIntentPlayingRef.current || audioRef.current?.paused)) {
+      try {
+        if (carrierAudioRef.current.paused) {
+          carrierAudioRef.current.play().catch(() => {});
+        }
+      } catch {}
+    }
+  };
+
+  const releaseDownloadKeepAlive = () => {
+    activeDownloadsCountRef.current = Math.max(0, activeDownloadsCountRef.current - 1);
+    if (activeDownloadsCountRef.current === 0) {
+      if (wakeLockSentinelRef.current) {
+        try {
+          wakeLockSentinelRef.current.release();
+        } catch {}
+        wakeLockSentinelRef.current = null;
+      }
+      if (!userIntentPlayingRef.current && carrierAudioRef.current && !carrierAudioRef.current.paused) {
+        try {
+          carrierAudioRef.current.pause();
+        } catch {}
+      }
+    }
+  };
+
   // Downloads Engine
   const downloadTrack = async (
     track: Track,
@@ -3722,32 +3762,23 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch {}
     }
 
-    try {
-      const candidates: string[] = [];
+    await acquireDownloadKeepAlive();
 
-      // 1. Cached in-memory stream if available
+    try {
+      // 1. Kick off artwork and lyrics download concurrently RIGHT AWAY in parallel with audio
+      const artPromise = userProfile.downloadArtOffline !== false
+        ? fetchArtworkBlob(ytTrackId || track.id, track.thumb, userProfile.artQualityOffline || 'low').catch(() => null)
+        : Promise.resolve(null);
+      const lyricsPromise = userProfile.downloadLyricsOffline !== false
+        ? fetchLyricsForTrack(track).catch(() => null)
+        : Promise.resolve(null);
+
+      // 2. High-speed stream candidate resolution without waiting for dead mirrors
+      const candidates: string[] = [];
       const cached = getCachedStreamUrl(track.id);
       if (cached) candidates.push(cached);
 
-      // 2. Authentic YouTube stream resolution (Worker Proxy + Invidious Mirrors)
       const targetId = ytTrackId || track.id;
-      const [workerRes, mirrorRes] = await Promise.allSettled([
-        resolveWorkerStream(targetId, track.title, track.artist),
-        resolveMirrorStreams(targetId),
-      ]);
-
-      if (workerRes.status === 'fulfilled' && workerRes.value && !candidates.includes(workerRes.value)) {
-        candidates.push(workerRes.value);
-      }
-      if (mirrorRes.status === 'fulfilled' && Array.isArray(mirrorRes.value)) {
-        for (const m of mirrorRes.value) {
-          if (m && !candidates.includes(m)) {
-            candidates.push(m);
-          }
-        }
-      }
-
-      // 3. Direct server audio stream proxy as reliable candidate
       const dlProxyQuery = new URLSearchParams({
         deviceId: sessionManager.getDeviceId(),
         ...(sessionManager.getUsername() ? { username: sessionManager.getUsername() } : {}),
@@ -3755,17 +3786,33 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         ...(track.artist ? { artist: track.artist } : {}),
       }).toString();
       const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${targetId}?${dlProxyQuery}`;
+
+      if (!cached) {
+        try {
+          const directUrl = await Promise.race([
+            resolveWorkerStream(targetId, track.title, track.artist),
+            new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+          ]);
+          if (directUrl && !candidates.includes(directUrl)) {
+            candidates.push(directUrl);
+          }
+        } catch {}
+      }
+
       if (!candidates.includes(serverProxyUrl)) {
         candidates.push(serverProxyUrl);
       }
 
       if (candidates.length === 0) throw new Error('No stream source available');
 
-      // Attempt to download audio from candidate sources with fast timeout
+      // 3. High-resilience audio download with generous 45s background timeout
       let audioBlob: Blob | null = null;
       for (const url of candidates) {
         try {
-          const res = await fetchWithTimeout(url, 12000);
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 45000);
+          const res = await fetch(url, { signal: ctrl.signal });
+          clearTimeout(timer);
           if (res.ok) {
             const blob = await res.blob();
             if (blob && blob.size > 2000) {
@@ -3778,18 +3825,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!audioBlob) throw new Error('Failed to download audio content');
 
-      // Parallel fetch for offline artwork and lyrics (non-blocking)
-      const [artResult, lyricsResult] = await Promise.allSettled([
-        userProfile.downloadArtOffline !== false
-          ? fetchArtworkBlob(ytTrackId || track.id, track.thumb, userProfile.artQualityOffline || 'low')
-          : Promise.resolve(null),
-        userProfile.downloadLyricsOffline !== false
-          ? fetchLyricsForTrack(track)
-          : Promise.resolve(null),
-      ]);
-
-      const thumbBlob = artResult.status === 'fulfilled' ? artResult.value : null;
-      const lyricsData = lyricsResult.status === 'fulfilled' ? lyricsResult.value : null;
+      // 4. Await concurrent artwork and lyrics which are already finished
+      const [thumbBlob, lyricsData] = await Promise.all([artPromise, lyricsPromise]);
 
       const record: DownloadRecord = {
         id: track.id,
@@ -3816,6 +3853,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch {
       if (!silent) showToast(`Couldn't download "${track.title}"`, true);
       return false;
+    } finally {
+      releaseDownloadKeepAlive();
     }
   };
 

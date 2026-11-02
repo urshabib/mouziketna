@@ -3604,90 +3604,133 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
       resolvedAudioUrl = cached.url;
       cachedFormats = cached.formats || [];
     } else {
-      // Primary: Authentic YouTube Music audio stream via @distube/ytdl-core
-      try {
-        const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${id}`);
-        const audios = (info.formats || []).filter((f: any) => f.hasAudio && !f.hasVideo);
-        if (audios.length > 0) {
-          audios.sort((a: any, b: any) => (b.audioBitrate || b.bitrate || 0) - (a.audioBitrate || a.bitrate || 0));
-          resolvedAudioUrl = audios[0].url;
-          cachedFormats = audios.map((a: any) => ({
-            type: a.mimeType || 'audio/mp4; codecs="mp4a.40.2"',
-            bitrate: a.bitrate || a.audioBitrate || 131226,
-            url: a.url,
-          }));
-          if (resolvedAudioUrl) {
-            serverAudioStreamCache.set(id, {
-              url: resolvedAudioUrl,
-              expires: Date.now() + 2 * 60 * 60 * 1000,
-              formats: cachedFormats,
-            });
-          }
-        }
-      } catch (ytdlErr: any) {
-        console.warn(`[StreamProxy] ytdl.getInfo notice for ${id}:`, ytdlErr?.message || ytdlErr);
+      let songTitle = (req.query.title as string) || '';
+      let songArtist = (req.query.artist as string) || '';
+
+      const promises: Promise<void>[] = [];
+
+      // 1. Concurrent Saavn High-Fidelity Studio Stream (responds in ~150ms)
+      if (songTitle && songArtist) {
+        promises.push(
+          (async () => {
+            const cleanT = songTitle
+              .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
+              .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
+              .replace(/["'"]/g, '')
+              .trim();
+            const cleanA = songArtist
+              .replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '')
+              .replace(/,.*$/, '')
+              .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
+              .trim();
+
+            for (const [t, a] of [[cleanT, cleanA], [songTitle, songArtist]]) {
+              if (resolvedAudioUrl) break;
+              if (!t || !a) continue;
+              try {
+                const saavnRes = await fetch(
+                  `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
+                  { signal: AbortSignal.timeout(3000) }
+                );
+                if (saavnRes.ok && !resolvedAudioUrl) {
+                  const saavnId = (await saavnRes.text()).trim();
+                  if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
+                    resolvedAudioUrl = `https://aac.saavncdn.com/${saavnId}_320.mp4`;
+                    cachedFormats = [
+                      {
+                        type: 'audio/mp4',
+                        bitrate: 320000,
+                        url: resolvedAudioUrl,
+                      },
+                    ];
+                    serverAudioStreamCache.set(id, {
+                      url: resolvedAudioUrl,
+                      expires: Date.now() + 6 * 60 * 60 * 1000,
+                      formats: cachedFormats,
+                    });
+                    break;
+                  }
+                }
+              } catch {}
+            }
+          })()
+        );
       }
 
-      // Secondary fallback: Fast Saavn studio resolver via title/artist or YouTube oEmbed metadata
-      if (!resolvedAudioUrl) {
-        let songTitle = (req.query.title as string) || '';
-        let songArtist = (req.query.artist as string) || '';
-
-        if (!songTitle || !songArtist) {
+      // 2. Authentic YouTube Music audio stream via @distube/ytdl-core
+      promises.push(
+        (async () => {
           try {
-            const oembedRes = await fetch(
-              `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`,
-              { signal: AbortSignal.timeout(3500) }
-            );
-            if (oembedRes.ok) {
-              const meta: any = await oembedRes.json();
-              const rawT: string = meta.title || '';
-              const author: string = (meta.author_name || '').replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '').trim();
-
-              const cleanedT = rawT
-                .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, ' ')
-                .replace(/\b(official|music|video|audio|remaster(?:ed)?|lyric[s]?)\b/gi, ' ')
-                .replace(/\s{2,}/g, ' ')
-                .trim();
-
-              if (/\s+[-–—]\s+/.test(cleanedT)) {
-                const parts = cleanedT.split(/\s+[-–—]\s+/).map((p) => p.trim());
-                if (parts.length >= 2) {
-                  songArtist = songArtist || parts[0];
-                  songTitle = songTitle || parts.slice(1).join(' - ');
-                }
-              } else {
-                songTitle = songTitle || cleanedT;
-                songArtist = songArtist || author;
+            const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${id}`);
+            const audios = (info.formats || []).filter((f: any) => f.hasAudio && !f.hasVideo);
+            if (audios.length > 0 && !resolvedAudioUrl) {
+              audios.sort((a: any, b: any) => (b.audioBitrate || b.bitrate || 0) - (a.audioBitrate || a.bitrate || 0));
+              resolvedAudioUrl = audios[0].url;
+              cachedFormats = audios.map((a: any) => ({
+                type: a.mimeType || 'audio/mp4; codecs="mp4a.40.2"',
+                bitrate: a.bitrate || a.audioBitrate || 131226,
+                url: a.url,
+              }));
+              if (resolvedAudioUrl) {
+                serverAudioStreamCache.set(id, {
+                  url: resolvedAudioUrl,
+                  expires: Date.now() + 2 * 60 * 60 * 1000,
+                  formats: cachedFormats,
+                });
               }
             }
-          } catch {}
-        }
+          } catch (ytdlErr: any) {
+            console.warn(`[StreamProxy] ytdl.getInfo notice for ${id}:`, ytdlErr?.message || ytdlErr);
+          }
+        })()
+      );
 
-        if (songTitle && songArtist) {
-          const cleanT = songTitle
-            .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-            .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
-            .replace(/["'"]/g, '')
-            .trim();
-          const cleanA = songArtist
-            .replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '')
-            .replace(/,.*$/, '')
-            .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-            .trim();
+      await Promise.all(promises);
 
-          const attempts = [
-            [cleanT, cleanA],
-            [songTitle, songArtist],
-            [cleanT, songArtist],
-          ];
+      // 3. Fallback: Extract YouTube oEmbed metadata if neither worked and title/artist were missing
+      if (!resolvedAudioUrl && (!songTitle || !songArtist)) {
+        try {
+          const oembedRes = await fetch(
+            `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`,
+            { signal: AbortSignal.timeout(3000) }
+          );
+          if (oembedRes.ok) {
+            const meta: any = await oembedRes.json();
+            const rawT: string = meta.title || '';
+            const author: string = (meta.author_name || '').replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '').trim();
 
-          for (const [t, a] of attempts) {
-            if (!t || !a) continue;
-            try {
+            const cleanedT = rawT
+              .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, ' ')
+              .replace(/\b(official|music|video|audio|remaster(?:ed)?|lyric[s]?)\b/gi, ' ')
+              .replace(/\s{2,}/g, ' ')
+              .trim();
+
+            if (/\s+[-–—]\s+/.test(cleanedT)) {
+              const parts = cleanedT.split(/\s+[-–—]\s+/).map((p) => p.trim());
+              if (parts.length >= 2) {
+                songArtist = parts[0];
+                songTitle = parts.slice(1).join(' - ');
+              }
+            } else {
+              songTitle = cleanedT;
+              songArtist = author;
+            }
+
+            if (songTitle && songArtist) {
+              const cleanT = songTitle
+                .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
+                .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
+                .replace(/["'"]/g, '')
+                .trim();
+              const cleanA = songArtist
+                .replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '')
+                .replace(/,.*$/, '')
+                .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
+                .trim();
+
               const saavnRes = await fetch(
-                `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
-                { signal: AbortSignal.timeout(4000) }
+                `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(cleanT)}&artist=${encodeURIComponent(cleanA)}`,
+                { signal: AbortSignal.timeout(3000) }
               );
               if (saavnRes.ok) {
                 const saavnId = (await saavnRes.text()).trim();
@@ -3705,12 +3748,11 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
                     expires: Date.now() + 6 * 60 * 60 * 1000,
                     formats: cachedFormats,
                   });
-                  break;
                 }
               }
-            } catch {}
+            }
           }
-        }
+        } catch {}
       }
     }
 

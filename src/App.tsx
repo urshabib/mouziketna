@@ -253,48 +253,49 @@ const AppShell: React.FC = () => {
 
     let isUpdating = false;
 
-    const triggerRefresh = async (msg = '⚡ New update found! Refreshing app...', targetSha?: string) => {
+    const triggerRefresh = async (msg = '⚡ New update found! Refreshing app...', targetVersion?: string) => {
       if (isUpdating) return;
+      // Strict anti-loop: if an update was applied within 15 minutes, do not reload again
+      const lastUpdate = Number(localStorage.getItem('mouzika_update_attempt_ts') || '0');
+      if (Date.now() - lastUpdate < 15 * 60 * 1000) {
+        return;
+      }
       isUpdating = true;
+      localStorage.setItem('mouzika_update_attempt_ts', String(Date.now()));
       showToast(msg, true);
       setTimeout(async () => {
-        await forceAppUpdateAndRefresh(targetSha);
-      }, 1000);
+        await forceAppUpdateAndRefresh(targetVersion);
+      }, 1500);
     };
 
     const runUpdateCheck = async (force = false) => {
       if (isUpdating) return;
+      // Suppress automated checks on dev and preview environments to avoid reload loops
+      if (window.location.hostname.includes('run.app') || window.location.port === '3000' || window.location.hostname === 'localhost') {
+        return;
+      }
       await checkForAppUpdates({
         forceCheck: force,
         onUpdateFound: (result) => {
           const detail = result.latestVersion ? ` (${result.latestVersion})` : '';
-          triggerRefresh(`⚡ Update detected${detail}! Applying latest version...`, result.latestSha);
+          const targetId = result.latestSha || result.latestVersion || String(result.remoteBuildTime || Date.now());
+          triggerRefresh(`⚡ Update detected${detail}! Applying latest version...`, targetId);
         },
       });
     };
 
-    // 2. Trigger immediately every time the user opens the app
-    const appOpenTimer = setTimeout(() => {
-      runUpdateCheck(true);
-    }, 600);
+    // Check once after 15 seconds on initial load in production, and periodically every 30 minutes
+    const initialTimer = setTimeout(() => {
+      runUpdateCheck(false);
+    }, 15000);
 
-    // 3. Trigger whenever user returns to / opens the app window or PWA tab
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        runUpdateCheck(false);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    // 4. Periodic background check every 10 minutes
     const interval = setInterval(() => {
       runUpdateCheck(false);
-    }, 10 * 60 * 1000);
+    }, 30 * 60 * 1000);
 
     return () => {
-      clearTimeout(appOpenTimer);
+      clearTimeout(initialTimer);
       clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [showToast]);
 
