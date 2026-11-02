@@ -63,6 +63,9 @@ export const TrackRow: React.FC<TrackRowProps> = ({
   };
 
   const handleRowAction = () => {
+    if (isReorderMode) {
+      return;
+    }
     if (isSelectMode) {
       if (onToggleSelect) onToggleSelect();
       return;
@@ -123,7 +126,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
         ) : dragHandleProps ? (
           <div
             {...dragHandleProps}
-            className="w-8 h-9 -ml-2 mr-0.5 text-white/50 hover:text-white active:text-[var(--accent)] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-colors rounded-lg hover:bg-white/10 active:bg-[var(--accent-soft)] flex-shrink-0 z-10"
+            className="w-11 h-11 -ml-2 mr-1 text-white/50 hover:text-white active:text-[var(--accent)] flex items-center justify-center cursor-grab active:cursor-grabbing touch-none select-none transition-transform rounded-xl hover:bg-white/10 active:bg-[var(--accent-soft)] active:scale-105 flex-shrink-0 z-10"
             title="Drag to reorder"
             aria-label="Drag to reorder"
             onClick={(e) => {
@@ -147,7 +150,7 @@ export const TrackRow: React.FC<TrackRowProps> = ({
               dragHandleProps.onTouchCancel?.(e);
             }}
           >
-            <div className="p-1 rounded-lg bg-white/[0.04] group-hover:bg-white/10 group-active:bg-[var(--accent-soft)] transition-colors pointer-events-none">
+            <div className="p-1.5 rounded-lg bg-white/[0.06] group-hover:bg-white/10 group-active:bg-[var(--accent-soft)] transition-colors pointer-events-none">
               <GripVertical className="w-4 h-4 text-white/70 group-hover:text-white" />
             </div>
           </div>
