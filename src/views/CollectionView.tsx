@@ -418,16 +418,19 @@ export const CollectionView: React.FC = () => {
         document.documentElement;
 
       const containerRect = scrollContainer.getBoundingClientRect();
-      const topThreshold = Math.min(containerRect.top + 130, 160);
-      const bottomThreshold = Math.max(containerRect.bottom - 130, window.innerHeight - 150);
+      const topThreshold = Math.max(200, containerRect.top + 200);
+      const bottomThreshold = Math.min(window.innerHeight - 160, containerRect.bottom - 160);
 
       let scrollSpeed = 0;
       if (touch.clientY < topThreshold) {
-        const factor = Math.min(1, Math.max(0.15, (topThreshold - touch.clientY) / 100));
-        scrollSpeed = -Math.round(4 + factor * 16);
+        const dist = Math.max(0, topThreshold - touch.clientY);
+        const factor = Math.min(1, Math.max(0.1, dist / 150));
+        // Ranges from 14px/frame up to 40px/frame for fast, responsive edge scrolling
+        scrollSpeed = -Math.round(14 + Math.pow(factor, 1.2) * 26);
       } else if (touch.clientY > bottomThreshold) {
-        const factor = Math.min(1, Math.max(0.15, (touch.clientY - bottomThreshold) / 100));
-        scrollSpeed = Math.round(4 + factor * 16);
+        const dist = Math.max(0, touch.clientY - bottomThreshold);
+        const factor = Math.min(1, Math.max(0.1, dist / 150));
+        scrollSpeed = Math.round(14 + Math.pow(factor, 1.2) * 26);
       }
 
       if (scrollSpeed !== 0) {
@@ -571,12 +574,12 @@ export const CollectionView: React.FC = () => {
       document.querySelector('main') ||
       document.documentElement;
     const rect = scrollContainer.getBoundingClientRect();
-    if (e.clientY < rect.top + 100) {
-      scrollContainer.scrollTop -= 14;
-      window.scrollBy({ top: -14, behavior: 'instant' });
-    } else if (e.clientY > rect.bottom - 100) {
-      scrollContainer.scrollTop += 14;
-      window.scrollBy({ top: 14, behavior: 'instant' });
+    if (e.clientY < rect.top + 150) {
+      scrollContainer.scrollTop -= 28;
+      window.scrollBy({ top: -28, behavior: 'instant' });
+    } else if (e.clientY > rect.bottom - 150) {
+      scrollContainer.scrollTop += 28;
+      window.scrollBy({ top: 28, behavior: 'instant' });
     }
     if (dragOverIndex !== index) {
       setDragOverIndex(index);

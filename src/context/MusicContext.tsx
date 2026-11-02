@@ -860,23 +860,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           carrierAudioRef.current.play().catch(() => {});
         }
 
-        // 2. Involuntary background pause self-healing:
-        // When screen is off / locked, Android battery manager or iOS WebKit may pause the audio element.
-        // The Web Worker tick is NOT frozen on background audio.
-        if (
-          userIntentPlayingRef.current &&
-          audioRef.current &&
-          audioRef.current.paused &&
-          !isSeekingRef.current
-        ) {
-          const a = audioRef.current;
-          // Auto-resume if there is a valid audio source and song hasn't reached the end
-          if (a.src && a.src !== '' && !a.ended && (a.duration === 0 || isNaN(a.duration) || a.currentTime < a.duration - 0.5)) {
-            a.play().catch(() => {});
-          }
-        }
-
-        // 3. Autonomous Bluetooth & AudioTrack Continuity Verification:
+        // 2. Autonomous Bluetooth & AudioTrack Continuity Verification:
         // Ensure volume and carrier anchor remain fully engaged without artificial seeking
         if (
           userIntentPlayingRef.current &&
@@ -896,10 +880,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
         }
 
-        // 4. Keep AudioContext active if present on desktop
+        // 3. Keep AudioContext active if present on desktop
         resumeAudioContext();
 
-        // 5. Periodic background lease heartbeat every 15s so server lease never expires
+        // 4. Periodic background lease heartbeat every 15s so server lease never expires
         if (tickCount % 18 === 0 && userIntentPlayingRef.current) {
           sessionManager.sendHeartbeat().catch(() => {});
         }
@@ -932,21 +916,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
 
-      // If user still intends to listen, do not accept involuntary OS screen-lock / background tab pause
-      if (userIntentPlayingRef.current) {
-        if (!isSeekingRef.current) {
-          // Immediately attempt auto-resume without relying solely on delayed setTimeout
-          try {
-            audio.play().catch(() => {});
-          } catch {}
-          setTimeout(() => {
-            if (userIntentPlayingRef.current && audioRef.current && audioRef.current.paused && !isSeekingRef.current) {
-              audioRef.current.play().catch(() => {});
-            }
-          }, 80);
-        }
+      // Track transition / loading phase: if actively loading next track, ignore transient source swap pause
+      if (isLoadingTrackRef.current) {
         return;
       }
+
+      // Handle pause from user, lock screen, smartwatch, or OS (Bluetooth disconnect, headphones unplugged)
+      userIntentPlayingRef.current = false;
       setIsPlaying(false);
       setIsBuffering(false);
       releaseWakeLock();
@@ -1131,9 +1107,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     const onStalled = () => {
-      if (userIntentPlayingRef.current && audio && audio.paused && !isSeekingRef.current) {
-        audio.play().catch(() => {});
-      }
+      // Intentionally do not force play() if paused
     };
 
     audio.addEventListener('play', onPlay);
@@ -1147,6 +1121,73 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     audio.addEventListener('ended', onEnded);
     audio.addEventListener('error', onAudioError);
     audio.addEventListener('stalled', onStalled);
+
+    // Audio Output Source Change & Disconnection Protection:
+    // When Bluetooth disconnects (car turned off, earbuds put in case) or wired headphones are unplugged,
+    // immediately pause playback so music NEVER unexpectedly blasts on the phone's speakers!
+    let knownAudioOutputFingerprint = '';
+    let isInitialAudioDeviceCheckDone = false;
+
+    const getAudioDevicesFingerprint = async (): Promise<string> => {
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) {
+        return '';
+      }
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioDevs = devices.filter((d) => d.kind === 'audiooutput' || d.kind === 'audioinput');
+        return audioDevs.map((d) => `${d.kind}:${d.deviceId || d.label || d.groupId}`).sort().join(';');
+      } catch {
+        return '';
+      }
+    };
+
+    getAudioDevicesFingerprint().then((fp) => {
+      knownAudioOutputFingerprint = fp;
+      isInitialAudioDeviceCheckDone = true;
+    });
+
+    const pauseDueToOutputDisconnection = (reason: string) => {
+      console.log(`[AudioRoute] Output switched/disconnected (${reason}) — pausing safely.`);
+      userIntentPlayingRef.current = false;
+      if (carrierAudioRef.current && !carrierAudioRef.current.paused) {
+        carrierAudioRef.current.pause();
+      }
+      if (audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+      }
+      setIsPlaying(false);
+      setIsBuffering(false);
+      releaseWakeLock();
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.playbackState = 'paused';
+      }
+      showToast('Playback paused (audio output disconnected)');
+    };
+
+    const onDeviceChange = async () => {
+      if (!isInitialAudioDeviceCheckDone) return;
+      const newFp = await getAudioDevicesFingerprint();
+      const oldFp = knownAudioOutputFingerprint;
+      knownAudioOutputFingerprint = newFp;
+
+      // If audio is actively playing and an audio device changed/disconnected:
+      if (oldFp && newFp !== oldFp) {
+        if (audioRef.current && (!audioRef.current.paused || userIntentPlayingRef.current)) {
+          pauseDueToOutputDisconnection('devicechange');
+        }
+      }
+    };
+
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
+    }
+
+    const onSinkChange = () => {
+      if (audioRef.current && (!audioRef.current.paused || userIntentPlayingRef.current)) {
+        pauseDueToOutputDisconnection('sinkchange');
+      }
+    };
+    audio.addEventListener('sinkchange', onSinkChange);
 
     // Keep background audio active when screen turns off or locks on iPhone / iOS & Android
     const onVisibilityChange = () => {
@@ -1162,17 +1203,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }
           if (!audioRef.current.paused) {
             requestWakeLock();
-          } else if (userIntentPlayingRef.current && !isSeekingRef.current) {
-            audioRef.current.play().catch(() => {});
           }
         }
       } else if (document.visibilityState === 'hidden' && audioRef.current) {
         if (userIntentPlayingRef.current) {
           if ('mediaSession' in navigator) {
             navigator.mediaSession.playbackState = 'playing';
-          }
-          if (audioRef.current.paused && !isSeekingRef.current && audioRef.current.src) {
-            audioRef.current.play().catch(() => {});
           }
         }
       }
@@ -1188,9 +1224,6 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (audioRef.current.muted) audioRef.current.muted = false;
         if (audioRef.current.volume === 0 && volumeRef.current > 0) {
           audioRef.current.volume = (volumeRef.current || 50) / 100;
-        }
-        if (audioRef.current.paused && !isSeekingRef.current && audioRef.current.src) {
-          audioRef.current.play().catch(() => {});
         }
       }
     };
@@ -1263,6 +1296,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     return () => {
+      if (typeof navigator !== 'undefined' && navigator.mediaDevices?.removeEventListener) {
+        navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
+      }
+      audio.removeEventListener('sinkchange', onSinkChange);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('pageshow', onPageShow);
       audio.removeEventListener('stalled', onStalled);
