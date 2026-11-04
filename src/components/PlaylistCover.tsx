@@ -54,28 +54,44 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
   // 2. Dynamic 2x2 Grid Collage when >= 4 tracks available (Seamless, no black borders)
   if (tracks.length >= 4) {
     const collageFour = tracks.slice(0, 4);
-    return (
-      <div
-        className={`relative overflow-hidden bg-[#18181b] grid grid-cols-2 grid-rows-2 gap-0 p-0 m-0 border-0 leading-none ${sizeClass} ${roundedClass} ${className}`}
-        aria-label="2x2 Playlist collage"
-      >
-        {collageFour.map((t, idx) => (
-          <div key={t.id ? `${t.id}_${idx}` : idx} className="relative w-full h-full overflow-hidden bg-[#18181b] p-0 m-0 border-0">
-            <img
-              src={t.thumb || FALLBACK_ART}
-              alt={t.title || 'Track art'}
-              onError={handleImgError}
-              loading="lazy"
-              className="w-full h-full object-cover block p-0 m-0 border-0 pointer-events-none"
-            />
-          </div>
-        ))}
-      </div>
+    const hasAnyRealThumb = collageFour.some(
+      (t) => (t.thumb && t.thumb !== FALLBACK_ART && !t.thumb.startsWith('blob:')) || (t.id && t.id.length === 11)
     );
+
+    if (hasAnyRealThumb || !activeCustomCover) {
+      return (
+        <div
+          className={`relative overflow-hidden bg-[#18181b] grid grid-cols-2 grid-rows-2 gap-0 p-0 m-0 border-0 leading-none ${sizeClass} ${roundedClass} ${className}`}
+          aria-label="2x2 Playlist collage"
+        >
+          {collageFour.map((t, idx) => {
+            const trackArt = (t.thumb && t.thumb !== FALLBACK_ART && !t.thumb.startsWith('blob:'))
+              ? t.thumb
+              : (t.id && t.id.length === 11 ? `https://i.ytimg.com/vi/${t.id}/hqdefault.jpg` : FALLBACK_ART);
+            return (
+              <div key={t.id ? `${t.id}_${idx}` : idx} className="relative w-full h-full overflow-hidden bg-[#18181b] p-0 m-0 border-0">
+                <img
+                  src={trackArt}
+                  alt={t.title || 'Track art'}
+                  onError={handleImgError}
+                  loading="lazy"
+                  className="w-full h-full object-cover block p-0 m-0 border-0 pointer-events-none"
+                />
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
   }
 
-  // 3. Fall back gracefully to displaying the cover image of the first track (< 4 tracks)
-  const fallbackThumb = (tracks.length > 0 && tracks[0].thumb) || (activeCustomCover && !activeCustomCover.startsWith('data:') ? activeCustomCover : null);
+  // 3. Fall back gracefully to displaying the cover image of the first track or playlist cover (< 4 tracks or collage fallback)
+  const firstTrackThumb = tracks[0] ? (
+    (tracks[0].thumb && tracks[0].thumb !== FALLBACK_ART && !tracks[0].thumb.startsWith('blob:'))
+      ? tracks[0].thumb
+      : (tracks[0].id && tracks[0].id.length === 11 ? `https://i.ytimg.com/vi/${tracks[0].id}/hqdefault.jpg` : null)
+  ) : null;
+  const fallbackThumb = firstTrackThumb || (activeCustomCover && !activeCustomCover.startsWith('data:') ? activeCustomCover : null);
   if (fallbackThumb) {
     return (
       <div className={`relative overflow-hidden bg-[#18181b] ${sizeClass} ${roundedClass} ${className}`}>

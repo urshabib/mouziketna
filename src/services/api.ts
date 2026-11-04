@@ -398,7 +398,14 @@ export async function resolveSaavnStream(
     if (singleArtistMatch) return singleArtistMatch;
   }
 
-  // Priority 3: Cleaned raw title if provided
+  // Priority 3: First word / token of artist alone (resolves transliterations like Amr Diab -> Amr, Fairouz -> Fairuz)
+  const firstWord = firstArtist.split(/[\s,]/)[0].trim();
+  if (firstWord && firstWord !== firstArtist && firstWord.length >= 3) {
+    const wordMatch = await querySaavn(cleanT, firstWord);
+    if (wordMatch) return wordMatch;
+  }
+
+  // Priority 4: Cleaned raw title if provided
   if (rawTitle && rawTitle !== cleanT) {
     const strippedRaw = rawTitle.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim();
     if (strippedRaw && strippedRaw !== cleanT) {

@@ -2953,15 +2953,38 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 1400);
 
     // If track has an imported ID (like Spotify "sp_...") or is still resolving metadata, resolve properly
-    if (!resolvedTrack.id || resolvedTrack.title === 'Loading...' || resolvedTrack.id.startsWith('sp_') || resolvedTrack.id.startsWith('import_')) {
+    if (!resolvedTrack.id || resolvedTrack.title === 'Loading...' || resolvedTrack.id.startsWith('sp_') || resolvedTrack.id.startsWith('import_') || resolvedTrack.id.length !== 11) {
       try {
         const queryTerm = `${resolvedTrack.title !== 'Loading...' ? resolvedTrack.title : ''} ${cleanedArtist}`.trim();
         if (queryTerm) {
           const found = await searchTracks(queryTerm, 'song');
           if (found.length > 0 && found[0].id) {
+            const oldId = resolvedTrack.id;
             resolvedTrack.id = found[0].id;
             if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART) resolvedTrack.thumb = found[0].thumb || safeInitialThumb;
             if (resolvedTrack.title === 'Loading...') resolvedTrack.title = found[0].title;
+            if (found[0].duration && !resolvedTrack.duration) resolvedTrack.duration = found[0].duration;
+
+            // Immediately persist this healed track into userProfile customPlaylists and playback queue!
+            setPlaybackQueue((q) => q.map((t) => t.id === oldId ? { ...t, id: resolvedTrack.id, thumb: resolvedTrack.thumb } : t));
+            setUserProfile((prev) => {
+              let changed = false;
+              const newPlaylists = (prev.customPlaylists || []).map((pl) => {
+                const hasTrack = pl.tracks?.some((t) => t.id === oldId);
+                if (hasTrack) {
+                  changed = true;
+                  return {
+                    ...pl,
+                    tracks: pl.tracks.map((t) => t.id === oldId ? { ...t, id: resolvedTrack.id, thumb: resolvedTrack.thumb } : t),
+                  };
+                }
+                return pl;
+              });
+              if (!changed) return prev;
+              const nextProf = { ...prev, customPlaylists: newPlaylists };
+              saveDeviceSettings(nextProf);
+              return nextProf;
+            });
           }
         }
       } catch {}
@@ -2990,8 +3013,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           new Promise<null>((r) => setTimeout(() => r(null), 2500)),
         ]).catch(() => null),
       ]);
-      if (workerUrl && !candidates.includes(workerUrl)) candidates.push(workerUrl);
+      // Prioritize Saavn (320kbps pristine CDN audio, <100ms startup) then Server Range Proxy then Worker
       if (saavnUrl && !candidates.includes(saavnUrl)) candidates.push(saavnUrl);
+      if (!candidates.includes(serverProxyUrl)) candidates.push(serverProxyUrl);
+      if (workerUrl && !candidates.includes(workerUrl)) candidates.push(workerUrl);
     } catch {}
 
     if (!candidates.includes(serverProxyUrl)) {
@@ -3035,7 +3060,30 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Play first working candidate
     let ok = await tryPlayCandidates(candidates, token, resolvedTrack.id, 0);
 
-    // Auto-retry once with refreshed mirror list if first cycle had a network warmup hiccup
+    // Auto-retry with alternative YouTube search result if initial cycle did not start
+    if (!ok && token === playTokenRef.current) {
+      try {
+        const altSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
+        const altTrack = altSearch.find((t) => t.id && t.id.length === 11 && t.id !== resolvedTrack.id);
+        if (altTrack) {
+          const altProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${altTrack.id}?title=${encodeURIComponent(altTrack.title)}&artist=${encodeURIComponent(altTrack.artist || '')}`;
+          const altSaavn = await resolveSaavnStream(altTrack.title, altTrack.artist, quality).catch(() => null);
+          const retryCandidates = [
+            ...(altSaavn ? [altSaavn] : []),
+            altProxyUrl,
+          ];
+          ok = await tryPlayCandidates(retryCandidates, token, resolvedTrack.id, 0);
+          if (ok) {
+            resolvedTrack.id = altTrack.id;
+            if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART) {
+              resolvedTrack.thumb = altTrack.thumb || FALLBACK_ART;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Auto-retry once with refreshed mirror list if still not resolved
     if (!ok && token === playTokenRef.current) {
       try {
         const freshMirrors = await resolveMirrorStreams(resolvedTrack.id).catch(() => []);

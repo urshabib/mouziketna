@@ -40,6 +40,8 @@ import {
   FALLBACK_ART,
   getRelatedTracks,
   getTasteProfileRecommendations,
+  searchTracks,
+  canonicalThumbUrl,
 } from '../services/api';
 import { PlaylistCover } from '../components/PlaylistCover';
 
@@ -152,6 +154,9 @@ export const CollectionView: React.FC = () => {
       setLoading(false);
       if (typeof navigator === 'undefined' || navigator.onLine) {
         loadPlaylistSuggestions(plTracks);
+        if (target.id) {
+          healPlaylistTracks(plTracks, target.id);
+        }
       }
     } else if (target.type === 'artist') {
       try {
@@ -276,6 +281,62 @@ export const CollectionView: React.FC = () => {
       setSuggestions([]);
     } finally {
       setLoadingSuggestions(false);
+    }
+  };
+
+  const healPlaylistTracks = async (plTracks: Track[], playlistId: string) => {
+    if (!plTracks || plTracks.length === 0) return;
+    const needsHeal = plTracks.filter(
+      (t) =>
+        !t.id ||
+        t.id.startsWith('sp_') ||
+        t.id.startsWith('import_') ||
+        t.id.length !== 11 ||
+        !t.thumb ||
+        t.thumb === FALLBACK_ART
+    );
+    if (needsHeal.length === 0) return;
+
+    let didChange = false;
+    const updated = [...plTracks];
+
+    for (let i = 0; i < updated.length; i++) {
+      const track = updated[i];
+      const needsId =
+        !track.id || track.id.startsWith('sp_') || track.id.startsWith('import_') || track.id.length !== 11;
+      const needsThumb = !track.thumb || track.thumb === FALLBACK_ART || track.thumb.startsWith('blob:');
+
+      if (needsId || needsThumb) {
+        try {
+          const query = `${track.title} ${track.artist}`.trim();
+          if (query) {
+            const results = await searchTracks(query, 'song');
+            if (results.length > 0 && results[0].id) {
+              const best = results[0];
+              updated[i] = {
+                ...track,
+                id: best.id,
+                thumb: best.thumb || canonicalThumbUrl(best.id),
+                title: track.title === 'Loading...' ? best.title : track.title,
+                duration: track.duration || best.duration,
+              };
+              didChange = true;
+              // Progressively update active view so thumbnails immediately show up
+              setTracks([...updated]);
+            }
+          }
+        } catch {}
+      }
+    }
+
+    if (didChange) {
+      updatePlaylistTracks(playlistId, updated);
+      syncProfile({
+        ...userProfile,
+        customPlaylists: (userProfile.customPlaylists || []).map((p) =>
+          String(p.id) === String(playlistId) ? { ...p, tracks: updated, thumb: p.thumb || updated[0]?.thumb } : p
+        ),
+      });
     }
   };
 

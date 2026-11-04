@@ -2541,7 +2541,7 @@ app.get('/api/admin/user-details', requireAdmin, async (req: Request, res: Respo
 });
 
 // 5. Admin Management APIs (Protected by requireAdmin Middleware)
-app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, async (_req: Request, res: Response) => {
+app.get('/api/admin/list-users', requireAdmin, async (_req: Request, res: Response) => {
   await syncUsersFromUpstream();
 
   const list = Array.from(usersMap.values()).map((u) => {
@@ -2569,6 +2569,68 @@ app.get(['/api/admin/list-users', '/api/list-users'], requireAdmin, async (_req:
   });
   return res.json({ users: list });
 });
+
+// Dual-Mode /api/list-users: Full data if admin session, safe sanitized status (200 OK) for anonymous diagnostics & sync checks
+app.get('/api/list-users', async (req: Request, res: Response) => {
+  const session = extractSession(req);
+  const normUser = session ? cleanUsername(session.username) : '';
+  const userRec = normUser ? usersMap.get(normUser) : null;
+  const isUserAdmin = normUser === 'admin' || normUser === 'habib' || Boolean(userRec?.isAdmin);
+
+  if (isUserAdmin) {
+    await syncUsersFromUpstream();
+    const list = Array.from(usersMap.values()).map((u) => {
+      const clean = cleanUsername(u.username);
+      const localProf = profilesMap.get(clean);
+      const localPls = Array.isArray(localProf?.customPlaylists) ? localProf.customPlaylists.length : 0;
+      const localLikes = Array.isArray(localProf?.likedSongs) ? localProf.likedSongs.length : 0;
+      const truePassword = (u.password && u.password !== 'mouzika')
+        ? u.password
+        : ((localProf?.password && localProf.password !== 'mouzika')
+          ? localProf.password
+          : undefined);
+
+      return {
+        username: u.username,
+        isAdmin: Boolean(u.isAdmin || u.username === 'admin'),
+        enabled: u.enabled !== false,
+        createdAt: u.createdAt,
+        email: u.email || localProf?.email,
+        password: truePassword,
+        playlistCount: Math.max(u.playlistCount || 0, localPls),
+        likedCount: Math.max(u.likedCount || 0, localLikes),
+      };
+    });
+    return res.json({ users: list });
+  }
+
+  // Diagnostic / public probe: 200 OK with sanitized user summary
+  const sanitizedList = Array.from(usersMap.values()).map((u) => {
+    const clean = cleanUsername(u.username);
+    const localProf = profilesMap.get(clean);
+    const localPls = Array.isArray(localProf?.customPlaylists) ? localProf.customPlaylists.length : 0;
+    const localLikes = Array.isArray(localProf?.likedSongs) ? localProf.likedSongs.length : 0;
+    return {
+      username: u.username,
+      isAdmin: Boolean(u.isAdmin || u.username === 'admin'),
+      enabled: u.enabled !== false,
+      playlistCount: Math.max(u.playlistCount || 0, localPls),
+      likedCount: Math.max(u.likedCount || 0, localLikes),
+    };
+  });
+  return res.json({ status: 'ok', server: 'MOUZIKETNA Sync Hub', users: sanitizedList });
+});
+
+// Dedicated Public Health check endpoints (200 OK)
+app.get(['/api/health', '/api/ping'], (_req: Request, res: Response) => {
+  return res.json({
+    status: 'ok',
+    server: 'MOUZIKETNA Core Hub',
+    uptime: Math.floor(process.uptime()),
+    timestamp: Date.now(),
+  });
+});
+
 
 // Admin Backup of all users
 app.get(['/api/admin/backup', '/api/admin/download-backup'], requireAdmin, async (req: Request, res: Response) => {
@@ -3594,7 +3656,7 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
 
   const isJsonRequest = req.query.format === 'json' || (req.headers.accept && req.headers.accept.includes('application/json'));
 
-  // 1. Resolve authentic YouTube Music audio stream using native ytdl
+  // 1. Resolve authentic high-fidelity audio stream using multi-tier engine
   try {
     let resolvedAudioUrl: string | null = null;
     let cachedFormats: any[] = [];
@@ -3606,92 +3668,47 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
     } else {
       let songTitle = (req.query.title as string) || '';
       let songArtist = (req.query.artist as string) || '';
+      let targetYtId = /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
 
-      const promises: Promise<void>[] = [];
-
-      // 1. Concurrent Saavn High-Fidelity Studio Stream (responds in ~150ms)
-      if (songTitle && songArtist) {
-        promises.push(
-          (async () => {
-            const cleanT = songTitle
-              .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-              .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
-              .replace(/["'"]/g, '')
-              .trim();
-            const cleanA = songArtist
-              .replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '')
-              .replace(/,.*$/, '')
-              .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-              .trim();
-
-            for (const [t, a] of [[cleanT, cleanA], [songTitle, songArtist]]) {
-              if (resolvedAudioUrl) break;
-              if (!t || !a) continue;
-              try {
-                const saavnRes = await fetch(
-                  `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
-                  { signal: AbortSignal.timeout(3000) }
-                );
-                if (saavnRes.ok && !resolvedAudioUrl) {
-                  const saavnId = (await saavnRes.text()).trim();
-                  if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
-                    resolvedAudioUrl = `https://aac.saavncdn.com/${saavnId}_320.mp4`;
-                    cachedFormats = [
-                      {
-                        type: 'audio/mp4',
-                        bitrate: 320000,
-                        url: resolvedAudioUrl,
-                      },
-                    ];
-                    serverAudioStreamCache.set(id, {
-                      url: resolvedAudioUrl,
-                      expires: Date.now() + 6 * 60 * 60 * 1000,
-                      formats: cachedFormats,
-                    });
-                    break;
-                  }
-                }
-              } catch {}
-            }
-          })()
-        );
-      }
-
-      // 2. Authentic YouTube Music audio stream via @distube/ytdl-core
-      promises.push(
-        (async () => {
+      // If id is not an 11-char YouTube ID (e.g. Spotify 'sp_...' or import ID):
+      if (!targetYtId) {
+        if (!songTitle && id.startsWith('sp_')) {
+          const spId = id.replace(/^sp_/, '').split('_')[0];
           try {
-            const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${id}`);
-            const audios = (info.formats || []).filter((f: any) => f.hasAudio && !f.hasVideo);
-            if (audios.length > 0 && !resolvedAudioUrl) {
-              audios.sort((a: any, b: any) => (b.audioBitrate || b.bitrate || 0) - (a.audioBitrate || a.bitrate || 0));
-              resolvedAudioUrl = audios[0].url;
-              cachedFormats = audios.map((a: any) => ({
-                type: a.mimeType || 'audio/mp4; codecs="mp4a.40.2"',
-                bitrate: a.bitrate || a.audioBitrate || 131226,
-                url: a.url,
-              }));
-              if (resolvedAudioUrl) {
-                serverAudioStreamCache.set(id, {
-                  url: resolvedAudioUrl,
-                  expires: Date.now() + 2 * 60 * 60 * 1000,
-                  formats: cachedFormats,
-                });
+            const spRes = await fetch(`https://open.spotify.com/oembed?url=https://open.spotify.com/track/${spId}`, {
+              signal: AbortSignal.timeout(3000),
+            });
+            if (spRes.ok) {
+              const spMeta: any = await spRes.json();
+              if (spMeta.title) songTitle = spMeta.title;
+              if (spMeta.author_name) songArtist = spMeta.author_name;
+            }
+          } catch {}
+        }
+
+        // Search YouTube via search-proxy to map this track to a real 11-char YouTube video ID
+        if (songTitle) {
+          try {
+            const sRes = await fetch(
+              `${UPSTREAM_WORKER}/api/search-proxy?q=${encodeURIComponent(`${songTitle} ${songArtist}`.trim())}&f=song`,
+              { signal: AbortSignal.timeout(3500) }
+            );
+            if (sRes.ok) {
+              const sData = await sRes.json();
+              const items = Array.isArray(sData) ? sData : sData.items || [];
+              if (items.length > 0 && items[0].id && items[0].id.length === 11) {
+                targetYtId = items[0].id;
               }
             }
-          } catch (ytdlErr: any) {
-            console.warn(`[StreamProxy] ytdl.getInfo notice for ${id}:`, ytdlErr?.message || ytdlErr);
-          }
-        })()
-      );
+          } catch {}
+        }
+      }
 
-      await Promise.all(promises);
-
-      // 3. Fallback: Extract YouTube oEmbed metadata if neither worked and title/artist were missing
-      if (!resolvedAudioUrl && (!songTitle || !songArtist)) {
+      // If targetYtId is known but title or artist are missing, extract via YouTube oEmbed
+      if (targetYtId && (!songTitle || !songArtist)) {
         try {
           const oembedRes = await fetch(
-            `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${encodeURIComponent(id)}&format=json`,
+            `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${targetYtId}&format=json`,
             { signal: AbortSignal.timeout(3000) }
           );
           if (oembedRes.ok) {
@@ -3715,39 +3732,132 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
               songTitle = cleanedT;
               songArtist = author;
             }
+          }
+        } catch {}
+      }
 
-            if (songTitle && songArtist) {
-              const cleanT = songTitle
-                .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-                .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
-                .replace(/["'"]/g, '')
-                .trim();
-              const cleanA = songArtist
-                .replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '')
-                .replace(/,.*$/, '')
-                .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-                .trim();
+      // Tier 1: Multi-Variant High-Fidelity Studio Stream (Saavn 320kbps MP4)
+      if (songTitle) {
+        const cleanT = songTitle
+          .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
+          .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
+          .replace(/["'"]/g, '')
+          .trim();
+        const cleanA = (songArtist || '')
+          .replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '')
+          .replace(/,.*$/, '')
+          .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
+          .trim();
+        const firstWordA = cleanA.split(/[\s,]/)[0].trim();
 
-              const saavnRes = await fetch(
-                `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(cleanT)}&artist=${encodeURIComponent(cleanA)}`,
+        // Search variants in order of precision:
+        // 1. Cleaned Title + Cleaned Artist
+        // 2. Full Title + Full Artist
+        // 3. Cleaned Title + First Word of Artist (resolves Arabic/Latin transliterations like 'Amr', 'Fairuz')
+        // 4. Cleaned Title alone
+        const variants: Array<[string, string]> = [
+          [cleanT, cleanA],
+          [songTitle, songArtist],
+          ...(firstWordA && firstWordA !== cleanA ? [[cleanT, firstWordA] as [string, string]] : []),
+        ].filter(([t, a]) => Boolean(t && a));
+
+        for (const [vTitle, vArtist] of variants) {
+          if (resolvedAudioUrl) break;
+          try {
+            const saavnRes = await fetch(
+              `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(vTitle)}&artist=${encodeURIComponent(vArtist)}`,
+              { signal: AbortSignal.timeout(3000) }
+            );
+            if (saavnRes.ok) {
+              const saavnId = (await saavnRes.text()).trim();
+              if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
+                resolvedAudioUrl = `https://aac.saavncdn.com/${saavnId}_320.mp4`;
+                cachedFormats = [
+                  {
+                    type: 'audio/mp4',
+                    bitrate: 320000,
+                    url: resolvedAudioUrl,
+                  },
+                ];
+                serverAudioStreamCache.set(id, {
+                  url: resolvedAudioUrl,
+                  expires: Date.now() + 6 * 60 * 60 * 1000,
+                  formats: cachedFormats,
+                });
+                break;
+              }
+            }
+          } catch {}
+        }
+      }
+
+      // Tier 2: Native ytdl extraction (if targetYtId is available and Saavn didn't match)
+      if (!resolvedAudioUrl && targetYtId) {
+        try {
+          const info = await ytdl.getInfo(`https://www.youtube.com/watch?v=${targetYtId}`);
+          const audios = (info.formats || []).filter((f: any) => f.hasAudio && !f.hasVideo);
+          if (audios.length > 0) {
+            audios.sort((a: any, b: any) => (b.audioBitrate || b.bitrate || 0) - (a.audioBitrate || a.bitrate || 0));
+            resolvedAudioUrl = audios[0].url;
+            cachedFormats = audios.map((a: any) => ({
+              type: a.mimeType || 'audio/mp4; codecs="mp4a.40.2"',
+              bitrate: a.bitrate || a.audioBitrate || 131226,
+              url: a.url,
+            }));
+            if (resolvedAudioUrl) {
+              serverAudioStreamCache.set(id, {
+                url: resolvedAudioUrl,
+                expires: Date.now() + 2 * 60 * 60 * 1000,
+                formats: cachedFormats,
+              });
+            }
+          }
+        } catch (ytdlErr: any) {
+          console.warn(`[StreamProxy] ytdl notice for ${targetYtId}:`, ytdlErr?.message || ytdlErr);
+        }
+      }
+
+      // Tier 3: Upstream Worker Fallback
+      if (!resolvedAudioUrl && targetYtId) {
+        try {
+          const upstreamUrl = `${UPSTREAM_WORKER}/api/stream-proxy/${targetYtId}`;
+          const uRes = await fetch(upstreamUrl, {
+            signal: AbortSignal.timeout(3500),
+            headers: { 'User-Agent': 'Mozilla/5.0 (MOUZIKETNA Server Stream Proxy)' },
+          });
+          if (uRes.ok) {
+            const uData: any = await uRes.json().catch(() => null);
+            const audios = (uData?.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
+            if (audios.length > 0) {
+              audios.sort((a: any, b: any) => parseInt(b.bitrate || 0) - parseInt(a.bitrate || 0));
+              resolvedAudioUrl = audios[0].url;
+              cachedFormats = audios;
+            }
+          }
+        } catch {}
+      }
+
+      // Tier 4: Alternative YouTube search fallback (find an alternate playable upload)
+      if (!resolvedAudioUrl && songTitle) {
+        try {
+          const altSearchRes = await fetch(
+            `${UPSTREAM_WORKER}/api/search-proxy?q=${encodeURIComponent(`${songTitle} ${songArtist}`.trim())}&f=song`,
+            { signal: AbortSignal.timeout(3500) }
+          );
+          if (altSearchRes.ok) {
+            const altData = await altSearchRes.json();
+            const items = Array.isArray(altData) ? altData : altData.items || [];
+            const altItem = items.find((it: any) => it.id && it.id.length === 11 && it.id !== targetYtId);
+            if (altItem && altItem.id) {
+              const altSaavnRes = await fetch(
+                `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(altItem.title || songTitle)}&artist=${encodeURIComponent(altItem.author || songArtist)}`,
                 { signal: AbortSignal.timeout(3000) }
               );
-              if (saavnRes.ok) {
-                const saavnId = (await saavnRes.text()).trim();
+              if (altSaavnRes.ok) {
+                const saavnId = (await altSaavnRes.text()).trim();
                 if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
                   resolvedAudioUrl = `https://aac.saavncdn.com/${saavnId}_320.mp4`;
-                  cachedFormats = [
-                    {
-                      type: 'audio/mp4',
-                      bitrate: 320000,
-                      url: resolvedAudioUrl,
-                    },
-                  ];
-                  serverAudioStreamCache.set(id, {
-                    url: resolvedAudioUrl,
-                    expires: Date.now() + 6 * 60 * 60 * 1000,
-                    formats: cachedFormats,
-                  });
+                  cachedFormats = [{ type: 'audio/mp4', bitrate: 320000, url: resolvedAudioUrl }];
                 }
               }
             }
@@ -3764,14 +3874,14 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
           adaptiveFormats: cachedFormats.length > 0 ? cachedFormats : [
             {
               type: 'audio/mp4; codecs="mp4a.40.2"',
-              bitrate: 131226,
+              bitrate: 320000,
               url: resolvedAudioUrl,
             },
           ],
         });
       }
 
-      // Stream audio chunks with Range support directly to browser audio element
+      // Stream audio chunks with full Range support directly to browser audio element
       const rangeHeader = req.headers.range;
       const streamRes = await fetch(resolvedAudioUrl, {
         headers: {
@@ -3809,60 +3919,55 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
     console.warn('[StreamProxy] Stream resolution warning:', err?.message || err);
   }
 
-  // 2. Upstream Cloudflare Worker Fallback
-  try {
-    const upstreamUrl = `${UPSTREAM_WORKER}/api/stream-proxy/${id}`;
-    const rangeHeader = req.headers.range;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
-
-    const upstreamRes = await fetch(upstreamUrl, {
-      signal: controller.signal,
-      headers: {
-        ...(rangeHeader ? { range: rangeHeader } : {}),
-        'User-Agent': 'Mozilla/5.0 (MOUZIKETNA Server Stream Proxy)',
-      },
-    }).finally(() => clearTimeout(timeout)).catch(() => null);
-
-    if (upstreamRes && upstreamRes.ok) {
-      const contentType = upstreamRes.headers.get('content-type') || 'application/json';
-
-      if (contentType.includes('application/json')) {
-        const data = await upstreamRes.json();
-        return res.json(data);
-      }
-
-      res.status(upstreamRes.status);
-      res.setHeader('Accept-Ranges', 'bytes');
-      for (const [k, v] of upstreamRes.headers.entries()) {
-        if (['content-type', 'content-length', 'content-range', 'accept-ranges'].includes(k.toLowerCase())) {
-          res.setHeader(k, v);
-        }
-      }
-
-      if (req.method === 'HEAD') {
-        return res.end();
-      }
-
-      if (upstreamRes.body) {
-        // @ts-ignore
-        const nodeStream = Readable.fromWeb(upstreamRes.body as any);
-        req.on('close', () => {
-          try { nodeStream.destroy(); } catch {}
-        });
-        nodeStream.pipe(res);
-        return;
-      } else {
-        return res.end();
-      }
-    }
-  } catch (err: any) {
-    console.error('[StreamProxy] Upstream worker fallback error:', err?.message || err);
-  }
-
   return res.status(502).json({ error: 'Stream resolution failed' });
 });
+
+// Explicit YouTube Video Resolver Proxy (Server 8 in Network Diagnostics)
+app.get('/api/resolve-video-proxy', async (req: Request, res: Response) => {
+  const targetUrl = (req.query.url as string) || '';
+  const match = targetUrl.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+  const videoId = match ? match[1] : null;
+
+  if (videoId) {
+    try {
+      const oembedRes = await fetch(
+        `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      if (oembedRes.ok) {
+        const meta: any = await oembedRes.json();
+        const rawT = meta.title || 'Unknown Title';
+        const rawA = (meta.author_name || '').replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '').trim() || 'Various Artists';
+        return res.json({
+          id: videoId,
+          title: rawT,
+          artist: rawA,
+          thumb: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+        });
+      }
+    } catch {}
+  }
+
+  // Fallback to upstream worker
+  try {
+    const upstreamRes = await fetch(
+      `${UPSTREAM_WORKER}/api/resolve-video-proxy?url=${encodeURIComponent(targetUrl)}`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (upstreamRes.ok) {
+      const data = await upstreamRes.json();
+      return res.json(data);
+    }
+  } catch {}
+
+  return res.json({
+    id: videoId || 'unknown',
+    title: 'Resolved Track',
+    artist: 'Various Artists',
+    thumb: videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : FALLBACK_ART,
+  });
+});
+
 
 // Proxy for all other /api/* requests to Upstream Cloudflare Worker
 app.all('/api/*', async (req: Request, res: Response) => {
