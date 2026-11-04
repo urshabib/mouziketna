@@ -13,6 +13,7 @@ import {
   prefetchTrackStream,
   resolveMirrorStreams,
   resolveWorkerStream,
+  resolveSaavnStream,
   canonicalThumbUrl,
   fetchArtworkBlob,
   FALLBACK_ART,
@@ -1092,8 +1093,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         console.warn('Ignoring MEDIA_ERR_ABORTED on audio element');
         return;
       }
+      if (isLoadingTrackRef.current) return;
       const active = activeTrackRef.current;
-      if (active && audio && !audio.ended && audio.currentTime > 0) {
+      if (active && audio && !audio.ended && audio.currentTime > 3) {
         const resumePos = audio.currentTime;
         console.warn('Audio stream drop detected, automatically reconnecting from:', resumePos);
         if (playTrackRef.current) {
@@ -2978,11 +2980,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Fast-path stream resolution (returns in ~250ms with 2.5s cap without blocking on dead mirrors)
     try {
-      const workerUrl = await Promise.race([
-        resolveWorkerStream(resolvedTrack.id, resolvedTrack.title, cleanedArtist),
-        new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+      const [workerUrl, saavnUrl] = await Promise.all([
+        Promise.race([
+          resolveWorkerStream(resolvedTrack.id, resolvedTrack.title, cleanedArtist),
+          new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+        ]).catch(() => null),
+        Promise.race([
+          resolveSaavnStream(resolvedTrack.title, cleanedArtist, quality).catch(() => null),
+          new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+        ]).catch(() => null),
       ]);
-      if (workerUrl) candidates.push(workerUrl);
+      if (workerUrl && !candidates.includes(workerUrl)) candidates.push(workerUrl);
+      if (saavnUrl && !candidates.includes(saavnUrl)) candidates.push(saavnUrl);
     } catch {}
 
     if (!candidates.includes(serverProxyUrl)) {
@@ -3789,12 +3798,21 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (!cached) {
         try {
-          const directUrl = await Promise.race([
-            resolveWorkerStream(targetId, track.title, track.artist),
-            new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+          const [directUrl, saavnUrl] = await Promise.all([
+            Promise.race([
+              resolveWorkerStream(targetId, track.title, track.artist),
+              new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+            ]).catch(() => null),
+            Promise.race([
+              resolveSaavnStream(track.title, cleanedArtist, quality).catch(() => null),
+              new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+            ]).catch(() => null),
           ]);
           if (directUrl && !candidates.includes(directUrl)) {
             candidates.push(directUrl);
+          }
+          if (saavnUrl && !candidates.includes(saavnUrl)) {
+            candidates.push(saavnUrl);
           }
         } catch {}
       }

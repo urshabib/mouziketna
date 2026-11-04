@@ -26,11 +26,6 @@ const streamUrlCache = new Map<string, { url: string; expires: number }>();
 export function getCachedStreamUrl(trackId: string): string | null {
   const cached = streamUrlCache.get(trackId);
   if (cached && cached.expires > Date.now()) {
-    // Purge any legacy Saavn audio URLs that caused mismatched song playback
-    if (cached.url.includes('saavncdn.com')) {
-      streamUrlCache.delete(trackId);
-      return null;
-    }
     return cached.url;
   }
   if (cached) streamUrlCache.delete(trackId);
@@ -189,7 +184,7 @@ export function canonicalThumbUrl(id: string): string {
   if (!id || id.length !== 11) {
     return FALLBACK_ART;
   }
-  return `https://wsrv.nl/?url=https://i.ytimg.com/vi/${id}/maxresdefault.jpg&default=https://i.ytimg.com/vi/${id}/hqdefault.jpg&w=800&h=800&fit=cover&q=90&output=webp`;
+  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 }
 
 export function corsSafeThumbUrl(url: string | null): string | null {
@@ -364,54 +359,10 @@ export async function resolveSaavnStream(
   rawTitle: string | null = null,
   rawArtist: string | null = null
 ): Promise<string> {
-  const attempts: [string, string][] = [];
-  const seen = new Set<string>();
-  const add = (t: string, a: string) => {
-    t = (t || '').trim();
-    a = (a || '').trim();
-    if (!t || !a) return;
-    const key = `${t.toLowerCase()}|${a.toLowerCase()}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    attempts.push([t, a]);
-  };
-
   const cleanT = cleanTitleForLyrics(title) || title;
   const cleanA = cleanArtistName(artist);
-  add(cleanT, cleanA);
-
-  if (rawTitle) {
-    const derivedArtist = deriveArtistForLyrics(rawTitle, rawArtist ?? artist);
-    const cleanRaw = cleanTitleForLyrics(rawTitle);
-    if (cleanRaw) add(cleanRaw, cleanA);
-    if (derivedArtist) {
-      add(cleanT, derivedArtist);
-      if (cleanRaw) add(cleanRaw, derivedArtist);
-    }
-
-    // Split on dash if formatted as "Artist - Title" or "Title - Artist"
-    if (/\s+[-–—]\s+/.test(rawTitle)) {
-      const parts = rawTitle.split(/\s+[-–—]\s+/).map((p) => p.trim());
-      if (parts.length >= 2) {
-        const left = cleanTitleForLyrics(parts[0]) || parts[0];
-        const right = cleanTitleForLyrics(parts.slice(1).join(' - ')) || parts.slice(1).join(' - ');
-        add(right, cleanArtistName(parts[0]));
-        add(left, cleanArtistName(parts.slice(1).join(' - ')));
-        add(right, cleanA);
-        add(left, cleanA);
-      }
-    }
-  }
-
-  // Primary artist alone (strip featured artists)
-  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
-  if (firstArtist && firstArtist !== cleanA) {
-    add(cleanT, firstArtist);
-  }
-
-  // Raw title fallback if clean stripped too much
-  if (rawTitle && rawTitle !== cleanT) {
-    add(rawTitle.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim(), cleanA);
+  if (!cleanT || !cleanA) {
+    throw new Error('Title and artist required for Saavn stream resolution');
   }
 
   const looksLikeSaavnId = (txt: string) =>
@@ -421,26 +372,42 @@ export async function resolveSaavnStream(
     !/\s/.test(txt) &&
     !/error|not[\s_-]?found|missing|parameter|invalid|no\s*results?/i.test(txt);
 
-  // Parallel probe across all candidate title/artist cleanings
-  const candidateList = attempts.slice(0, 8);
-  const probePromises = candidateList.map(async ([t, a]) => {
-    const res = await fetchWithTimeout(
-      `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
-      7500
-    );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const txt = (await res.text()).trim();
-    if (looksLikeSaavnId(txt)) {
-      return `https://aac.saavncdn.com/${txt}_${quality}.mp4`;
-    }
-    throw new Error('saavn miss: ' + txt.slice(0, 80));
-  });
+  const querySaavn = async (t: string, a: string): Promise<string | null> => {
+    try {
+      const res = await fetchWithTimeout(
+        `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
+        5500
+      );
+      if (!res.ok) return null;
+      const txt = (await res.text()).trim();
+      if (looksLikeSaavnId(txt)) {
+        return `https://aac.saavncdn.com/${txt}_${quality}.mp4`;
+      }
+    } catch {}
+    return null;
+  };
 
-  try {
-    return await Promise.any(probePromises);
-  } catch {
-    throw new Error('No match found on primary Saavn resolver');
+  // Priority 1: Exact cleaned title & artist
+  const exactMatch = await querySaavn(cleanT, cleanA);
+  if (exactMatch) return exactMatch;
+
+  // Priority 2: Primary artist alone (strip ", other artist" or "feat...")
+  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
+  if (firstArtist && firstArtist !== cleanA) {
+    const singleArtistMatch = await querySaavn(cleanT, firstArtist);
+    if (singleArtistMatch) return singleArtistMatch;
   }
+
+  // Priority 3: Cleaned raw title if provided
+  if (rawTitle && rawTitle !== cleanT) {
+    const strippedRaw = rawTitle.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim();
+    if (strippedRaw && strippedRaw !== cleanT) {
+      const rawMatch = await querySaavn(strippedRaw, firstArtist || cleanA);
+      if (rawMatch) return rawMatch;
+    }
+  }
+
+  throw new Error('No match found on Saavn resolver');
 }
 
 export async function resolveWorkerStream(id: string, title?: string, artist?: string): Promise<string | null> {
@@ -471,7 +438,13 @@ export async function resolveWorkerStream(id: string, title?: string, artist?: s
       const audio = (j?.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
       if (audio.length) {
         audio.sort((a: any, b: any) => parseInt(b.bitrate || 0) - parseInt(a.bitrate || 0));
-        return audio[0].url;
+        const streamUrl = audio[0].url;
+        // Direct googlevideo URLs are IP-bound to the resolving server and fail in client browsers after ~2s.
+        // Return null so the range-supported server stream-proxy or Saavn CDN is used.
+        if (streamUrl && streamUrl.includes('googlevideo.com')) {
+          return null;
+        }
+        return streamUrl;
       }
     }
   } catch {}
