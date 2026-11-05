@@ -3670,8 +3670,7 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
       let songArtist = (req.query.artist as string) || '';
       let targetYtId = /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : null;
 
-      // If id is not an 11-char YouTube ID (e.g. Spotify 'sp_...' or import ID):
-      if (!targetYtId) {
+        // If title and artist are not supplied, attempt Spotify oembed resolution for sp_ tracks
         if (!songTitle && id.startsWith('sp_')) {
           const spId = id.replace(/^sp_/, '').split('_')[0];
           try {
@@ -3685,24 +3684,6 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
             }
           } catch {}
         }
-
-        // Search YouTube via search-proxy to map this track to a real 11-char YouTube video ID
-        if (songTitle) {
-          try {
-            const sRes = await fetch(
-              `${UPSTREAM_WORKER}/api/search-proxy?q=${encodeURIComponent(`${songTitle} ${songArtist}`.trim())}&f=song`,
-              { signal: AbortSignal.timeout(3500) }
-            );
-            if (sRes.ok) {
-              const sData = await sRes.json();
-              const items = Array.isArray(sData) ? sData : sData.items || [];
-              if (items.length > 0 && items[0].id && items[0].id.length === 11) {
-                targetYtId = items[0].id;
-              }
-            }
-          } catch {}
-        }
-      }
 
       // If targetYtId is known but title or artist are missing, extract via YouTube oEmbed
       if (targetYtId && (!songTitle || !songArtist)) {
@@ -3761,34 +3742,58 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
           ...(firstWordA && firstWordA !== cleanA ? [[cleanT, firstWordA] as [string, string]] : []),
         ].filter(([t, a]) => Boolean(t && a));
 
-        for (const [vTitle, vArtist] of variants) {
-          if (resolvedAudioUrl) break;
-          try {
-            const saavnRes = await fetch(
-              `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(vTitle)}&artist=${encodeURIComponent(vArtist)}`,
-              { signal: AbortSignal.timeout(3000) }
-            );
-            if (saavnRes.ok) {
-              const saavnId = (await saavnRes.text()).trim();
-              if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
-                resolvedAudioUrl = `https://aac.saavncdn.com/${saavnId}_320.mp4`;
-                cachedFormats = [
-                  {
-                    type: 'audio/mp4',
-                    bitrate: 320000,
-                    url: resolvedAudioUrl,
-                  },
-                ];
-                serverAudioStreamCache.set(id, {
-                  url: resolvedAudioUrl,
-                  expires: Date.now() + 6 * 60 * 60 * 1000,
-                  formats: cachedFormats,
-                });
-                break;
-              }
+        const saavnVariantPromises = variants.map(async ([vTitle, vArtist]) => {
+          const saavnRes = await fetch(
+            `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(vTitle)}&artist=${encodeURIComponent(vArtist)}`,
+            { signal: AbortSignal.timeout(3500) }
+          );
+          if (!saavnRes.ok) throw new Error(`HTTP ${saavnRes.status}`);
+          const saavnId = (await saavnRes.text()).trim();
+          if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
+            const url = `https://aac.saavncdn.com/${saavnId}_320.mp4`;
+            return {
+              url,
+              formats: [
+                {
+                  type: 'audio/mp4',
+                  bitrate: 320000,
+                  url,
+                },
+              ],
+            };
+          }
+          throw new Error('miss');
+        });
+
+        try {
+          const matched = await Promise.any(saavnVariantPromises);
+          if (matched && matched.url) {
+            resolvedAudioUrl = matched.url;
+            cachedFormats = matched.formats;
+            serverAudioStreamCache.set(id, {
+              url: resolvedAudioUrl,
+              expires: Date.now() + 6 * 60 * 60 * 1000,
+              formats: cachedFormats,
+            });
+          }
+        } catch {}
+      }
+
+      // Map to YouTube video ID if needed for Tier 2 ytdl / upstream fallback
+      if (!resolvedAudioUrl && !targetYtId && songTitle) {
+        try {
+          const sRes = await fetch(
+            `${UPSTREAM_WORKER}/api/search-proxy?q=${encodeURIComponent(`${songTitle} ${songArtist}`.trim())}&f=song`,
+            { signal: AbortSignal.timeout(3000) }
+          );
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            const items = Array.isArray(sData) ? sData : sData.items || [];
+            if (items.length > 0 && items[0].id && items[0].id.length === 11) {
+              targetYtId = items[0].id;
             }
-          } catch {}
-        }
+          }
+        } catch {}
       }
 
       // Tier 2: Native ytdl extraction (if targetYtId is available and Saavn didn't match)
@@ -3832,6 +3837,47 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
               audios.sort((a: any, b: any) => parseInt(b.bitrate || 0) - parseInt(a.bitrate || 0));
               resolvedAudioUrl = audios[0].url;
               cachedFormats = audios;
+            }
+          }
+        } catch {}
+      }
+
+      // Tier 3.5: High-Reliability Mirror Fallback (Invidious / Omada)
+      if (!resolvedAudioUrl && targetYtId) {
+        try {
+          const mirrorRes = await fetch(`https://yt.omada.cafe/api/v1/videos/${targetYtId}`, {
+            signal: AbortSignal.timeout(3500),
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+          });
+          if (mirrorRes.ok) {
+            const mData: any = await mirrorRes.json().catch(() => null);
+            const audios = (mData?.adaptiveFormats || []).filter((f: any) => f.type && f.type.startsWith('audio'));
+            if (audios.length > 0) {
+              audios.sort((a: any, b: any) => parseInt(b.bitrate || 0) - parseInt(a.bitrate || 0));
+              const mUrl = audios[0].url;
+              let streamUrl = mUrl;
+              try {
+                const mirrorUrl = new URL('https://yt.omada.cafe');
+                if (streamUrl.startsWith('/')) {
+                  streamUrl = mirrorUrl.origin + streamUrl;
+                } else {
+                  const parsed = new URL(streamUrl);
+                  if (parsed.hostname.includes('googlevideo.com')) {
+                    streamUrl = mirrorUrl.origin + parsed.pathname + parsed.search;
+                  }
+                }
+              } catch {}
+              resolvedAudioUrl = streamUrl;
+              cachedFormats = audios.map((a: any) => ({
+                type: a.type || 'audio/mp4',
+                bitrate: parseInt(a.bitrate || 0) || 128000,
+                url: resolvedAudioUrl,
+              }));
+              serverAudioStreamCache.set(id, {
+                url: resolvedAudioUrl,
+                expires: Date.now() + 2 * 60 * 60 * 1000,
+                formats: cachedFormats,
+              });
             }
           }
         } catch {}
@@ -3889,6 +3935,10 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         },
       });
+
+      if (streamRes.status >= 400) {
+        serverAudioStreamCache.delete(id);
+      }
 
       res.status(streamRes.status);
       res.setHeader('Accept-Ranges', 'bytes');
@@ -4004,22 +4054,40 @@ app.all('/api/*', async (req: Request, res: Response) => {
 
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        host: HOST,
-        port: PORT,
-      },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: {
+          middlewareMode: true,
+          host: HOST,
+          port: PORT,
+        },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+      console.log('⚡ Vite dev server middleware active');
+    } catch (viteErr) {
+      console.warn('Vite dev middleware initialization notice:', viteErr);
+    }
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req: Request, res: Response) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
-    });
+    const publicPath = path.resolve(__dirname, 'public');
+
+    if (fs.existsSync(distPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (_req: Request, res: Response) => {
+        res.sendFile(path.resolve(distPath, 'index.html'));
+      });
+    } else if (fs.existsSync(publicPath)) {
+      app.use(express.static(publicPath));
+      app.get('*', (_req: Request, res: Response) => {
+        res.sendFile(path.resolve(publicPath, 'index.html'));
+      });
+    } else {
+      app.get('*', (_req: Request, res: Response) => {
+        res.send('MOUZIKETNA Server Running');
+      });
+    }
   }
 
   server.listen(PORT, HOST, () => {

@@ -12,9 +12,9 @@ export const NEW_HUB_BACKEND =
     : 'https://new-music-space-api.urshabib.workers.dev';
 
 export const STREAM_MIRRORS = [
+  'https://yt.omada.cafe/api/v1/videos/',
   'https://invidious.schenkel.eti.br/api/v1/videos/',
-  'https://yt.drgnz.club/api/v1/videos/',
-  'https://invidious.projectsegfau.lt/api/v1/videos/',
+  'https://invidious.tiekoetter.com/api/v1/videos/',
 ];
 
 export const FALLBACK_ART = 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=300';
@@ -359,9 +359,64 @@ export async function resolveSaavnStream(
   rawTitle: string | null = null,
   rawArtist: string | null = null
 ): Promise<string> {
+  const attempts: [string, string][] = [];
+  const seen = new Set<string>();
+  const add = (t: string, a: string) => {
+    t = (t || '').trim();
+    a = (a || '').trim();
+    if (!t || !a) return;
+    const key = `${t.toLowerCase()}|${a.toLowerCase()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    attempts.push([t, a]);
+  };
+
   const cleanT = cleanTitleForLyrics(title) || title;
   const cleanA = cleanArtistName(artist);
-  if (!cleanT || !cleanA) {
+  add(cleanT, cleanA);
+
+  // Dash-split check on title or rawTitle (e.g. "Artist - Title" or "Title - Artist")
+  const textWithDash = [rawTitle, title].find((s) => s && /\s+[-–—]\s+/.test(s));
+  if (textWithDash) {
+    const parts = textWithDash.split(/\s+[-–—]\s+/).map((p) => p.trim());
+    if (parts.length >= 2) {
+      const left = cleanTitleForLyrics(parts[0]) || parts[0];
+      const right = cleanTitleForLyrics(parts.slice(1).join(' - ')) || parts.slice(1).join(' - ');
+      add(right, cleanArtistName(parts[0]));
+      add(left, cleanArtistName(parts.slice(1).join(' - ')));
+      add(right, cleanA);
+      add(left, cleanA);
+    }
+  }
+
+  // Primary artist alone (strip featured artists, commas, &)
+  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
+  if (firstArtist && firstArtist !== cleanA) {
+    add(cleanT, firstArtist);
+  }
+
+  // First word / token of artist alone (resolves Arabic/Latin transliterations like Amr Diab -> Amr, Fairouz -> Fairuz)
+  const firstWord = firstArtist.split(/[\s,]/)[0].trim();
+  if (firstWord && firstWord !== firstArtist && firstWord.length >= 3) {
+    add(cleanT, firstWord);
+  }
+
+  // Raw title variations if provided
+  if (rawTitle) {
+    const derivedArtist = deriveArtistForLyrics(rawTitle, rawArtist ?? artist);
+    const cleanRaw = cleanTitleForLyrics(rawTitle);
+    if (cleanRaw) add(cleanRaw, cleanA);
+    if (derivedArtist) {
+      add(cleanT, derivedArtist);
+      if (cleanRaw) add(cleanRaw, derivedArtist);
+    }
+    const strippedRaw = rawTitle.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim();
+    if (strippedRaw && strippedRaw !== cleanT) {
+      add(strippedRaw, firstArtist || cleanA);
+    }
+  }
+
+  if (attempts.length === 0) {
     throw new Error('Title and artist required for Saavn stream resolution');
   }
 
@@ -372,49 +427,26 @@ export async function resolveSaavnStream(
     !/\s/.test(txt) &&
     !/error|not[\s_-]?found|missing|parameter|invalid|no\s*results?/i.test(txt);
 
-  const querySaavn = async (t: string, a: string): Promise<string | null> => {
-    try {
-      const res = await fetchWithTimeout(
-        `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
-        5500
-      );
-      if (!res.ok) return null;
-      const txt = (await res.text()).trim();
-      if (looksLikeSaavnId(txt)) {
-        return `https://aac.saavncdn.com/${txt}_${quality}.mp4`;
-      }
-    } catch {}
-    return null;
-  };
-
-  // Priority 1: Exact cleaned title & artist
-  const exactMatch = await querySaavn(cleanT, cleanA);
-  if (exactMatch) return exactMatch;
-
-  // Priority 2: Primary artist alone (strip ", other artist" or "feat...")
-  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
-  if (firstArtist && firstArtist !== cleanA) {
-    const singleArtistMatch = await querySaavn(cleanT, firstArtist);
-    if (singleArtistMatch) return singleArtistMatch;
-  }
-
-  // Priority 3: First word / token of artist alone (resolves transliterations like Amr Diab -> Amr, Fairouz -> Fairuz)
-  const firstWord = firstArtist.split(/[\s,]/)[0].trim();
-  if (firstWord && firstWord !== firstArtist && firstWord.length >= 3) {
-    const wordMatch = await querySaavn(cleanT, firstWord);
-    if (wordMatch) return wordMatch;
-  }
-
-  // Priority 4: Cleaned raw title if provided
-  if (rawTitle && rawTitle !== cleanT) {
-    const strippedRaw = rawTitle.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim();
-    if (strippedRaw && strippedRaw !== cleanT) {
-      const rawMatch = await querySaavn(strippedRaw, firstArtist || cleanA);
-      if (rawMatch) return rawMatch;
+  // Parallel probe across top candidate combinations for lightning-fast matching (~200-400ms)
+  const candidateList = attempts.slice(0, 8);
+  const probePromises = candidateList.map(async ([t, a]) => {
+    const res = await fetchWithTimeout(
+      `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
+      5000
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const txt = (await res.text()).trim();
+    if (looksLikeSaavnId(txt)) {
+      return `https://aac.saavncdn.com/${txt}_${quality}.mp4`;
     }
-  }
+    throw new Error(`saavn miss: ${txt.slice(0, 50)}`);
+  });
 
-  throw new Error('No match found on Saavn resolver');
+  try {
+    return await Promise.any(probePromises);
+  } catch {
+    throw new Error('No match found on Saavn resolver');
+  }
 }
 
 export async function resolveWorkerStream(id: string, title?: string, artist?: string): Promise<string | null> {
@@ -536,20 +568,76 @@ export function probeStreamPlayable(url: string, timeoutMs = 3500): Promise<stri
   });
 }
 
+// Similarity check to ensure search-healed songs and alternative tracks preserve original metadata
+export function isMeaningfulMatch(
+  origTitle?: string | null,
+  origArtist?: string | null,
+  candTitle?: string | null,
+  candArtist?: string | null
+): boolean {
+  if (!origTitle || origTitle === 'Loading...' || !candTitle) return true;
+  const clean = (s: string) =>
+    (s || '')
+      .toLowerCase()
+      .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, ' ')
+      .replace(/\b(official|music|video|audio|remaster(?:ed)?|lyrics?|feat\.?|ft\.?|featuring)\b/gi, ' ')
+      .replace(/[^a-z0-9\s]/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const oT = clean(origTitle);
+  const cT = clean(candTitle);
+  if (!oT || !cT) return true;
+  if (oT.includes(cT) || cT.includes(oT)) return true;
+
+  const oTokens = oT.split(' ').filter((w) => w.length > 2);
+  const cTokens = cT.split(' ').filter((w) => w.length > 2);
+  if (oTokens.length === 0 || cTokens.length === 0) return true;
+
+  const common = oTokens.filter((t) => cTokens.includes(t));
+  if (common.length / oTokens.length >= 0.4) return true;
+
+  const oA = clean(origArtist || '');
+  const cA = clean(candArtist || '');
+  if (oA && cA && (oA.includes(cA) || cA.includes(oA)) && common.length >= 1) {
+    return true;
+  }
+  return false;
+}
+
 // Prefetches next track stream and caches in memory
-export async function prefetchTrackStream(track: Track, _quality = '320'): Promise<string | null> {
+export async function prefetchTrackStream(track: Track, quality = '320'): Promise<string | null> {
   if (!track || !track.id) return null;
   const cached = getCachedStreamUrl(track.id);
   if (cached) return cached;
 
+  // 1. Try pristine Saavn resolution first
   try {
-    const workerUrl = await resolveWorkerStream(track.id);
+    const cleanedArtist = cleanArtistName(track.artist);
+    const cleanT = cleanTitleForLyrics(track.title) || track.title;
+    const saavnUrl = await resolveSaavnStream(
+      cleanT,
+      cleanedArtist,
+      quality,
+      track.title,
+      track.artist
+    );
+    if (saavnUrl) {
+      cacheStreamUrl(track.id, saavnUrl);
+      return saavnUrl;
+    }
+  } catch {}
+
+  // 2. Try Worker / Backend proxy
+  try {
+    const workerUrl = await resolveWorkerStream(track.id, track.title, track.artist);
     if (workerUrl) {
       cacheStreamUrl(track.id, workerUrl);
       return workerUrl;
     }
   } catch {}
 
+  // 3. Try Invidious Mirrors
   try {
     const mirrors = await resolveMirrorStreams(track.id);
     if (mirrors.length > 0) {

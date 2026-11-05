@@ -23,6 +23,7 @@ import {
   getRelatedTracks,
   getTasteProfileRecommendations,
   verifySocialFollow,
+  isMeaningfulMatch,
 } from '../services/api';
 import {
   cacheProfileLocally,
@@ -2301,22 +2302,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } catch {}
       }
 
-      // 2. If online track: resolve and cache stream URL into preloadedNextRef
+      // 2. If online track: resolve and cache validated stream URL into preloadedNextRef
       const level = userProfile.dataSaverLevel || 'off';
       const q = level === 'ultra' ? '48' : level === 'saver' ? '96' : '320';
 
       let streamUrl = getCachedStreamUrl(nextTrack.id);
       if (!streamUrl) {
-        streamUrl = await resolveWorkerStream(nextTrack.id, nextTrack.title, nextTrack.artist).catch(() => null);
-        if (!streamUrl) {
-          const params = new URLSearchParams({
-            deviceId: sessionManager.getDeviceId(),
-            ...(sessionManager.getUsername() ? { username: sessionManager.getUsername() } : {}),
-            ...(nextTrack.title ? { title: nextTrack.title } : {}),
-            ...(nextTrack.artist ? { artist: nextTrack.artist } : {}),
-          }).toString();
-          streamUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${nextTrack.id}?${params}`;
-        }
+        streamUrl = await prefetchTrackStream(nextTrack, q);
       }
 
       if (streamUrl) {
@@ -2332,12 +2324,43 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const logPlaybackDiagnostic = (event: string, details?: Record<string, any>) => {
+    if (
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname.includes('run.app'))
+    ) {
+      console.log(`[PlaybackDiag] ${event}`, details || {});
+    }
+  };
+
   const tryPlayCandidates = async (candidates: string[], token: number, targetTrackId: string, idx = 0): Promise<boolean> => {
-    if (idx >= candidates.length) return false;
-    if (token !== playTokenRef.current) return false;
+    if (idx >= candidates.length) {
+      logPlaybackDiagnostic('All candidates exhausted without successful playback');
+      return false;
+    }
+    if (token !== playTokenRef.current) {
+      logPlaybackDiagnostic('Stale playToken encountered in tryPlayCandidates, skipping attempt');
+      return false;
+    }
     const url = candidates[idx];
     const audio = audioRef.current;
     if (!audio) return false;
+
+    const sourceTag = url.includes('saavncdn.com')
+      ? 'Saavn Studio CDN (320kbps MP4)'
+      : url.includes('/api/stream-proxy')
+      ? 'Server Stream Proxy (HTTP Range)'
+      : url.includes('invidious') || url.includes('omada.cafe')
+      ? 'Invidious Mirror Stream'
+      : 'Direct / Cached Stream';
+
+    const tStart = Date.now();
+    logPlaybackDiagnostic(`Attempting candidate [${idx + 1}/${candidates.length}]`, {
+      type: sourceTag,
+      urlSnippet: url.slice(0, 60),
+    });
 
     return new Promise((resolve) => {
       let settled = false;
@@ -2349,18 +2372,28 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         clearTimeout(timer);
       };
 
-      const finish = async (ok: boolean) => {
+      const finish = async (ok: boolean, reason = '') => {
         if (settled) return;
         settled = true;
         cleanup();
+        const durationMs = Date.now() - tStart;
         if (token !== playTokenRef.current) {
+          logPlaybackDiagnostic('Candidate completed after playToken changed (superseded)', { durationMs, reason });
           resolve(false);
           return;
         }
         if (ok) {
+          logPlaybackDiagnostic(`Candidate [${idx + 1}] confirmed playable!`, { type: sourceTag, durationMs, reason });
           if (targetTrackId) cacheStreamUrl(targetTrackId, url);
           resolve(true);
         } else {
+          logPlaybackDiagnostic(`Candidate [${idx + 1}] failed, advancing to fallback`, {
+            type: sourceTag,
+            durationMs,
+            reason,
+            mediaErrorCode: audio.error?.code,
+            mediaErrorMessage: audio.error?.message,
+          });
           try {
             audio.pause();
             audio.removeAttribute('src');
@@ -2371,11 +2404,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
       };
 
-      const onPlaying = () => finish(true);
-      const onCanPlay = () => finish(true);
-      const onError = () => finish(false);
-      // Give candidates ample time (5.5s on cold start, 4.0s for fallbacks) to avoid false negative "sources down"
-      const timer = setTimeout(() => finish(false), idx === 0 ? 5500 : 4000);
+      const onPlaying = () => finish(true, 'playing event');
+      const onCanPlay = () => finish(true, 'canplay event');
+      const onError = () => finish(false, 'error event');
+      // Give candidate ample time (5.5s cold start, 4.0s for fallbacks) to prevent premature bailouts
+      const timer = setTimeout(() => finish(false, 'timeout'), idx === 0 ? 5500 : 4000);
 
       audio.addEventListener('playing', onPlaying, { once: true });
       audio.addEventListener('canplay', onCanPlay, { once: true });
@@ -2388,12 +2421,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         audio.load();
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-          playPromise.catch(() => {
-            // Might be autoplay policy or transient network error, wait for listeners or timer
+          playPromise.catch((err) => {
+            logPlaybackDiagnostic('audio.play() promise rejection notice', { message: err?.message });
           });
         }
-      } catch {
-        finish(false);
+      } catch (err: any) {
+        finish(false, `sync exception: ${err?.message}`);
       }
     });
   };
@@ -2959,40 +2992,56 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (queryTerm) {
           const found = await searchTracks(queryTerm, 'song');
           if (found.length > 0 && found[0].id) {
-            const oldId = resolvedTrack.id;
-            resolvedTrack.id = found[0].id;
-            if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART) resolvedTrack.thumb = found[0].thumb || safeInitialThumb;
-            if (resolvedTrack.title === 'Loading...') resolvedTrack.title = found[0].title;
-            if (found[0].duration && !resolvedTrack.duration) resolvedTrack.duration = found[0].duration;
+            const best = found.find((r) => isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, r.title, r.artist)) || found[0];
+            if (isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, best.title, best.artist)) {
+              const oldId = resolvedTrack.id;
+              resolvedTrack.id = best.id;
+              if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART) resolvedTrack.thumb = best.thumb || safeInitialThumb;
+              if (resolvedTrack.title === 'Loading...') resolvedTrack.title = best.title;
+              if (best.duration && !resolvedTrack.duration) resolvedTrack.duration = best.duration;
 
-            // Immediately persist this healed track into userProfile customPlaylists and playback queue!
-            setPlaybackQueue((q) => q.map((t) => t.id === oldId ? { ...t, id: resolvedTrack.id, thumb: resolvedTrack.thumb } : t));
-            setUserProfile((prev) => {
-              let changed = false;
-              const newPlaylists = (prev.customPlaylists || []).map((pl) => {
-                const hasTrack = pl.tracks?.some((t) => t.id === oldId);
-                if (hasTrack) {
-                  changed = true;
-                  return {
-                    ...pl,
-                    tracks: pl.tracks.map((t) => t.id === oldId ? { ...t, id: resolvedTrack.id, thumb: resolvedTrack.thumb } : t),
-                  };
-                }
-                return pl;
+              // Immediately persist this healed track into userProfile customPlaylists and playback queue!
+              setPlaybackQueue((q) => q.map((t) => t.id === oldId ? { ...t, id: resolvedTrack.id, thumb: resolvedTrack.thumb } : t));
+              setUserProfile((prev) => {
+                let changed = false;
+                const newPlaylists = (prev.customPlaylists || []).map((pl) => {
+                  const hasTrack = pl.tracks?.some((t) => t.id === oldId);
+                  if (hasTrack) {
+                    changed = true;
+                    return {
+                      ...pl,
+                      tracks: pl.tracks.map((t) => t.id === oldId ? { ...t, id: resolvedTrack.id, thumb: resolvedTrack.thumb } : t),
+                    };
+                  }
+                  return pl;
+                });
+                if (!changed) return prev;
+                const nextProf = { ...prev, customPlaylists: newPlaylists };
+                saveDeviceSettings(nextProf);
+                return nextProf;
               });
-              if (!changed) return prev;
-              const nextProf = { ...prev, customPlaylists: newPlaylists };
-              saveDeviceSettings(nextProf);
-              return nextProf;
-            });
+            }
           }
         }
       } catch {}
     }
 
+    logPlaybackDiagnostic('Starting track resolution', {
+      id: resolvedTrack.id,
+      title: resolvedTrack.title,
+      artist: cleanedArtist,
+    });
+
     const candidates: string[] = [];
 
-    // Guaranteed direct server audio stream proxy candidate
+    // 1. Cached in-memory stream if previously resolved
+    const cachedStream = getCachedStreamUrl(resolvedTrack.id);
+    if (cachedStream) {
+      candidates.push(cachedStream);
+      logPlaybackDiagnostic('Cached stream available', { urlSnippet: cachedStream.slice(0, 50) });
+    }
+
+    // Direct server audio stream proxy candidate
     const serverProxyQuery = new URLSearchParams({
       deviceId: sessionManager.getDeviceId(),
       ...(sessionManager.getUsername() ? { username: sessionManager.getUsername() } : {}),
@@ -3001,26 +3050,74 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }).toString();
     const serverProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${resolvedTrack.id}?${serverProxyQuery}`;
 
-    // Fast-path stream resolution (returns in ~250ms with 2.5s cap without blocking on dead mirrors)
+    // 2. High-speed resolution: kick off Saavn and Worker in parallel
+    const cleanT = cleanTitleForLyrics(resolvedTrack.title) || resolvedTrack.title;
+    const saavnPromise = resolveSaavnStream(
+      cleanT,
+      cleanedArtist,
+      quality,
+      resolvedTrack.title,
+      resolvedTrack.artist
+    ).catch((err) => {
+      logPlaybackDiagnostic('Primary Saavn probe miss', { error: err?.message });
+      return null;
+    });
+
+    const workerPromise = resolveWorkerStream(resolvedTrack.id, resolvedTrack.title, cleanedArtist).catch(() => null);
+
+    // Fast-path window: check if pristine Saavn or Worker resolves within 1500ms
     try {
-      const [workerUrl, saavnUrl] = await Promise.all([
+      const [fastWorker, fastSaavn] = await Promise.all([
         Promise.race([
-          resolveWorkerStream(resolvedTrack.id, resolvedTrack.title, cleanedArtist),
-          new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+          workerPromise,
+          new Promise<null>((r) => setTimeout(() => r(null), 1500)),
         ]).catch(() => null),
         Promise.race([
-          resolveSaavnStream(resolvedTrack.title, cleanedArtist, quality).catch(() => null),
-          new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+          saavnPromise,
+          new Promise<null>((r) => setTimeout(() => r(null), 1500)),
         ]).catch(() => null),
       ]);
-      // Prioritize Saavn (320kbps pristine CDN audio, <100ms startup) then Server Range Proxy then Worker
-      if (saavnUrl && !candidates.includes(saavnUrl)) candidates.push(saavnUrl);
-      if (!candidates.includes(serverProxyUrl)) candidates.push(serverProxyUrl);
-      if (workerUrl && !candidates.includes(workerUrl)) candidates.push(workerUrl);
+
+      if (fastSaavn && !candidates.includes(fastSaavn)) {
+        candidates.push(fastSaavn);
+        logPlaybackDiagnostic('Fast Saavn resolved', { urlSnippet: fastSaavn.slice(0, 50) });
+      }
+      if (fastWorker && !candidates.includes(fastWorker)) {
+        candidates.push(fastWorker);
+      }
     } catch {}
 
-    if (!candidates.includes(serverProxyUrl)) {
-      candidates.push(serverProxyUrl);
+    // 3. Fallback resolution if fast path didn't yield a stream:
+    // DO NOT discard saavnPromise! Wait for it while also probing live Invidious mirrors
+    if (candidates.length === 0) {
+      logPlaybackDiagnostic('Fast path missed, querying mirrors and awaiting Saavn...');
+      try {
+        const [remainingSaavn, mirrors] = await Promise.all([
+          Promise.race([
+            saavnPromise,
+            new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+          ]).catch(() => null),
+          resolveMirrorStreams(resolvedTrack.id).catch(() => []),
+        ]);
+
+        if (remainingSaavn && !candidates.includes(remainingSaavn)) {
+          candidates.push(remainingSaavn);
+          logPlaybackDiagnostic('Saavn resolved in fallback window', { urlSnippet: remainingSaavn.slice(0, 50) });
+        }
+        if (mirrors && mirrors.length > 0) {
+          for (const m of mirrors) {
+            if (!candidates.includes(m)) candidates.push(m);
+          }
+          logPlaybackDiagnostic('Mirror streams resolved', { count: mirrors.length });
+        }
+        if (!candidates.includes(serverProxyUrl)) {
+          candidates.push(serverProxyUrl);
+        }
+      } catch {}
+    } else {
+      if (!candidates.includes(serverProxyUrl)) {
+        candidates.push(serverProxyUrl);
+      }
     }
 
     if (token !== playTokenRef.current) {
@@ -3028,19 +3125,31 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return false;
     }
 
-    // Startup Race Condition Deferral: fallback search if no candidates were found
-    if (candidates.length === 0) {
+    // 4. Alternative track search if no direct candidates could be resolved
+    if (candidates.length === 0 || (candidates.length === 1 && candidates[0] === serverProxyUrl)) {
       try {
-        const fallbackSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
-        if (fallbackSearch.length > 0 && fallbackSearch[0].id && fallbackSearch[0].id !== resolvedTrack.id) {
-          const fbTrack = fallbackSearch[0];
-          const [altWorker, altMirrors] = await Promise.all([
-            resolveWorkerStream(fbTrack.id).catch(() => null),
-            resolveMirrorStreams(fbTrack.id).catch(() => []),
+        const fallbackSearch = await searchTracks(`${cleanT} ${cleanedArtist}`, 'song').catch(() => []);
+        const altTrack = fallbackSearch.find((t) => t.id && t.id.length === 11 && t.id !== resolvedTrack.id && isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, t.title, t.artist));
+        if (altTrack) {
+          logPlaybackDiagnostic('Found alternative track candidate', { altId: altTrack.id, altTitle: altTrack.title });
+          const [altSaavn, altMirrors] = await Promise.all([
+            resolveSaavnStream(
+              cleanTitleForLyrics(altTrack.title) || altTrack.title,
+              cleanArtistName(altTrack.artist),
+              quality,
+              altTrack.title,
+              altTrack.artist
+            ).catch(() => null),
+            resolveMirrorStreams(altTrack.id).catch(() => []),
           ]);
-          if (altWorker) candidates.push(altWorker);
-          if (altMirrors && altMirrors.length > 0) candidates.push(...altMirrors);
-          candidates.push(`${NEW_HUB_BACKEND}/api/stream-proxy/${fbTrack.id}`);
+          if (altSaavn && !candidates.includes(altSaavn)) candidates.unshift(altSaavn);
+          if (altMirrors && altMirrors.length > 0) {
+            for (const m of altMirrors) {
+              if (!candidates.includes(m)) candidates.push(m);
+            }
+          }
+          const altProxy = `${NEW_HUB_BACKEND}/api/stream-proxy/${altTrack.id}?title=${encodeURIComponent(altTrack.title)}&artist=${encodeURIComponent(altTrack.artist || '')}`;
+          if (!candidates.includes(altProxy)) candidates.push(altProxy);
         }
       } catch {}
     }
@@ -3052,24 +3161,34 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         try {
           audio.pause();
         } catch {}
+        logPlaybackDiagnostic('No stream source found for track', { trackId: resolvedTrack.id });
         showToast('Sources are resolving. Please wait a moment or tap track again.', true);
       }
       return false;
     }
 
-    // Play first working candidate
+    // 5. Play first confirmed playable candidate
     let ok = await tryPlayCandidates(candidates, token, resolvedTrack.id, 0);
 
-    // Auto-retry with alternative YouTube search result if initial cycle did not start
+    // Auto-retry with alternative search result if initial cycle did not start
     if (!ok && token === playTokenRef.current) {
+      logPlaybackDiagnostic('Initial candidate cycle failed, attempting alternative track fallback');
       try {
         const altSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
         const altTrack = altSearch.find((t) => t.id && t.id.length === 11 && t.id !== resolvedTrack.id);
         if (altTrack) {
           const altProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${altTrack.id}?title=${encodeURIComponent(altTrack.title)}&artist=${encodeURIComponent(altTrack.artist || '')}`;
-          const altSaavn = await resolveSaavnStream(altTrack.title, altTrack.artist, quality).catch(() => null);
+          const altSaavn = await resolveSaavnStream(
+            cleanTitleForLyrics(altTrack.title) || altTrack.title,
+            cleanArtistName(altTrack.artist),
+            quality,
+            altTrack.title,
+            altTrack.artist
+          ).catch(() => null);
+          const altMirrors = await resolveMirrorStreams(altTrack.id).catch(() => []);
           const retryCandidates = [
             ...(altSaavn ? [altSaavn] : []),
+            ...altMirrors,
             altProxyUrl,
           ];
           ok = await tryPlayCandidates(retryCandidates, token, resolvedTrack.id, 0);
@@ -3085,6 +3204,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Auto-retry once with refreshed mirror list if still not resolved
     if (!ok && token === playTokenRef.current) {
+      logPlaybackDiagnostic('Retrying with refreshed mirror resolution');
       try {
         const freshMirrors = await resolveMirrorStreams(resolvedTrack.id).catch(() => []);
         if (freshMirrors.length > 0) {

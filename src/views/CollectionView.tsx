@@ -30,6 +30,7 @@ import {
   deleteAllDownloads,
   savePersistentPlaylistCover,
   getPersistentPlaylistCover,
+  getStoredCoverForTrack,
 } from '../services/storage';
 import { normalizeImageFile } from '../services/imageUtils';
 import {
@@ -42,6 +43,7 @@ import {
   getTasteProfileRecommendations,
   searchTracks,
   canonicalThumbUrl,
+  isMeaningfulMatch,
 } from '../services/api';
 import { PlaylistCover } from '../components/PlaylistCover';
 
@@ -286,43 +288,59 @@ export const CollectionView: React.FC = () => {
 
   const healPlaylistTracks = async (plTracks: Track[], playlistId: string) => {
     if (!plTracks || plTracks.length === 0) return;
-    const needsHeal = plTracks.filter(
-      (t) =>
-        !t.id ||
-        t.id.startsWith('sp_') ||
-        t.id.startsWith('import_') ||
-        t.id.length !== 11 ||
-        !t.thumb ||
-        t.thumb === FALLBACK_ART
-    );
-    if (needsHeal.length === 0) return;
 
     let didChange = false;
     const updated = [...plTracks];
 
+    // Pass 1: Instant local thumbnail heal for valid YouTube IDs (zero network requests, never replaces ID)
     for (let i = 0; i < updated.length; i++) {
       const track = updated[i];
-      const needsId =
-        !track.id || track.id.startsWith('sp_') || track.id.startsWith('import_') || track.id.length !== 11;
-      const needsThumb = !track.thumb || track.thumb === FALLBACK_ART || track.thumb.startsWith('blob:');
+      const hasValidYtId = Boolean(
+        track.id &&
+        track.id.length === 11 &&
+        !track.id.startsWith('sp_') &&
+        !track.id.startsWith('import_')
+      );
+      const hasMissingThumb = !track.thumb || track.thumb === FALLBACK_ART || track.thumb.startsWith('blob:');
 
-      if (needsId || needsThumb) {
+      if (hasValidYtId && hasMissingThumb) {
+        const stored = getStoredCoverForTrack(track.id);
+        const resolvedThumb = (stored && stored !== FALLBACK_ART) ? stored : `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
+        if (track.thumb !== resolvedThumb) {
+          updated[i] = {
+            ...track,
+            thumb: resolvedThumb,
+          };
+          didChange = true;
+        }
+      }
+    }
+
+    // Pass 2: Online ID heal ONLY for tracks with imported / invalid IDs (batch-limited to 6 per view to prevent freezing)
+    const tracksNeedingId = updated
+      .map((t, idx) => ({ track: t, idx }))
+      .filter(({ track }) => !track.id || track.id.startsWith('sp_') || track.id.startsWith('import_') || track.id.length !== 11)
+      .slice(0, 6);
+
+    if (tracksNeedingId.length > 0) {
+      for (const { track, idx } of tracksNeedingId) {
         try {
-          const query = `${track.title} ${track.artist}`.trim();
+          const query = `${track.title !== 'Loading...' ? track.title : ''} ${track.artist}`.trim();
           if (query) {
             const results = await searchTracks(query, 'song');
             if (results.length > 0 && results[0].id) {
-              const best = results[0];
-              updated[i] = {
-                ...track,
-                id: best.id,
-                thumb: best.thumb || canonicalThumbUrl(best.id),
-                title: track.title === 'Loading...' ? best.title : track.title,
-                duration: track.duration || best.duration,
-              };
-              didChange = true;
-              // Progressively update active view so thumbnails immediately show up
-              setTracks([...updated]);
+              const best = results.find((r) => isMeaningfulMatch(track.title, track.artist, r.title, r.artist)) || results[0];
+              if (isMeaningfulMatch(track.title, track.artist, best.title, best.artist)) {
+                updated[idx] = {
+                  ...track,
+                  id: best.id,
+                  thumb: best.thumb || `https://i.ytimg.com/vi/${best.id}/hqdefault.jpg`,
+                  title: track.title === 'Loading...' ? best.title : track.title,
+                  duration: track.duration || best.duration,
+                };
+                didChange = true;
+                setTracks([...updated]);
+              }
             }
           }
         } catch {}
@@ -330,11 +348,12 @@ export const CollectionView: React.FC = () => {
     }
 
     if (didChange) {
+      setTracks([...updated]);
       updatePlaylistTracks(playlistId, updated);
       syncProfile({
         ...userProfile,
         customPlaylists: (userProfile.customPlaylists || []).map((p) =>
-          String(p.id) === String(playlistId) ? { ...p, tracks: updated, thumb: p.thumb || updated[0]?.thumb } : p
+          String(p.id) === String(playlistId) ? { ...p, tracks: updated, thumb: p.customCover || p.thumb || updated[0]?.thumb } : p
         ),
       });
     }
