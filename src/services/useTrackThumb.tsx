@@ -15,6 +15,15 @@ import {
  */
 export function isLetterboxedThumb(url: string | null | undefined): boolean {
   if (!url) return false;
+  // Pristine square album covers from Google User Content, JioSaavn, Apple Music, or Spotify are never letterboxed
+  if (
+    url.includes('googleusercontent.com') ||
+    url.includes('saavncdn.com') ||
+    url.includes('mzstatic.com') ||
+    url.includes('i.scdn.co')
+  ) {
+    return false;
+  }
   return (
     url.includes('ytimg.com') ||
     url.includes('youtube.com') ||
@@ -22,8 +31,7 @@ export function isLetterboxedThumb(url: string | null | undefined): boolean {
     url.includes('sddefault') ||
     url.includes('mqdefault') ||
     url.includes('maxresdefault') ||
-    url.includes('/vi/') ||
-    url.includes('wsrv.nl')
+    url.includes('/vi/')
   );
 }
 
@@ -51,7 +59,7 @@ export function useTrackThumb(track: Track | null | undefined): string {
         return upgradeThumbQuality(stored);
       }
       if (track.id.length === 11) {
-        return `https://i.ytimg.com/vi/${track.id}/sddefault.jpg`;
+        return `https://i.ytimg.com/vi/${track.id}/maxresdefault.jpg`;
       }
       return canonicalThumbUrl(track.id);
     }
@@ -92,7 +100,7 @@ export function useTrackThumb(track: Track | null | undefined): string {
         return;
       }
       if (track.id && track.id.length === 11) {
-        setSrc(`https://i.ytimg.com/vi/${track.id}/sddefault.jpg`);
+        setSrc(`https://i.ytimg.com/vi/${track.id}/maxresdefault.jpg`);
         return;
       }
       if (track.id) {
@@ -156,6 +164,11 @@ export async function resolveOfflineFallback(
     return;
   }
   if (trackId.length === 11) {
+    const directMax = `https://i.ytimg.com/vi/${trackId}/maxresdefault.jpg`;
+    if (imgElement.src !== directMax) {
+      imgElement.src = directMax;
+      return;
+    }
     const directSd = `https://i.ytimg.com/vi/${trackId}/sddefault.jpg`;
     if (imgElement.src !== directSd) {
       imgElement.src = directSd;
@@ -171,7 +184,7 @@ export async function resolveOfflineFallback(
       imgElement.src = mqYt;
       return;
     }
-    const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${trackId}/sddefault.jpg&w=500&h=500&fit=cover&q=88&output=webp`;
+    const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${trackId}/maxresdefault.jpg&w=1000&h=1000&fit=cover&q=95&output=webp`;
     if (imgElement.src !== wsrv) {
       imgElement.src = wsrv;
       return;
@@ -225,7 +238,8 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       // 4:3 (1.33) or 16:9 (1.77) has black letterbox bars in YouTube video thumbnails
       if (ratio > 1.15) {
         setIsLetterboxed(true);
-      } else if (ratio >= 0.95 && ratio <= 1.05 && !isLetterboxedThumb(img.src)) {
+      } else if (ratio >= 0.92 && ratio <= 1.08) {
+        // True square album cover: 100% native unscaled razor sharpness
         setIsLetterboxed(false);
       }
     }
@@ -260,8 +274,18 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       }
     }
 
-    // Step 3: Direct YouTube CDN sddefault.jpg (640x480 - 500px+ HD quality)
+    // Step 3: Direct YouTube CDN maxresdefault.jpg (1280x720 HD quality)
     if (nextStep <= 3 && track.id.length === 11) {
+      const maxres = `https://i.ytimg.com/vi/${track.id}/maxresdefault.jpg`;
+      if (maxres !== currentSrc) {
+        setCurrentSrc(maxres);
+        setIsLetterboxed(true);
+        return;
+      }
+    }
+
+    // Step 4: Direct YouTube CDN sddefault.jpg (640x480)
+    if (nextStep <= 4 && track.id.length === 11) {
       const sd = `https://i.ytimg.com/vi/${track.id}/sddefault.jpg`;
       if (sd !== currentSrc) {
         setCurrentSrc(sd);
@@ -270,8 +294,8 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       }
     }
 
-    // Step 4: Direct YouTube CDN hqdefault.jpg
-    if (nextStep <= 4 && track.id.length === 11) {
+    // Step 5: Direct YouTube CDN hqdefault.jpg (480x360)
+    if (nextStep <= 5 && track.id.length === 11) {
       const hq = `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
       if (hq !== currentSrc) {
         setCurrentSrc(hq);
@@ -280,8 +304,8 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       }
     }
 
-    // Step 5: Direct YouTube CDN mqdefault.jpg
-    if (nextStep <= 5 && track.id.length === 11) {
+    // Step 6: Direct YouTube CDN mqdefault.jpg (320x180)
+    if (nextStep <= 6 && track.id.length === 11) {
       const mq = `https://i.ytimg.com/vi/${track.id}/mqdefault.jpg`;
       if (mq !== currentSrc) {
         setCurrentSrc(mq);
@@ -290,9 +314,9 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       }
     }
 
-    // Step 6: 500px High-Quality WebP CORS proxy via wsrv.nl
-    if (nextStep <= 6 && track.id.length === 11) {
-      const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${track.id}/sddefault.jpg&w=500&h=500&fit=cover&q=88&output=webp`;
+    // Step 7: High-Quality WebP CORS proxy via wsrv.nl
+    if (nextStep <= 7 && track.id.length === 11) {
+      const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${track.id}/maxresdefault.jpg&w=1000&h=1000&fit=cover&q=95&output=webp`;
       if (wsrv !== currentSrc) {
         setCurrentSrc(wsrv);
         setIsLetterboxed(true);

@@ -2858,7 +2858,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               ? upgradeThumbQuality(userProfile.likedSongs.find((t) => t.id === track.id)!.thumb)
               : (getStoredCoverForTrack(track.id)
                   ? upgradeThumbQuality(getStoredCoverForTrack(track.id))
-                  : (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/sddefault.jpg` : canonicalThumbUrl(track.id)))));
+                  : (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/maxresdefault.jpg` : canonicalThumbUrl(track.id)))));
     const persistentInitialTrack = { ...track, thumb: safeInitialThumb };
 
     setActiveTrack(persistentInitialTrack);
@@ -3202,7 +3202,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               resolvedTrack.thumb =
                 (altTrack.thumb && altTrack.thumb !== FALLBACK_ART && !altTrack.thumb.includes('photo-1614613535308-eb5fbd3d2c17'))
                   ? upgradeThumbQuality(altTrack.thumb)
-                  : (safeInitialThumb || (getStoredCoverForTrack(resolvedTrack.id) ? upgradeThumbQuality(getStoredCoverForTrack(resolvedTrack.id)) : null) || (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/sddefault.jpg` : canonicalThumbUrl(resolvedTrack.id)));
+                  : (safeInitialThumb || (getStoredCoverForTrack(resolvedTrack.id) ? upgradeThumbQuality(getStoredCoverForTrack(resolvedTrack.id)) : null) || (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/maxresdefault.jpg` : canonicalThumbUrl(resolvedTrack.id)));
             } else {
               resolvedTrack.thumb = upgradeThumbQuality(resolvedTrack.thumb);
             }
@@ -3234,7 +3234,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         resolvedTrack.thumb =
           safeInitialThumb ||
           (getStoredCoverForTrack(resolvedTrack.id) ? upgradeThumbQuality(getStoredCoverForTrack(resolvedTrack.id)) : null) ||
-          (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/sddefault.jpg` : canonicalThumbUrl(resolvedTrack.id));
+          (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/maxresdefault.jpg` : canonicalThumbUrl(resolvedTrack.id));
       } else {
         resolvedTrack.thumb = upgradeThumbQuality(resolvedTrack.thumb);
       }

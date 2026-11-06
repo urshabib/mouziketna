@@ -8,7 +8,7 @@ export default defineConfig(({command}) => {
   // Use relative base ('./') for production so assets load on any root, custom domain, or GitHub Pages subpath
   const basePath = process.env.BASE_URL || (command === 'serve' ? '/' : './');
   const buildTimestamp = Date.now();
-  const appVersion = '1.2.3';
+  const appVersion = '1.2.4';
 
   const versionPlugin = {
     name: 'mouziketna-version-generator',
