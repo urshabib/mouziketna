@@ -57,14 +57,17 @@ export default defineConfig(({command}) => {
       try {
         if (fs.existsSync('dist')) {
           fs.writeFileSync('dist/version.json', versionPayload);
-        }
-        if (fs.existsSync('dist/sw.js')) {
-          let content = fs.readFileSync('dist/sw.js', 'utf-8');
-          content = content.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = 'mouzika-pwa-${buildTimestamp}';`);
-          fs.writeFileSync('dist/sw.js', content);
+          fs.writeFileSync('dist/.nojekyll', '');
+
+          const swSource = fs.existsSync('public/sw.js') ? 'public/sw.js' : (fs.existsSync('sw.js') ? 'sw.js' : null);
+          if (swSource) {
+            let swContent = fs.readFileSync(swSource, 'utf-8');
+            swContent = swContent.replace(/const CACHE_NAME = ['"][^'"]+['"];/, `const CACHE_NAME = 'mouzika-pwa-${buildTimestamp}';`);
+            fs.writeFileSync('dist/sw.js', swContent);
+          }
         }
       } catch (e) {
-        console.warn('Could not write dist/version.json:', e);
+        console.warn('Could not write dist/version.json or dist/sw.js:', e);
       }
     }
   };
