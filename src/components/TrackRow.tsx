@@ -4,7 +4,7 @@ import { Track } from '../types';
 import { Play, MoreVertical, Heart, Music2, Check, GripVertical, ChevronUp, ChevronDown } from 'lucide-react';
 import { isDownloaded, getDownloadQuality } from '../services/storage';
 import { canonicalThumbUrl, FALLBACK_ART } from '../services/api';
-import { useTrackThumb, resolveOfflineFallback, TrackThumbImage } from '../services/useTrackThumb';
+import { useTrackThumb, resolveOfflineFallback } from '../services/useTrackThumb';
 import { DownloadBadge } from './DownloadBadge';
 import { useLongPress } from '../hooks/useLongPress';
 
@@ -177,10 +177,13 @@ export const TrackRow: React.FC<TrackRowProps> = ({
       >
         {/* Art thumbnail - iPhone protected with pointer-events-none & select-none */}
         <div className="relative w-11 h-11 sm:w-12 sm:h-12 md:w-13 md:h-13 rounded-xl md:rounded-2xl overflow-hidden flex-shrink-0 bg-[#1f1f23] shadow-sm pointer-events-none select-none">
-          <TrackThumbImage
-            track={track}
+          <img
+            src={thumbSrc}
             alt={track.title}
+            onError={handleThumbError}
             loading="lazy"
+            draggable={false}
+            onContextMenu={(e) => e.preventDefault()}
             className="w-full h-full object-cover pointer-events-none select-none"
           />
         </div>

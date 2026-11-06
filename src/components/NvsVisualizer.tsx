@@ -7,7 +7,6 @@ import {
   resumeAudioContext,
 } from '../services/audioEnhancer';
 import { FALLBACK_ART } from '../services/api';
-import { isLetterboxedThumb } from '../services/useTrackThumb';
 import { Waves, Disc3, Sparkles } from 'lucide-react';
 
 export type VisualizerStyle = 'ncs' | 'wave' | 'pulse' | 'circular';
@@ -410,8 +409,6 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
         <img
           src={thumbSrc}
           alt={trackTitle}
-          referrerPolicy="no-referrer"
-          crossOrigin="anonymous"
           onError={(e) => {
             e.currentTarget.src = FALLBACK_ART;
           }}
@@ -420,8 +417,6 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
           }`}
           style={{
             animationPlayState: isPlaying ? 'running' : 'paused',
-            transform: isLetterboxedThumb(thumbSrc) ? 'scale(1.34)' : undefined,
-            transformOrigin: 'center center',
           }}
           draggable={false}
         />

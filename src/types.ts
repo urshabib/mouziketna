@@ -53,7 +53,7 @@ export interface UserProfile {
   appLogo?: string;
   downloadLyricsOffline: boolean;
   downloadArtOffline?: boolean;
-  artQualityOffline?: 'low' | 'med' | 'medium' | 'high' | 'original';
+  artQualityOffline?: 'low' | 'medium' | 'high' | 'original';
   autoCachePlayed: boolean;
   liquidGlass: boolean;
   liquidGlassLevel?: 'off' | 'medium' | 'ultra';

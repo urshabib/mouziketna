@@ -33,7 +33,6 @@ import {
   getStoredCoverForTrack,
 } from '../services/storage';
 import { normalizeImageFile } from '../services/imageUtils';
-import { isLetterboxedThumb } from '../services/useTrackThumb';
 import {
   fetchJsonRetry,
   NEW_HUB_BACKEND,
@@ -76,20 +75,7 @@ export const CollectionView: React.FC = () => {
     t,
   } = useMusic();
 
-  const [tracks, setTracks] = useState<Track[]>(() => {
-    if (!collectionTarget) return [];
-    if (collectionTarget.initialTracks && collectionTarget.initialTracks.length > 0) {
-      return collectionTarget.initialTracks;
-    }
-    if (collectionTarget.type === 'custom-playlist' && collectionTarget.id) {
-      const pl = (userProfile.customPlaylists || []).find((p) => String(p.id) === String(collectionTarget.id));
-      if (pl?.tracks && pl.tracks.length > 0) return pl.tracks;
-    }
-    if (collectionTarget.type === 'liked') {
-      return userProfile.likedSongs || [];
-    }
-    return [];
-  });
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloadSize, setDownloadSize] = useState('0 MB');
   const [suggestions, setSuggestions] = useState<Track[]>([]);
@@ -319,7 +305,7 @@ export const CollectionView: React.FC = () => {
 
       if (hasValidYtId && hasMissingThumb) {
         const stored = getStoredCoverForTrack(track.id);
-        const resolvedThumb = (stored && stored !== FALLBACK_ART) ? stored : canonicalThumbUrl(track.id);
+        const resolvedThumb = (stored && stored !== FALLBACK_ART) ? stored : `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
         if (track.thumb !== resolvedThumb) {
           updated[i] = {
             ...track,
@@ -348,7 +334,7 @@ export const CollectionView: React.FC = () => {
                 updated[idx] = {
                   ...track,
                   id: best.id,
-                  thumb: best.thumb || canonicalThumbUrl(best.id),
+                  thumb: best.thumb || `https://i.ytimg.com/vi/${best.id}/hqdefault.jpg`,
                   title: track.title === 'Loading...' ? best.title : track.title,
                   duration: track.duration || best.duration,
                 };
@@ -753,17 +739,11 @@ export const CollectionView: React.FC = () => {
     }
     if (target.thumb) {
       return (
-        <div className="relative group w-40 h-40 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex-shrink-0 bg-[#18181b]">
+        <div className="relative group w-40 h-40 sm:w-52 sm:h-52 md:w-56 md:h-56 rounded-2xl md:rounded-3xl overflow-hidden shadow-2xl flex-shrink-0">
           <img
             src={target.thumb}
             alt={target.title || 'Collection'}
-            referrerPolicy="no-referrer"
-            crossOrigin="anonymous"
             className="w-full h-full object-cover"
-            style={{
-              transform: isLetterboxedThumb(target.thumb) ? 'scale(1.34)' : undefined,
-              transformOrigin: 'center center',
-            }}
           />
         </div>
       );

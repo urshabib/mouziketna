@@ -12,7 +12,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { FALLBACK_ART } from '../services/api';
-import { useTrackThumb, TrackThumbImage } from '../services/useTrackThumb';
+import { useTrackThumb } from '../services/useTrackThumb';
 import { SyncedLyricsLine } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -546,11 +546,15 @@ export const LandscapeStagePlayer: React.FC = () => {
                       className="aspect-square rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.85)] border border-white/15 relative group cursor-grab active:cursor-grabbing mx-auto flex-shrink-0"
                       title="Swipe left/right to skip tracks, swipe down to exit"
                     >
-                      <TrackThumbImage
-                        track={activeTrack}
+                      <img
+                        src={thumbSrc}
                         alt={activeTrack.title}
+                        onError={(e) => {
+                          e.currentTarget.src = FALLBACK_ART;
+                        }}
                         className="w-full h-full object-cover aspect-square select-none pointer-events-none rounded-2xl"
                         style={{ aspectRatio: '1 / 1' }}
+                        draggable={false}
                       />
 
                       {/* Visual Swipe Feedback Pill (Horizontal Skip or Vertical Exit) */}
@@ -757,11 +761,15 @@ export const LandscapeStagePlayer: React.FC = () => {
                     className="aspect-square rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.9)] border border-white/20 flex-shrink-0 cursor-grab active:cursor-grabbing mx-auto relative"
                     title="Swipe left/right to skip tracks, swipe down to exit"
                   >
-                    <TrackThumbImage
-                      track={activeTrack}
+                    <img
+                      src={thumbSrc}
                       alt={activeTrack.title}
+                      onError={(e) => {
+                        e.currentTarget.src = FALLBACK_ART;
+                      }}
                       className="w-full h-full object-cover aspect-square select-none pointer-events-none rounded-2xl"
                       style={{ aspectRatio: '1 / 1' }}
+                      draggable={false}
                     />
 
                     {/* Visual Swipe Feedback Pill (Horizontal Skip or Vertical Exit) */}

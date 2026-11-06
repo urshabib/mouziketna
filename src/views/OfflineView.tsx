@@ -322,7 +322,7 @@ export const OfflineView: React.FC = () => {
                 onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover, pl.tracks)}
                 className="card-surface group relative flex flex-col p-3 rounded-2xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/15 transition-all cursor-pointer shadow-sm"
               >
-                <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md">
+                <div className="relative w-full aspect-square rounded-xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md group-hover:scale-105 transition-transform duration-300">
                   <PlaylistCover
                     cover={customCover}
                     tracks={pl.tracks}

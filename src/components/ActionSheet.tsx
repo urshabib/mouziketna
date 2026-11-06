@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { isDownloaded } from '../services/storage';
 import { canonicalThumbUrl } from '../services/api';
-import { TrackThumbImage } from '../services/useTrackThumb';
 
 export const ActionSheet: React.FC = () => {
   const {
@@ -238,13 +237,13 @@ export const ActionSheet: React.FC = () => {
           onMouseDown={handleMouseDown}
           className="flex items-center gap-3.5 pb-4 mb-2 border-b border-white/10 cursor-grab active:cursor-grabbing select-none"
         >
-          <div className="w-14 h-14 rounded-xl overflow-hidden shadow-md flex-shrink-0 relative bg-[#1f1f23] pointer-events-none select-none">
-            <TrackThumbImage
-              track={track}
-              alt={track.title}
-              className="w-full h-full object-cover"
-            />
-          </div>
+          <img
+            src={track.thumb || canonicalThumbUrl(track.id)}
+            alt={track.title}
+            draggable={false}
+            onContextMenu={(e) => e.preventDefault()}
+            className="w-14 h-14 rounded-xl object-cover shadow-md flex-shrink-0 pointer-events-none select-none"
+          />
           <div className="min-w-0 flex-1">
             <h4 className="font-bold text-base text-white truncate leading-snug">{track.title}</h4>
             <p className="text-xs text-white/50 truncate font-semibold mt-0.5">{track.artist}</p>

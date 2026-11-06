@@ -186,7 +186,7 @@ export const Sidebar: React.FC = () => {
           {customPlaylists.map((pl) => (
             <div
               key={pl.id}
-              onClick={() => openCollection('custom-playlist', pl.id, pl.name, pl.thumb, pl.tracks)}
+              onClick={() => openCollection('custom-playlist', pl.id, pl.name, pl.thumb)}
               className="flex items-center gap-3 p-2 rounded-2xl hover:bg-white/8 cursor-pointer group transition-all"
             >
               <PlaylistCover
@@ -195,7 +195,7 @@ export const Sidebar: React.FC = () => {
                 sizeClass="w-11 h-11"
                 roundedClass="rounded-xl"
                 alt={pl.name}
-                className="flex-shrink-0 shadow-sm"
+                className="flex-shrink-0 shadow-sm group-hover:scale-105 transition-transform"
               />
               <div className="min-w-0 flex-1">
                 <h5 className="text-sm font-semibold truncate text-white group-hover:text-[var(--accent)] transition-colors">
