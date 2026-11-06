@@ -335,7 +335,7 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       dataSaverLevel: profile.dataSaverLevel || 'off',
       downloadQuality: profile.downloadQuality || 'stable',
       downloadArtOffline: profile.downloadArtOffline !== false,
-      artQualityOffline: profile.artQualityOffline || 'low',
+      artQualityOffline: profile.artQualityOffline || 'high',
       customAppName: profile.customAppName || undefined,
       appLogo: profile.appLogo || 'default',
       downloadLyricsOffline: profile.downloadLyricsOffline !== false,

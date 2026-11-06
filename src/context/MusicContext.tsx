@@ -15,6 +15,7 @@ import {
   resolveWorkerStream,
   resolveSaavnStream,
   canonicalThumbUrl,
+  upgradeThumbQuality,
   fetchArtworkBlob,
   FALLBACK_ART,
   fetchJsonRetry,
@@ -254,7 +255,7 @@ const defaultProfile: UserProfile = {
   appLogo: 'default',
   downloadLyricsOffline: true,
   downloadArtOffline: true,
-  artQualityOffline: 'low',
+  artQualityOffline: 'high',
   autoCachePlayed: false,
   liquidGlass: true,
   language: 'en',
@@ -2848,13 +2849,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (playedHistoryRef.current.length > 50) playedHistoryRef.current.shift();
     }
 
-    // Ensure we never store a dead blob URL into persistent storage and recover best available cover
+    // Ensure we never store a dead blob URL into persistent storage and recover best available 500px+ cover
     const safeInitialThumb = (track.thumb && !track.thumb.startsWith('blob:') && track.thumb.trim().length > 5 && track.thumb !== FALLBACK_ART)
-      ? track.thumb
-      : (userProfile.recentlyPlayed?.find((t) => t.id === track.id)?.thumb ||
-         userProfile.likedSongs?.find((t) => t.id === track.id)?.thumb ||
-         getStoredCoverForTrack(track.id) ||
-         (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg` : canonicalThumbUrl(track.id)));
+      ? upgradeThumbQuality(track.thumb)
+      : (userProfile.recentlyPlayed?.find((t) => t.id === track.id)?.thumb
+          ? upgradeThumbQuality(userProfile.recentlyPlayed.find((t) => t.id === track.id)!.thumb)
+          : (userProfile.likedSongs?.find((t) => t.id === track.id)?.thumb
+              ? upgradeThumbQuality(userProfile.likedSongs.find((t) => t.id === track.id)!.thumb)
+              : (getStoredCoverForTrack(track.id)
+                  ? upgradeThumbQuality(getStoredCoverForTrack(track.id))
+                  : (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/sddefault.jpg` : canonicalThumbUrl(track.id)))));
     const persistentInitialTrack = { ...track, thumb: safeInitialThumb };
 
     setActiveTrack(persistentInitialTrack);
@@ -3197,8 +3201,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART || resolvedTrack.thumb.includes('photo-1614613535308-eb5fbd3d2c17')) {
               resolvedTrack.thumb =
                 (altTrack.thumb && altTrack.thumb !== FALLBACK_ART && !altTrack.thumb.includes('photo-1614613535308-eb5fbd3d2c17'))
-                  ? altTrack.thumb
-                  : (safeInitialThumb || getStoredCoverForTrack(resolvedTrack.id) || (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/hqdefault.jpg` : canonicalThumbUrl(resolvedTrack.id)));
+                  ? upgradeThumbQuality(altTrack.thumb)
+                  : (safeInitialThumb || (getStoredCoverForTrack(resolvedTrack.id) ? upgradeThumbQuality(getStoredCoverForTrack(resolvedTrack.id)) : null) || (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/sddefault.jpg` : canonicalThumbUrl(resolvedTrack.id)));
+            } else {
+              resolvedTrack.thumb = upgradeThumbQuality(resolvedTrack.thumb);
             }
           }
         }
@@ -3227,8 +3233,10 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART || resolvedTrack.thumb.includes('photo-1614613535308-eb5fbd3d2c17')) {
         resolvedTrack.thumb =
           safeInitialThumb ||
-          getStoredCoverForTrack(resolvedTrack.id) ||
-          (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/hqdefault.jpg` : canonicalThumbUrl(resolvedTrack.id));
+          (getStoredCoverForTrack(resolvedTrack.id) ? upgradeThumbQuality(getStoredCoverForTrack(resolvedTrack.id)) : null) ||
+          (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/sddefault.jpg` : canonicalThumbUrl(resolvedTrack.id));
+      } else {
+        resolvedTrack.thumb = upgradeThumbQuality(resolvedTrack.thumb);
       }
       setActiveTrack(resolvedTrack);
       recordPlaybackSync(resolvedTrack);
@@ -3953,7 +3961,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       // 1. Kick off artwork and lyrics download concurrently RIGHT AWAY in parallel with audio
       const artPromise = userProfile.downloadArtOffline !== false
-        ? fetchArtworkBlob(ytTrackId || track.id, track.thumb, userProfile.artQualityOffline || 'low').catch(() => null)
+        ? fetchArtworkBlob(ytTrackId || track.id, track.thumb, userProfile.artQualityOffline || 'high').catch(() => null)
         : Promise.resolve(null);
       const lyricsPromise = userProfile.downloadLyricsOffline !== false
         ? fetchLyricsForTrack(track).catch(() => null)

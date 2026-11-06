@@ -22,7 +22,7 @@ test('isLetterboxedThumb accurately detects YouTube 4:3 letterboxed thumbnails',
 
 test('canonicalThumbUrl produces stable valid YouTube CDN links for 11-char IDs', () => {
   const id = 'dQw4w9WgXcQ';
-  assert.equal(canonicalThumbUrl(id), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+  assert.equal(canonicalThumbUrl(id), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg');
   assert.equal(canonicalThumbUrl('short'), FALLBACK_ART);
   assert.equal(canonicalThumbUrl(''), FALLBACK_ART);
 });
@@ -35,5 +35,5 @@ test('upgradeThumbQuality enhances image URLs to high definition', () => {
   assert.equal(upgradeThumbQuality(saavnUrl), 'https://c.saavncdn.com/123/500x500.jpg');
 
   const ytThumb = 'https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg';
-  assert.equal(upgradeThumbQuality(ytThumb), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg');
+  assert.equal(upgradeThumbQuality(ytThumb), 'https://i.ytimg.com/vi/dQw4w9WgXcQ/sddefault.jpg');
 });

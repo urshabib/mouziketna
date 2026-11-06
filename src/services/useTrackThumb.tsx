@@ -51,7 +51,7 @@ export function useTrackThumb(track: Track | null | undefined): string {
         return upgradeThumbQuality(stored);
       }
       if (track.id.length === 11) {
-        return `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
+        return `https://i.ytimg.com/vi/${track.id}/sddefault.jpg`;
       }
       return canonicalThumbUrl(track.id);
     }
@@ -92,7 +92,7 @@ export function useTrackThumb(track: Track | null | undefined): string {
         return;
       }
       if (track.id && track.id.length === 11) {
-        setSrc(`https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`);
+        setSrc(`https://i.ytimg.com/vi/${track.id}/sddefault.jpg`);
         return;
       }
       if (track.id) {
@@ -156,9 +156,14 @@ export async function resolveOfflineFallback(
     return;
   }
   if (trackId.length === 11) {
-    const directYt = `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`;
-    if (imgElement.src !== directYt) {
-      imgElement.src = directYt;
+    const directSd = `https://i.ytimg.com/vi/${trackId}/sddefault.jpg`;
+    if (imgElement.src !== directSd) {
+      imgElement.src = directSd;
+      return;
+    }
+    const directHq = `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`;
+    if (imgElement.src !== directHq) {
+      imgElement.src = directHq;
       return;
     }
     const mqYt = `https://i.ytimg.com/vi/${trackId}/mqdefault.jpg`;
@@ -166,7 +171,7 @@ export async function resolveOfflineFallback(
       imgElement.src = mqYt;
       return;
     }
-    const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`;
+    const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${trackId}/sddefault.jpg&w=500&h=500&fit=cover&q=88&output=webp`;
     if (imgElement.src !== wsrv) {
       imgElement.src = wsrv;
       return;
@@ -255,18 +260,28 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       }
     }
 
-    // Step 3: Direct YouTube CDN hqdefault.jpg
+    // Step 3: Direct YouTube CDN sddefault.jpg (640x480 - 500px+ HD quality)
     if (nextStep <= 3 && track.id.length === 11) {
-      const direct = `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
-      if (direct !== currentSrc) {
-        setCurrentSrc(direct);
+      const sd = `https://i.ytimg.com/vi/${track.id}/sddefault.jpg`;
+      if (sd !== currentSrc) {
+        setCurrentSrc(sd);
         setIsLetterboxed(true);
         return;
       }
     }
 
-    // Step 4: Direct YouTube CDN mqdefault.jpg
+    // Step 4: Direct YouTube CDN hqdefault.jpg
     if (nextStep <= 4 && track.id.length === 11) {
+      const hq = `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
+      if (hq !== currentSrc) {
+        setCurrentSrc(hq);
+        setIsLetterboxed(true);
+        return;
+      }
+    }
+
+    // Step 5: Direct YouTube CDN mqdefault.jpg
+    if (nextStep <= 5 && track.id.length === 11) {
       const mq = `https://i.ytimg.com/vi/${track.id}/mqdefault.jpg`;
       if (mq !== currentSrc) {
         setCurrentSrc(mq);
@@ -275,9 +290,9 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       }
     }
 
-    // Step 5: CORS proxy via wsrv.nl to bypass restrictive network/firewalls
-    if (nextStep <= 5 && track.id.length === 11) {
-      const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
+    // Step 6: 500px High-Quality WebP CORS proxy via wsrv.nl
+    if (nextStep <= 6 && track.id.length === 11) {
+      const wsrv = `https://wsrv.nl/?url=https://i.ytimg.com/vi/${track.id}/sddefault.jpg&w=500&h=500&fit=cover&q=88&output=webp`;
       if (wsrv !== currentSrc) {
         setCurrentSrc(wsrv);
         setIsLetterboxed(true);

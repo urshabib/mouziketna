@@ -129,13 +129,26 @@ export function upgradeThumbQuality(url: string | null | undefined): string {
     return url.replace(/150x150\.jpg/g, '500x500.jpg').replace(/50x50\.jpg/g, '500x500.jpg');
   }
 
-  // High-res YouTube Video Thumbnails (upgrade to maxresdefault with hqdefault fallback 800x800)
+  // Apple Music / iTunes covers upgrade to 600x600 HD
+  if (url.includes('mzstatic.com')) {
+    return url.replace(/\/\d+x\d+bb\./, '/600x600bb.');
+  }
+
+  // Spotify CDN covers upgrade to 640x640 HD
+  if (url.includes('i.scdn.co/image/')) {
+    return url.replace('ab67616d00001e02', 'ab67616d0000b273').replace('ab67616d00004851', 'ab67616d0000b273');
+  }
+
+  // High-res YouTube Video Thumbnails (upgrade to sddefault 640x480 for 500px+ HD, preserving maxresdefault)
   if (url.includes('ytimg.com')) {
+    if (url.includes('maxresdefault') || url.includes('sddefault')) {
+      return url;
+    }
     const idMatch = url.match(/\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})\//);
     if (idMatch && idMatch[1]) {
-      return canonicalThumbUrl(idMatch[1]);
+      return `https://i.ytimg.com/vi/${idMatch[1]}/sddefault.jpg`;
     }
-    return url.replace(/\/(?:mqdefault|default)\.(?:webp|jpg)/, '/maxresdefault.jpg');
+    return url.replace(/\/(?:hqdefault|mqdefault|default)\.(?:webp|jpg)/, '/sddefault.jpg');
   }
 
   // Wsrv.nl URLs - bump to 800x800
@@ -184,7 +197,8 @@ export function canonicalThumbUrl(id: string): string {
   if (!id || id.length !== 11) {
     return FALLBACK_ART;
   }
-  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+  // sddefault is 640x480 (500px+ HD quality)
+  return `https://i.ytimg.com/vi/${id}/sddefault.jpg`;
 }
 
 export function corsSafeThumbUrl(url: string | null): string | null {
@@ -196,45 +210,50 @@ export function corsSafeThumbUrl(url: string | null): string | null {
 export async function fetchArtworkBlob(
   trackId: string,
   thumbUrl: string | null,
-  quality: 'low' | 'medium' | 'high' | 'original' = 'low'
+  quality: 'low' | 'med' | 'medium' | 'high' | 'original' = 'high'
 ): Promise<Blob | null> {
-  const dim =
-    quality === 'low'
-      ? { w: 150, h: 150, q: 70 }
-      : quality === 'medium'
-      ? { w: 300, h: 300, q: 80 }
-      : quality === 'high'
-      ? { w: 500, h: 500, q: 85 }
-      : null;
+  const isMed = quality === 'med' || quality === 'medium';
+  const isLow = quality === 'low';
+  const dim = isLow
+    ? { w: 150, h: 150, q: 75 }
+    : isMed
+    ? { w: 300, h: 300, q: 80 }
+    : { w: 500, h: 500, q: 88 }; // High Quality (500px)
 
   const candidateUrls: string[] = [];
+  const highResThumb = thumbUrl ? upgradeThumbQuality(thumbUrl) : null;
 
-  // 1. If thumbUrl exists
-  if (thumbUrl) {
-    if (thumbUrl.startsWith('blob:') || thumbUrl.startsWith('data:')) {
+  // 1. If thumbUrl exists, use its upgraded 500px+ asset
+  if (highResThumb) {
+    if (highResThumb.startsWith('blob:') || highResThumb.startsWith('data:')) {
       try {
-        const res = await fetch(thumbUrl);
+        const res = await fetch(highResThumb);
         if (res.ok) return await res.blob();
       } catch {}
     }
 
     if (dim) {
       candidateUrls.push(
-        `https://wsrv.nl/?url=${encodeURIComponent(thumbUrl)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+        `https://wsrv.nl/?url=${encodeURIComponent(highResThumb)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
       );
     }
-    candidateUrls.push(corsSafeThumbUrl(thumbUrl) || thumbUrl);
+    candidateUrls.push(corsSafeThumbUrl(highResThumb) || highResThumb);
   }
 
-  // 2. YouTube canonical fallbacks
+  // 2. YouTube canonical fallbacks using high-definition sddefault (640x480) and hqdefault (480x360)
   if (trackId && trackId.length === 11) {
-    const ytUrl = `https://i.ytimg.com/vi/${trackId}/mqdefault.jpg`;
+    const ytSd = `https://i.ytimg.com/vi/${trackId}/sddefault.jpg`;
+    const ytHq = `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`;
     if (dim) {
       candidateUrls.push(
-        `https://wsrv.nl/?url=${encodeURIComponent(ytUrl)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+        `https://wsrv.nl/?url=${encodeURIComponent(ytSd)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+      );
+      candidateUrls.push(
+        `https://wsrv.nl/?url=${encodeURIComponent(ytHq)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
       );
     }
-    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytUrl)}`);
+    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytSd)}`);
+    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytHq)}`);
   }
 
   // Attempt each candidate
