@@ -5,7 +5,7 @@
 declare const __APP_BUILD_TIME__: number | undefined;
 declare const __APP_VERSION__: string | undefined;
 
-export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.1';
+export const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.2.2';
 export const APP_BUILD_TIME = typeof __APP_BUILD_TIME__ !== 'undefined' ? __APP_BUILD_TIME__ : Date.now();
 export const APP_NAME = 'MOUZIKETNA';
 

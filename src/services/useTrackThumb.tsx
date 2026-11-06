@@ -17,10 +17,13 @@ export function isLetterboxedThumb(url: string | null | undefined): boolean {
   if (!url) return false;
   return (
     url.includes('ytimg.com') ||
+    url.includes('youtube.com') ||
     url.includes('hqdefault') ||
     url.includes('sddefault') ||
     url.includes('mqdefault') ||
-    url.includes('/vi/')
+    url.includes('maxresdefault') ||
+    url.includes('/vi/') ||
+    url.includes('wsrv.nl')
   );
 }
 
@@ -310,10 +313,10 @@ export const TrackThumbImage: React.FC<TrackThumbImageProps> = ({
       onError={handleError}
       className={`select-none pointer-events-none ${className || ''}`}
       style={{
-        transform: zoomTransform,
         transformOrigin: 'center center',
         transition: 'transform 0.25s ease-out',
         ...style,
+        ...(zoomTransform ? { transform: style?.transform ? `${zoomTransform} ${style.transform}` : zoomTransform } : {}),
       }}
       draggable={false}
       onContextMenu={(e) => e.preventDefault()}
