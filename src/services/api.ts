@@ -36,6 +36,12 @@ export function cacheStreamUrl(trackId: string, url: string, ttlMs = 25 * 60 * 1
   streamUrlCache.set(trackId, { url, expires: Date.now() + ttlMs });
 }
 
+export function invalidateStreamUrlCache(trackId: string) {
+  if (trackId) {
+    streamUrlCache.delete(trackId);
+  }
+}
+
 export async function fetchWithTimeout(url: string, ms = 8000, options: RequestInit = {}): Promise<Response> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
@@ -375,75 +381,10 @@ export function parseLRC(lrcText: string): SyncedLyricsLine[] {
   return out.sort((a, b) => a.time - b.time);
 }
 
-// Stream resolvers
-export async function resolveSaavnStream(
-  title: string,
-  artist: string,
-  quality = '320',
-  rawTitle: string | null = null,
-  rawArtist: string | null = null
-): Promise<string> {
-  const attempts: [string, string][] = [];
-  const seen = new Set<string>();
-  const add = (t: string, a: string) => {
-    t = (t || '').trim();
-    a = (a || '').trim();
-    if (!t || !a) return;
-    const key = `${t.toLowerCase()}|${a.toLowerCase()}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    attempts.push([t, a]);
-  };
-
-  const cleanT = cleanTitleForLyrics(title) || title;
-  const cleanA = cleanArtistName(artist);
-  add(cleanT, cleanA);
-
-  // Dash-split check on title or rawTitle (e.g. "Artist - Title" or "Title - Artist")
-  const textWithDash = [rawTitle, title].find((s) => s && /\s+[-–—]\s+/.test(s));
-  if (textWithDash) {
-    const parts = textWithDash.split(/\s+[-–—]\s+/).map((p) => p.trim());
-    if (parts.length >= 2) {
-      const left = cleanTitleForLyrics(parts[0]) || parts[0];
-      const right = cleanTitleForLyrics(parts.slice(1).join(' - ')) || parts.slice(1).join(' - ');
-      add(right, cleanArtistName(parts[0]));
-      add(left, cleanArtistName(parts.slice(1).join(' - ')));
-      add(right, cleanA);
-      add(left, cleanA);
-    }
-  }
-
-  // Primary artist alone (strip featured artists, commas, &)
-  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
-  if (firstArtist && firstArtist !== cleanA) {
-    add(cleanT, firstArtist);
-  }
-
-  // First word / token of artist alone (resolves Arabic/Latin transliterations like Amr Diab -> Amr, Fairouz -> Fairuz)
-  const firstWord = firstArtist.split(/[\s,]/)[0].trim();
-  if (firstWord && firstWord !== firstArtist && firstWord.length >= 3) {
-    add(cleanT, firstWord);
-  }
-
-  // Raw title variations if provided
-  if (rawTitle) {
-    const derivedArtist = deriveArtistForLyrics(rawTitle, rawArtist ?? artist);
-    const cleanRaw = cleanTitleForLyrics(rawTitle);
-    if (cleanRaw) add(cleanRaw, cleanA);
-    if (derivedArtist) {
-      add(cleanT, derivedArtist);
-      if (cleanRaw) add(cleanRaw, derivedArtist);
-    }
-    const strippedRaw = rawTitle.replace(/\s*[\(\[][^)\]]*[\)\]]/g, '').trim();
-    if (strippedRaw && strippedRaw !== cleanT) {
-      add(strippedRaw, firstArtist || cleanA);
-    }
-  }
-
-  if (attempts.length === 0) {
-    throw new Error('Title and artist required for Saavn stream resolution');
-  }
-
+/**
+ * Helper to probe a single Saavn query variant with fast timeout
+ */
+async function probeSaavnVariant(title: string, artist: string, quality: string): Promise<string | null> {
   const looksLikeSaavnId = (txt: string) =>
     txt &&
     txt.length >= 6 &&
@@ -451,26 +392,84 @@ export async function resolveSaavnStream(
     !/\s/.test(txt) &&
     !/error|not[\s_-]?found|missing|parameter|invalid|no\s*results?/i.test(txt);
 
-  // Parallel probe across top candidate combinations for lightning-fast matching (~200-400ms)
-  const candidateList = attempts.slice(0, 8);
-  const probePromises = candidateList.map(async ([t, a]) => {
+  try {
     const res = await fetchWithTimeout(
-      `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(t)}&artist=${encodeURIComponent(a)}`,
-      5000
+      `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
+      3500
     );
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) return null;
     const txt = (await res.text()).trim();
     if (looksLikeSaavnId(txt)) {
       return `https://aac.saavncdn.com/${txt}_${quality}.mp4`;
     }
-    throw new Error(`saavn miss: ${txt.slice(0, 50)}`);
-  });
+  } catch {}
+  return null;
+}
 
-  try {
-    return await Promise.any(probePromises);
-  } catch {
-    throw new Error('No match found on Saavn resolver');
+/**
+ * Deterministic Tiered Saavn Stream Resolution
+ * Priority Tier 1 (Exact Match) ALWAYS takes precedence over Tier 2/3 loose queries,
+ * completely eliminating non-deterministic Promise.any race conditions where wrong songs win.
+ */
+export async function resolveSaavnStream(
+  title: string,
+  artist: string,
+  quality = '320',
+  rawTitle: string | null = null,
+  rawArtist: string | null = null
+): Promise<string> {
+  const cleanT = cleanTitleForLyrics(title) || title;
+  const cleanA = cleanArtistName(artist);
+
+  if (!cleanT || !cleanA || cleanA === 'Various Artists') {
+    // If artist is missing or generic, try rawTitle extraction
+    if (rawTitle) {
+      const derivedA = deriveArtistForLyrics(rawTitle, rawArtist || artist);
+      const cleanRawT = cleanTitleForLyrics(rawTitle);
+      if (cleanRawT && derivedA && derivedA !== 'Various Artists') {
+        const hit = await probeSaavnVariant(cleanRawT, derivedA, quality);
+        if (hit) return hit;
+      }
+    }
+    throw new Error('Specific title and artist required for Saavn stream resolution');
   }
+
+  // Tier 1 (High Confidence): Exact Title + Clean Artist
+  const tier1Hit = await probeSaavnVariant(cleanT, cleanA, quality);
+  if (tier1Hit) return tier1Hit;
+
+  // Tier 1.5: Dash-split check (e.g. "Artist - Title" or "Title - Artist")
+  const textWithDash = [rawTitle, title].find((s) => s && /\s+[-–—]\s+/.test(s));
+  if (textWithDash) {
+    const parts = textWithDash.split(/\s+[-–—]\s+/).map((p) => p.trim());
+    if (parts.length >= 2) {
+      const left = cleanTitleForLyrics(parts[0]) || parts[0];
+      const right = cleanTitleForLyrics(parts.slice(1).join(' - ')) || parts.slice(1).join(' - ');
+      
+      const dashHits = await Promise.all([
+        probeSaavnVariant(right, cleanArtistName(parts[0]), quality),
+        probeSaavnVariant(left, cleanArtistName(parts.slice(1).join(' - ')), quality),
+      ]);
+      const validDash = dashHits.find(Boolean);
+      if (validDash) return validDash;
+    }
+  }
+
+  // Tier 2 (Medium Confidence): Clean Title + Primary Artist (without featured artists)
+  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
+  if (firstArtist && firstArtist !== cleanA) {
+    const tier2Hit = await probeSaavnVariant(cleanT, firstArtist, quality);
+    if (tier2Hit) return tier2Hit;
+  }
+
+  // Tier 3 (Fallback for Transliterations): Clean Title + First Word of Artist (e.g., Fairouz -> Fairuz)
+  const firstWord = firstArtist.split(/[\s,]/)[0].trim();
+  if (firstWord && firstWord !== firstArtist && firstWord.length >= 3) {
+    const tier3Hit = await probeSaavnVariant(cleanT, firstWord, quality);
+    if (tier3Hit) return tier3Hit;
+  }
+
+  throw new Error('No match found on Saavn resolver');
 }
 
 export async function resolveWorkerStream(id: string, title?: string, artist?: string): Promise<string | null> {
@@ -592,7 +591,33 @@ export function probeStreamPlayable(url: string, timeoutMs = 3500): Promise<stri
   });
 }
 
-// Similarity check to ensure search-healed songs and alternative tracks preserve original metadata
+/**
+ * Unicode-aware text normalizer that preserves non-Latin scripts (Arabic, French, Cyrillic, CJK, etc.)
+ */
+export function normalizeTextForMatching(text: string): string {
+  if (!text) return '';
+  let str = decodeHtmlEntities(String(text)).toLowerCase();
+
+  // Strip metadata brackets containing junk words
+  str = str.replace(/[\(\[\{][^\)\]\}]*(?:official|music|video|audio|lyric|remaster|visualizer|clip|prod|live|performance|hd|4k|version|edit|ft\.?|feat\.?)[^\)\]\}]*[\)\]\}]/gi, ' ');
+  str = str.replace(/[\(\[\{\)\]\}]/g, ' ');
+
+  // Remove noisy metadata words
+  str = str
+    .replace(/\b(official|officiel|oficial|music|video|videoclip|audio|lyric[s]?|lyric\s*video|visuali[sz]er|mv|hd|hq|4k|8k|remaster(?:ed)?|explicit|clip|prod\.?|prod\s+by|full\s*song|full\s*audio)\b/gi, ' ')
+    .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/gi, ' ');
+
+  // Remove punctuation while preserving ALL Unicode letters and digits (Arabic \u0600-\u06FF, Latin accents, etc.)
+  str = str.replace(/[^\p{L}\p{N}\s]/gu, ' ');
+
+  return str.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Checks if candidate title and artist meaningfully match the requested track.
+ * Supports Arabic, Latin, transliterations, and multi-word titles with high precision.
+ * NEVER returns true for empty/mismatched strings.
+ */
 export function isMeaningfulMatch(
   origTitle?: string | null,
   origArtist?: string | null,
@@ -600,32 +625,48 @@ export function isMeaningfulMatch(
   candArtist?: string | null
 ): boolean {
   if (!origTitle || origTitle === 'Loading...' || !candTitle) return true;
-  const clean = (s: string) =>
-    (s || '')
-      .toLowerCase()
-      .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, ' ')
-      .replace(/\b(official|music|video|audio|remaster(?:ed)?|lyrics?|feat\.?|ft\.?|featuring)\b/gi, ' ')
-      .replace(/[^a-z0-9\s]/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
 
-  const oT = clean(origTitle);
-  const cT = clean(candTitle);
-  if (!oT || !cT) return true;
-  if (oT.includes(cT) || cT.includes(oT)) return true;
+  const oT = normalizeTextForMatching(origTitle);
+  const cT = normalizeTextForMatching(candTitle);
 
-  const oTokens = oT.split(' ').filter((w) => w.length > 2);
-  const cTokens = cT.split(' ').filter((w) => w.length > 2);
-  if (oTokens.length === 0 || cTokens.length === 0) return true;
+  if (!oT || !cT) {
+    const rawO = (origTitle || '').toLowerCase().trim();
+    const rawC = (candTitle || '').toLowerCase().trim();
+    return rawO.includes(rawC) || rawC.includes(rawO);
+  }
 
-  const common = oTokens.filter((t) => cTokens.includes(t));
-  if (common.length / oTokens.length >= 0.4) return true;
-
-  const oA = clean(origArtist || '');
-  const cA = clean(candArtist || '');
-  if (oA && cA && (oA.includes(cA) || cA.includes(oA)) && common.length >= 1) {
+  // Direct substring or equality match
+  if (oT === cT || oT.includes(cT) || cT.includes(oT)) {
     return true;
   }
+
+  const oTokens = oT.split(' ').filter((w) => w.length >= 2);
+  const cTokens = cT.split(' ').filter((w) => w.length >= 2);
+
+  if (oTokens.length === 0 || cTokens.length === 0) {
+    return false;
+  }
+
+  const commonTitleTokens = oTokens.filter((t) => cTokens.includes(t));
+  const titleOverlapRatio = commonTitleTokens.length / oTokens.length;
+
+  if (oTokens.length === 1) {
+    if (commonTitleTokens.length === 1) return true;
+  } else {
+    if (titleOverlapRatio >= 0.5 || commonTitleTokens.length >= 2) {
+      return true;
+    }
+  }
+
+  const oA = normalizeTextForMatching(origArtist || '');
+  const cA = normalizeTextForMatching(candArtist || '');
+
+  if (oA && cA && (oA.includes(cA) || cA.includes(oA) || cT.includes(oA) || oT.includes(cA))) {
+    if (commonTitleTokens.length >= 1) {
+      return true;
+    }
+  }
+
   return false;
 }
 

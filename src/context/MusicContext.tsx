@@ -25,6 +25,7 @@ import {
   getTasteProfileRecommendations,
   verifySocialFollow,
   isMeaningfulMatch,
+  invalidateStreamUrlCache,
 } from '../services/api';
 import {
   cacheProfileLocally,
@@ -2395,6 +2396,9 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             mediaErrorCode: audio.error?.code,
             mediaErrorMessage: audio.error?.message,
           });
+          if (targetTrackId) {
+            invalidateStreamUrlCache(targetTrackId);
+          }
           try {
             audio.pause();
             audio.removeAttribute('src');
@@ -3179,7 +3183,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       logPlaybackDiagnostic('Initial candidate cycle failed, attempting alternative track fallback');
       try {
         const altSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
-        const altTrack = altSearch.find((t) => t.id && t.id.length === 11 && t.id !== resolvedTrack.id);
+        const altTrack = altSearch.find(
+          (t) =>
+            t.id &&
+            t.id.length === 11 &&
+            t.id !== resolvedTrack.id &&
+            isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, t.title, t.artist)
+        );
         if (altTrack) {
           const altProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${altTrack.id}?title=${encodeURIComponent(altTrack.title)}&artist=${encodeURIComponent(altTrack.artist || '')}`;
           const altSaavn = await resolveSaavnStream(

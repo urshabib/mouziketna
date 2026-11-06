@@ -3605,6 +3605,84 @@ app.get('/api/geo/check', (req: Request, res: Response) => {
 // 7. SERVER-AUTHORITATIVE AUDIO CHUNK STREAM VALIDATION
 // =========================================================================
 
+function decodeHtmlEntities(s: string): string {
+  if (!s) return '';
+  return String(s)
+    .replace(/&amp;/g, '&')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(+d));
+}
+
+function normalizeTextForMatching(text: string): string {
+  if (!text) return '';
+  let str = decodeHtmlEntities(String(text)).toLowerCase();
+
+  str = str.replace(/[\(\[\{][^\)\]\}]*(?:official|music|video|audio|lyric|remaster|visualizer|clip|prod|live|performance|hd|4k|version|edit|ft\.?|feat\.?)[^\)\]\}]*[\)\]\}]/gi, ' ');
+  str = str.replace(/[\(\[\{\)\]\}]/g, ' ');
+
+  str = str
+    .replace(/\b(official|officiel|oficial|music|video|videoclip|audio|lyric[s]?|lyric\s*video|visuali[sz]er|mv|hd|hq|4k|8k|remaster(?:ed)?|explicit|clip|prod\.?|prod\s+by|full\s*song|full\s*audio)\b/gi, ' ')
+    .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/gi, ' ');
+
+  str = str.replace(/[^\p{L}\p{N}\s]/gu, ' ');
+
+  return str.replace(/\s+/g, ' ').trim();
+}
+
+function isMeaningfulMatch(
+  origTitle?: string | null,
+  origArtist?: string | null,
+  candTitle?: string | null,
+  candArtist?: string | null
+): boolean {
+  if (!origTitle || origTitle === 'Loading...' || !candTitle) return true;
+
+  const oT = normalizeTextForMatching(origTitle);
+  const cT = normalizeTextForMatching(candTitle);
+
+  if (!oT || !cT) {
+    const rawO = (origTitle || '').toLowerCase().trim();
+    const rawC = (candTitle || '').toLowerCase().trim();
+    return rawO.includes(rawC) || rawC.includes(rawO);
+  }
+
+  if (oT === cT || oT.includes(cT) || cT.includes(oT)) {
+    return true;
+  }
+
+  const oTokens = oT.split(' ').filter((w) => w.length >= 2);
+  const cTokens = cT.split(' ').filter((w) => w.length >= 2);
+
+  if (oTokens.length === 0 || cTokens.length === 0) {
+    return false;
+  }
+
+  const commonTitleTokens = oTokens.filter((t) => cTokens.includes(t));
+  const titleOverlapRatio = commonTitleTokens.length / oTokens.length;
+
+  if (oTokens.length === 1) {
+    if (commonTitleTokens.length === 1) return true;
+  } else {
+    if (titleOverlapRatio >= 0.5 || commonTitleTokens.length >= 2) {
+      return true;
+    }
+  }
+
+  const oA = normalizeTextForMatching(origArtist || '');
+  const cA = normalizeTextForMatching(candArtist || '');
+
+  if (oA && cA && (oA.includes(cA) || cA.includes(oA) || cT.includes(oA) || oT.includes(cA))) {
+    if (commonTitleTokens.length >= 1) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 const serverAudioStreamCache = new Map<string, { url: string; expires: number; formats?: any[] }>();
 
 // Resolves and proxies authentic audio chunks with full Range & seek support
@@ -3717,8 +3795,8 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
         } catch {}
       }
 
-      // Tier 1: Multi-Variant High-Fidelity Studio Stream (Saavn 320kbps MP4)
-      if (songTitle) {
+      // Tier 1: Deterministic Multi-Tier Studio Stream Resolution (Saavn 320kbps MP4)
+      if (songTitle && songArtist && songArtist !== 'Various Artists') {
         const cleanT = songTitle
           .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
           .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
@@ -3731,52 +3809,41 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
           .trim();
         const firstWordA = cleanA.split(/[\s,]/)[0].trim();
 
-        // Search variants in order of precision:
-        // 1. Cleaned Title + Cleaned Artist
-        // 2. Full Title + Full Artist
-        // 3. Cleaned Title + First Word of Artist (resolves Arabic/Latin transliterations like 'Amr', 'Fairuz')
-        // 4. Cleaned Title alone
-        const variants: Array<[string, string]> = [
-          [cleanT, cleanA],
-          [songTitle, songArtist],
-          ...(firstWordA && firstWordA !== cleanA ? [[cleanT, firstWordA] as [string, string]] : []),
-        ].filter(([t, a]) => Boolean(t && a));
+        const probeSaavn = async (tStr: string, aStr: string): Promise<string | null> => {
+          try {
+            const saavnRes = await fetch(
+              `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(tStr)}&artist=${encodeURIComponent(aStr)}`,
+              { signal: AbortSignal.timeout(3000) }
+            );
+            if (!saavnRes.ok) return null;
+            const saavnId = (await saavnRes.text()).trim();
+            if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
+              return `https://aac.saavncdn.com/${saavnId}_320.mp4`;
+            }
+          } catch {}
+          return null;
+        };
 
-        const saavnVariantPromises = variants.map(async ([vTitle, vArtist]) => {
-          const saavnRes = await fetch(
-            `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(vTitle)}&artist=${encodeURIComponent(vArtist)}`,
-            { signal: AbortSignal.timeout(3500) }
-          );
-          if (!saavnRes.ok) throw new Error(`HTTP ${saavnRes.status}`);
-          const saavnId = (await saavnRes.text()).trim();
-          if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
-            const url = `https://aac.saavncdn.com/${saavnId}_320.mp4`;
-            return {
-              url,
-              formats: [
-                {
-                  type: 'audio/mp4',
-                  bitrate: 320000,
-                  url,
-                },
-              ],
-            };
-          }
-          throw new Error('miss');
-        });
+        // Priority 1: Exact Clean Title + Clean Artist
+        let saavnHit = await probeSaavn(cleanT, cleanA);
+        if (!saavnHit && songTitle !== cleanT) {
+          saavnHit = await probeSaavn(songTitle, songArtist);
+        }
 
-        try {
-          const matched = await Promise.any(saavnVariantPromises);
-          if (matched && matched.url) {
-            resolvedAudioUrl = matched.url;
-            cachedFormats = matched.formats;
-            serverAudioStreamCache.set(id, {
-              url: resolvedAudioUrl,
-              expires: Date.now() + 6 * 60 * 60 * 1000,
-              formats: cachedFormats,
-            });
-          }
-        } catch {}
+        // Priority 2: Transliteration / First Word of Artist
+        if (!saavnHit && firstWordA && firstWordA !== cleanA && firstWordA.length >= 3) {
+          saavnHit = await probeSaavn(cleanT, firstWordA);
+        }
+
+        if (saavnHit) {
+          resolvedAudioUrl = saavnHit;
+          cachedFormats = [{ type: 'audio/mp4', bitrate: 320000, url: resolvedAudioUrl }];
+          serverAudioStreamCache.set(id, {
+            url: resolvedAudioUrl,
+            expires: Date.now() + 6 * 60 * 60 * 1000,
+            formats: cachedFormats,
+          });
+        }
       }
 
       // Map to YouTube video ID if needed for Tier 2 ytdl / upstream fallback
@@ -3789,8 +3856,9 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
           if (sRes.ok) {
             const sData = await sRes.json();
             const items = Array.isArray(sData) ? sData : sData.items || [];
-            if (items.length > 0 && items[0].id && items[0].id.length === 11) {
-              targetYtId = items[0].id;
+            const matchedItem = items.find((it: any) => it.id && it.id.length === 11 && isMeaningfulMatch(songTitle, songArtist, it.title, it.artist || it.author));
+            if (matchedItem) {
+              targetYtId = matchedItem.id;
             }
           }
         } catch {}
@@ -3883,7 +3951,7 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
         } catch {}
       }
 
-      // Tier 4: Alternative YouTube search fallback (find an alternate playable upload)
+      // Tier 4: Alternative YouTube search fallback (with STRICT isMeaningfulMatch validation)
       if (!resolvedAudioUrl && songTitle) {
         try {
           const altSearchRes = await fetch(
@@ -3893,7 +3961,13 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
           if (altSearchRes.ok) {
             const altData = await altSearchRes.json();
             const items = Array.isArray(altData) ? altData : altData.items || [];
-            const altItem = items.find((it: any) => it.id && it.id.length === 11 && it.id !== targetYtId);
+            // Crucial: Only accept alternative tracks that pass strict title & artist matching!
+            const altItem = items.find((it: any) =>
+              it.id &&
+              it.id.length === 11 &&
+              it.id !== targetYtId &&
+              isMeaningfulMatch(songTitle, songArtist, it.title, it.artist || it.author)
+            );
             if (altItem && altItem.id) {
               const altSaavnRes = await fetch(
                 `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(altItem.title || songTitle)}&artist=${encodeURIComponent(altItem.author || songArtist)}`,
