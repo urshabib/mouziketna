@@ -477,15 +477,15 @@ export const MiniPlayer: React.FC = () => {
       }`}
     >
       {/* Thumbnail */}
-      <div className="relative flex-shrink-0">
+      <div className="relative flex-shrink-0 w-11 h-11 rounded-xl overflow-hidden shadow-md bg-[#1f1f23]">
         <TrackThumbImage
           track={activeTrack}
           alt={activeTrack.title}
-          className="w-11 h-11 rounded-xl object-cover shadow-md pointer-events-none"
+          className="w-full h-full object-cover pointer-events-none"
           draggable={false}
         />
         {swipeHint && (
-          <div className="absolute inset-0 bg-[var(--accent)]/95 rounded-xl flex items-center justify-center text-black font-extrabold text-[9px] text-center px-0.5">
+          <div className="absolute inset-0 bg-[var(--accent)]/95 flex items-center justify-center text-black font-extrabold text-[9px] text-center px-0.5 z-10">
             {swipeHint === 'next'
               ? 'NEXT'
               : swipeHint === 'prev'

@@ -3194,8 +3194,11 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           ok = await tryPlayCandidates(retryCandidates, token, resolvedTrack.id, 0);
           if (ok) {
             resolvedTrack.id = altTrack.id;
-            if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART) {
-              resolvedTrack.thumb = altTrack.thumb || FALLBACK_ART;
+            if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART || resolvedTrack.thumb.includes('photo-1614613535308-eb5fbd3d2c17')) {
+              resolvedTrack.thumb =
+                (altTrack.thumb && altTrack.thumb !== FALLBACK_ART && !altTrack.thumb.includes('photo-1614613535308-eb5fbd3d2c17'))
+                  ? altTrack.thumb
+                  : (safeInitialThumb || getStoredCoverForTrack(resolvedTrack.id) || (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/hqdefault.jpg` : canonicalThumbUrl(resolvedTrack.id)));
             }
           }
         }
@@ -3221,6 +3224,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isLoadingTrackRef.current = false;
       userIntentPlayingRef.current = true;
       setIsBuffering(false);
+      if (!resolvedTrack.thumb || resolvedTrack.thumb === FALLBACK_ART || resolvedTrack.thumb.includes('photo-1614613535308-eb5fbd3d2c17')) {
+        resolvedTrack.thumb =
+          safeInitialThumb ||
+          getStoredCoverForTrack(resolvedTrack.id) ||
+          (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/hqdefault.jpg` : canonicalThumbUrl(resolvedTrack.id));
+      }
       setActiveTrack(resolvedTrack);
       recordPlaybackSync(resolvedTrack);
       updateMediaSession(resolvedTrack);

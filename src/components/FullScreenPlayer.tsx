@@ -28,7 +28,7 @@ import {
   Mic,
 } from 'lucide-react';
 import { FALLBACK_ART } from '../services/api';
-import { useTrackThumb } from '../services/useTrackThumb';
+import { useTrackThumb, TrackThumbImage } from '../services/useTrackThumb';
 import { getSongHighlights } from '../services/songHighlights';
 import { TrackProgressBar } from './TrackProgressBar';
 import { motion, AnimatePresence } from 'motion/react';
@@ -704,15 +704,10 @@ export const FullScreenPlayer: React.FC = () => {
                   >
                     {/* Vinyl Center Art Label */}
                     <div className="w-[76%] h-[76%] rounded-full overflow-hidden relative shadow-2xl border-4 border-black/95 flex items-center justify-center">
-                      <img
-                        src={thumbSrc}
+                      <TrackThumbImage
+                        track={activeTrack}
                         alt={activeTrack.title}
-                        onError={(e) => {
-                          e.currentTarget.src = FALLBACK_ART;
-                        }}
                         className="w-full h-full object-cover rounded-full pointer-events-none select-none"
-                        draggable={false}
-                        onContextMenu={(e) => e.preventDefault()}
                       />
                       {/* Center Spindle Hole */}
                       <div className="absolute w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-[#0d0905] border-[3px] border-zinc-400 shadow-inner flex items-center justify-center z-10">
@@ -741,16 +736,11 @@ export const FullScreenPlayer: React.FC = () => {
                   className="w-full h-full rounded-3xl overflow-hidden relative cursor-pointer shadow-2xl"
                   title="Click to switch to spinning Vinyl CD view"
                 >
-                  <img
-                    src={thumbSrc}
+                  <TrackThumbImage
+                    track={activeTrack}
                     alt={activeTrack.title}
-                    onError={(e) => {
-                      e.currentTarget.src = FALLBACK_ART;
-                    }}
                     className="w-full h-full object-cover rounded-3xl select-none pointer-events-none"
                     style={{ aspectRatio: '1 / 1' }}
-                    draggable={false}
-                    onContextMenu={(e) => e.preventDefault()}
                   />
                 </div>
               )}

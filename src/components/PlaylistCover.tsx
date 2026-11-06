@@ -3,6 +3,7 @@ import { Track } from '../types';
 import { Music2 } from 'lucide-react';
 import { FALLBACK_ART } from '../services/api';
 import { getStoredCoverForTrack } from '../services/storage';
+import { isLetterboxedThumb } from '../services/useTrackThumb';
 
 interface PlaylistCoverProps {
   cover?: string | null;
@@ -55,7 +56,14 @@ const CollageCell: React.FC<{ track: Track; index: number }> = ({ track, index }
         alt={track.title || 'Track art'}
         onError={handleError}
         loading="lazy"
+        referrerPolicy="no-referrer"
+        crossOrigin="anonymous"
         className="w-full h-full object-cover block p-0 m-0 border-0 pointer-events-none select-none"
+        style={{
+          transform: isLetterboxedThumb(src) ? 'scale(1.35)' : undefined,
+          transformOrigin: 'center center',
+          transition: 'transform 0.25s ease-out',
+        }}
       />
     </div>
   );
@@ -125,7 +133,14 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
           alt={tracks[0]?.title || alt}
           onError={handleImgError}
           loading="lazy"
+          referrerPolicy="no-referrer"
+          crossOrigin="anonymous"
           className="w-full h-full object-cover pointer-events-none"
+          style={{
+            transform: isLetterboxedThumb(fallbackThumb) ? 'scale(1.35)' : undefined,
+            transformOrigin: 'center center',
+            transition: 'transform 0.25s ease-out',
+          }}
         />
       </div>
     );
