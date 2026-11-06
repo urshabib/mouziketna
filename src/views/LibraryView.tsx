@@ -69,10 +69,10 @@ export const LibraryView: React.FC = () => {
             return (
               <div
                 key={pl.id}
-                onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover)}
+                onClick={() => openCollection('custom-playlist', pl.id, pl.name, customCover, pl.tracks)}
                 className="group relative flex flex-col p-3 md:p-3.5 rounded-2xl md:rounded-3xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 hover:border-white/20 transition-all cursor-pointer shadow-sm hover:shadow-2xl hover:-translate-y-1.5"
               >
-                <div className="relative w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md group-hover:scale-105 transition-transform duration-300">
+                <div className="relative w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md">
                   <PlaylistCover
                     cover={customCover}
                     tracks={pl.tracks}

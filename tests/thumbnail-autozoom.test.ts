@@ -11,9 +11,13 @@ test('isLetterboxedThumb accurately detects YouTube 4:3 letterboxed thumbnails',
   assert.equal(isLetterboxedThumb('https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg'), true);
   assert.equal(isLetterboxedThumb('https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg'), true);
 
-  // Square album art sources should NOT be flagged as letterboxed
+  // Square album art sources and 16:9 HD sources should NOT be flagged as letterboxed
   assert.equal(isLetterboxedThumb('https://lh3.googleusercontent.com/somehash=w800-h800-l90-rj'), false);
   assert.equal(isLetterboxedThumb('https://c.saavncdn.com/123/500x500.jpg'), false);
+  assert.equal(isLetterboxedThumb('https://is1-ssl.mzstatic.com/image/thumb/Music123/v4/600x600bb.jpg'), false);
+  assert.equal(isLetterboxedThumb('https://i.scdn.co/image/ab67616d0000b273abc'), false);
+  assert.equal(isLetterboxedThumb('https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg'), false);
+  assert.equal(isLetterboxedThumb('https://i.ytimg.com/vi/dQw4w9WgXcQ/hq720.jpg'), false);
   assert.equal(isLetterboxedThumb('data:image/jpeg;base64,/9j/4AAQSkZJRg...'), false);
   assert.equal(isLetterboxedThumb(FALLBACK_ART), false);
   assert.equal(isLetterboxedThumb(null), false);

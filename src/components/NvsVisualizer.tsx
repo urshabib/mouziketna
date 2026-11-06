@@ -420,7 +420,7 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
           }`}
           style={{
             animationPlayState: isPlaying ? 'running' : 'paused',
-            transform: isLetterboxedThumb(thumbSrc) ? 'scale(1.35)' : undefined,
+            transform: isLetterboxedThumb(thumbSrc) ? 'scale(1.34)' : undefined,
             transformOrigin: 'center center',
           }}
           draggable={false}
