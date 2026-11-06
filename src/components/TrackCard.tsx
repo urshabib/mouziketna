@@ -4,7 +4,7 @@ import { Track } from '../types';
 import { Play, Heart, Download, MoreVertical, Music2, Check } from 'lucide-react';
 import { isDownloaded, getDownloadQuality } from '../services/storage';
 import { FALLBACK_ART } from '../services/api';
-import { useTrackThumb, resolveOfflineFallback } from '../services/useTrackThumb';
+import { useTrackThumb, resolveOfflineFallback, TrackThumbImage } from '../services/useTrackThumb';
 import { DownloadBadge } from './DownloadBadge';
 import { useLongPress } from '../hooks/useLongPress';
 
@@ -76,13 +76,10 @@ export const TrackCard: React.FC<TrackCardProps> = ({ track, onPlay, collectionI
     >
       {/* Artwork container */}
       <div className="relative w-full aspect-square rounded-xl md:rounded-2xl overflow-hidden mb-3 bg-white/[0.04] border border-white/5 shadow-md pointer-events-none select-none">
-        <img
-          src={displayThumb}
+        <TrackThumbImage
+          track={track}
           alt={track.title}
-          onError={handleThumbError}
           loading="lazy"
-          draggable={false}
-          onContextMenu={(e) => e.preventDefault()}
           className={`w-full h-full object-cover pointer-events-none select-none transition-transform duration-300 group-hover:scale-105 ${
             track.type === 'artist' ? 'rounded-full' : ''
           }`}

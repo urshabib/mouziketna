@@ -900,7 +900,7 @@ export const SettingsView: React.FC = () => {
                         type="button"
                         onClick={() => syncProfile({ ...userProfile, artQualityOffline: sz.id as any })}
                         className={`px-2 py-1 rounded text-[10px] font-bold transition-all cursor-pointer ${
-                          (userProfile.artQualityOffline || 'low') === sz.id
+                          ((userProfile.artQualityOffline || 'high') === sz.id || (sz.id === 'med' && userProfile.artQualityOffline === 'medium'))
                             ? 'bg-[var(--accent)] text-black font-extrabold'
                             : 'bg-white/5 text-white/60 hover:text-white'
                         }`}

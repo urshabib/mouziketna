@@ -113,15 +113,15 @@ export function upgradeThumbQuality(url: string | null | undefined): string {
   if (!url) return FALLBACK_ART;
   if (url.startsWith('blob:') || url.startsWith('data:')) return url;
   
-  // High-res YouTube Music / Google User Content covers (upgrade to pristine 800x800)
+  // High-res YouTube Music / Google User Content covers (upgrade to pristine 1200x1200)
   if (url.includes('googleusercontent.com') || url.includes('yt3.ggpht.com') || url.includes('ggpht.com')) {
     if (/=w\d+-h\d+/.test(url)) {
-      return url.replace(/=w\d+-h\d+[^?&]*/, '=w800-h800-l90-rj');
+      return url.replace(/=w\d+-h\d+[^?&]*/, '=w1200-h1200-l90-rj');
     }
     if (/=s\d+/.test(url)) {
-      return url.replace(/=s\d+[^?&]*/, '=s800-c-k-c0x00ffffff-no-rj');
+      return url.replace(/=s\d+[^?&]*/, '=s1200-c-k-c0x00ffffff-no-rj');
     }
-    return `${url}=w800-h800-l90-rj`;
+    return `${url}=w1200-h1200-l90-rj`;
   }
 
   // JioSaavn thumbnails upgrade to 500x500 HD
@@ -129,18 +129,31 @@ export function upgradeThumbQuality(url: string | null | undefined): string {
     return url.replace(/150x150\.jpg/g, '500x500.jpg').replace(/50x50\.jpg/g, '500x500.jpg');
   }
 
-  // High-res YouTube Video Thumbnails (upgrade to maxresdefault with hqdefault fallback 800x800)
-  if (url.includes('ytimg.com')) {
-    const idMatch = url.match(/\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})\//);
-    if (idMatch && idMatch[1]) {
-      return canonicalThumbUrl(idMatch[1]);
-    }
-    return url.replace(/\/(?:mqdefault|default)\.(?:webp|jpg)/, '/maxresdefault.jpg');
+  // Apple Music / iTunes covers upgrade to 600x600 HD
+  if (url.includes('mzstatic.com')) {
+    return url.replace(/\/\d+x\d+bb\./, '/600x600bb.');
   }
 
-  // Wsrv.nl URLs - bump to 800x800
+  // Spotify CDN covers upgrade to 640x640 HD
+  if (url.includes('i.scdn.co/image/')) {
+    return url.replace('ab67616d00001e02', 'ab67616d0000b273').replace('ab67616d00004851', 'ab67616d0000b273');
+  }
+
+  // High-res YouTube Video Thumbnails: upgrade to maxresdefault (1280x720 HD) for maximum sharpness!
+  if (url.includes('ytimg.com')) {
+    if (url.includes('maxresdefault') || url.includes('hq720')) {
+      return url;
+    }
+    const idMatch = url.match(/\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})\//);
+    if (idMatch && idMatch[1]) {
+      return `https://i.ytimg.com/vi/${idMatch[1]}/maxresdefault.jpg`;
+    }
+    return url.replace(/\/(?:sddefault|hqdefault|mqdefault|default)\.(?:webp|jpg)/, '/maxresdefault.jpg');
+  }
+
+  // Wsrv.nl URLs - bump to 1200x1200 with q=95
   if (url.includes('wsrv.nl/?url=')) {
-    return url.replace(/w=\d+/, 'w=800').replace(/h=\d+/, 'h=800').replace(/q=\d+/, 'q=90');
+    return url.replace(/w=\d+/, 'w=1200').replace(/h=\d+/, 'h=1200').replace(/q=\d+/, 'q=95');
   }
 
   return url;
@@ -156,7 +169,7 @@ export function getTrackThumbnail(item: any): string {
   if (item.img && typeof item.img === 'string') {
     if (item.img.startsWith('http')) return upgradeThumbQuality(item.img);
     if (item.img.startsWith('/')) {
-      return `https://lh3.googleusercontent.com${item.img}=w800-h800-l90-rj`;
+      return `https://lh3.googleusercontent.com${item.img}=w1200-h1200-l90-rj`;
     }
     return canonicalThumbUrl(item.img);
   }
@@ -173,7 +186,7 @@ export function getTrackThumbnail(item: any): string {
   if (item.thumbnail && typeof item.thumbnail === 'string') return upgradeThumbQuality(item.thumbnail);
   const targetId = item.id || item.playlistId || item.videoId || item.browseId;
   if (typeof targetId === 'string' && targetId.length > 0) {
-    if (targetId.startsWith('/')) return `https://lh3.googleusercontent.com${targetId}=w800-h800-l90-rj`;
+    if (targetId.startsWith('/')) return `https://lh3.googleusercontent.com${targetId}=w1200-h1200-l90-rj`;
     if (targetId.startsWith('PL') || targetId.startsWith('OL') || targetId.startsWith('RD')) return PLAYLIST_ART;
     return canonicalThumbUrl(targetId);
   }
@@ -184,7 +197,8 @@ export function canonicalThumbUrl(id: string): string {
   if (!id || id.length !== 11) {
     return FALLBACK_ART;
   }
-  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+  // maxresdefault is 1280x720 (crystal-clear 720p HD)
+  return `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
 }
 
 export function corsSafeThumbUrl(url: string | null): string | null {
@@ -196,45 +210,55 @@ export function corsSafeThumbUrl(url: string | null): string | null {
 export async function fetchArtworkBlob(
   trackId: string,
   thumbUrl: string | null,
-  quality: 'low' | 'medium' | 'high' | 'original' = 'low'
+  quality: 'low' | 'med' | 'medium' | 'high' | 'original' = 'high'
 ): Promise<Blob | null> {
-  const dim =
-    quality === 'low'
-      ? { w: 150, h: 150, q: 70 }
-      : quality === 'medium'
-      ? { w: 300, h: 300, q: 80 }
-      : quality === 'high'
-      ? { w: 500, h: 500, q: 85 }
-      : null;
+  const isMed = quality === 'med' || quality === 'medium';
+  const isLow = quality === 'low';
+  const dim = isLow
+    ? { w: 150, h: 150, q: 75 }
+    : isMed
+    ? { w: 300, h: 300, q: 80 }
+    : { w: 500, h: 500, q: 88 }; // High Quality (500px)
 
   const candidateUrls: string[] = [];
+  const highResThumb = thumbUrl ? upgradeThumbQuality(thumbUrl) : null;
 
-  // 1. If thumbUrl exists
-  if (thumbUrl) {
-    if (thumbUrl.startsWith('blob:') || thumbUrl.startsWith('data:')) {
+  // 1. If thumbUrl exists, use its upgraded 500px-1200px asset
+  if (highResThumb) {
+    if (highResThumb.startsWith('blob:') || highResThumb.startsWith('data:')) {
       try {
-        const res = await fetch(thumbUrl);
+        const res = await fetch(highResThumb);
         if (res.ok) return await res.blob();
       } catch {}
     }
 
     if (dim) {
       candidateUrls.push(
-        `https://wsrv.nl/?url=${encodeURIComponent(thumbUrl)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+        `https://wsrv.nl/?url=${encodeURIComponent(highResThumb)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
       );
     }
-    candidateUrls.push(corsSafeThumbUrl(thumbUrl) || thumbUrl);
+    candidateUrls.push(corsSafeThumbUrl(highResThumb) || highResThumb);
   }
 
-  // 2. YouTube canonical fallbacks
+  // 2. YouTube canonical fallbacks using pristine maxresdefault (1280x720), sddefault (640x480), and hqdefault (480x360)
   if (trackId && trackId.length === 11) {
-    const ytUrl = `https://i.ytimg.com/vi/${trackId}/mqdefault.jpg`;
+    const ytMaxres = `https://i.ytimg.com/vi/${trackId}/maxresdefault.jpg`;
+    const ytSd = `https://i.ytimg.com/vi/${trackId}/sddefault.jpg`;
+    const ytHq = `https://i.ytimg.com/vi/${trackId}/hqdefault.jpg`;
     if (dim) {
       candidateUrls.push(
-        `https://wsrv.nl/?url=${encodeURIComponent(ytUrl)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+        `https://wsrv.nl/?url=${encodeURIComponent(ytMaxres)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+      );
+      candidateUrls.push(
+        `https://wsrv.nl/?url=${encodeURIComponent(ytSd)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
+      );
+      candidateUrls.push(
+        `https://wsrv.nl/?url=${encodeURIComponent(ytHq)}&w=${dim.w}&h=${dim.h}&fit=cover&q=${dim.q}&output=webp`
       );
     }
-    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytUrl)}`);
+    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytMaxres)}`);
+    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytSd)}`);
+    candidateUrls.push(`https://wsrv.nl/?url=${encodeURIComponent(ytHq)}`);
   }
 
   // Attempt each candidate

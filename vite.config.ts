@@ -8,7 +8,7 @@ export default defineConfig(({command}) => {
   // Use relative base ('./') for production so assets load on any root, custom domain, or GitHub Pages subpath
   const basePath = process.env.BASE_URL || (command === 'serve' ? '/' : './');
   const buildTimestamp = Date.now();
-  const appVersion = '1.2.1';
+  const appVersion = '1.2.4';
 
   const versionPlugin = {
     name: 'mouziketna-version-generator',
@@ -35,12 +35,14 @@ export default defineConfig(({command}) => {
         updateSwCacheName('sw.js');
         updateSwCacheName('public/sw.js');
 
-        // Update window.__MOUZIKETNA_BUILD_TIME__ in index.html
-        if (fs.existsSync('index.html')) {
-          let html = fs.readFileSync('index.html', 'utf-8');
-          html = html.replace(/window\.__MOUZIKETNA_BUILD_TIME__\s*=\s*['"][^'"]+['"];/, `window.__MOUZIKETNA_BUILD_TIME__ = '${buildTimestamp}';`);
-          fs.writeFileSync('index.html', html);
-        }
+        // Update window.__MOUZIKETNA_BUILD_TIME__ in index.html and docs/index.html
+        ['index.html', 'docs/index.html'].forEach((fPath) => {
+          if (fs.existsSync(fPath)) {
+            let html = fs.readFileSync(fPath, 'utf-8');
+            html = html.replace(/window\.__MOUZIKETNA_BUILD_TIME__\s*=\s*['"][^'"]+['"];/, `window.__MOUZIKETNA_BUILD_TIME__ = '${buildTimestamp}';`);
+            fs.writeFileSync(fPath, html);
+          }
+        });
       } catch (e) {
         console.warn('Could not write version metadata:', e);
       }

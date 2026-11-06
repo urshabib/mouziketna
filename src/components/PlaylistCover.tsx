@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Track } from '../types';
 import { Music2 } from 'lucide-react';
 import { FALLBACK_ART } from '../services/api';
-import { getStoredCoverForTrack } from '../services/storage';
+import { TrackThumbImage } from '../services/useTrackThumb';
 
 interface PlaylistCoverProps {
   cover?: string | null;
@@ -13,53 +13,6 @@ interface PlaylistCoverProps {
   roundedClass?: string;
   alt?: string;
 }
-
-const CollageCell: React.FC<{ track: Track; index: number }> = ({ track, index }) => {
-  const getInitialArt = (): string => {
-    if (track.thumb && track.thumb !== FALLBACK_ART && !track.thumb.startsWith('blob:')) {
-      return track.thumb;
-    }
-    if (track.id) {
-      const stored = getStoredCoverForTrack(track.id);
-      if (stored && stored !== FALLBACK_ART && !stored.startsWith('blob:')) {
-        return stored;
-      }
-      if (track.id.length === 11) {
-        return `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg`;
-      }
-    }
-    return FALLBACK_ART;
-  };
-
-  const [src, setSrc] = useState<string>(getInitialArt);
-  const [triedAlt, setTriedAlt] = useState<boolean>(false);
-
-  const handleError = () => {
-    if (!triedAlt && track.id && track.id.length === 11) {
-      setTriedAlt(true);
-      const stored = getStoredCoverForTrack(track.id);
-      if (stored && stored !== src && stored !== FALLBACK_ART) {
-        setSrc(stored);
-        return;
-      }
-      setSrc(`https://i.ytimg.com/vi/${track.id}/mqdefault.jpg`);
-      return;
-    }
-    setSrc(FALLBACK_ART);
-  };
-
-  return (
-    <div key={track.id ? `${track.id}_${index}` : index} className="relative w-full h-full overflow-hidden bg-[#18181b] p-0 m-0 border-0">
-      <img
-        src={src}
-        alt={track.title || 'Track art'}
-        onError={handleError}
-        loading="lazy"
-        className="w-full h-full object-cover block p-0 m-0 border-0 pointer-events-none select-none"
-      />
-    </div>
-  );
-};
 
 export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
   cover,
@@ -89,13 +42,15 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
           alt={alt}
           onError={handleImgError}
           loading="lazy"
-          className="w-full h-full object-cover pointer-events-none"
+          className="w-full h-full object-cover pointer-events-none select-none"
         />
       </div>
     );
   }
 
-  // 2. Dynamic 2x2 Grid Collage when >= 4 tracks available (Seamless, per-cell error resilient)
+  // 2. Dynamic 2x2 Grid Collage when >= 4 tracks available
+  // Uses TrackThumbImage for each cell: displays the exact track art as shown in the playlist & player view,
+  // without zooming in further into the cover images!
   if (tracks.length >= 4) {
     const collageFour = tracks.slice(0, 4);
     return (
@@ -104,28 +59,29 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
         aria-label="2x2 Playlist collage"
       >
         {collageFour.map((t, idx) => (
-          <CollageCell key={t.id ? `${t.id}_${idx}` : idx} track={t} index={idx} />
+          <div
+            key={t.id ? `${t.id}_${idx}` : idx}
+            className="relative w-full h-full overflow-hidden bg-[#18181b] p-0 m-0 border-0"
+          >
+            <TrackThumbImage
+              track={t}
+              alt={t.title || `Track ${idx + 1}`}
+              className="w-full h-full object-cover block p-0 m-0 border-0 pointer-events-none select-none"
+            />
+          </div>
         ))}
       </div>
     );
   }
 
   // 3. Fall back gracefully to displaying the cover image of the first track (< 4 tracks)
-  const firstTrackThumb = tracks[0] ? (
-    (tracks[0].thumb && tracks[0].thumb !== FALLBACK_ART && !tracks[0].thumb.startsWith('blob:'))
-      ? tracks[0].thumb
-      : (tracks[0].id ? (getStoredCoverForTrack(tracks[0].id) || (tracks[0].id.length === 11 ? `https://i.ytimg.com/vi/${tracks[0].id}/hqdefault.jpg` : null)) : null)
-  ) : null;
-  const fallbackThumb = firstTrackThumb || (userCoverUrl && !userCoverUrl.startsWith('data:') && userCoverUrl !== FALLBACK_ART ? userCoverUrl : null);
-  if (fallbackThumb) {
+  if (tracks.length > 0 && tracks[0]) {
     return (
       <div className={`relative overflow-hidden bg-[#18181b] ${sizeClass} ${roundedClass} ${className}`}>
-        <img
-          src={fallbackThumb}
+        <TrackThumbImage
+          track={tracks[0]}
           alt={tracks[0]?.title || alt}
-          onError={handleImgError}
-          loading="lazy"
-          className="w-full h-full object-cover pointer-events-none"
+          className="w-full h-full object-cover block p-0 m-0 border-0 pointer-events-none select-none"
         />
       </div>
     );
@@ -140,4 +96,5 @@ export const PlaylistCover: React.FC<PlaylistCoverProps> = ({
     </div>
   );
 };
+
 

@@ -106,18 +106,18 @@ export function getStoredCoverForTrack(id: string): string | null {
   if (offThumb) return offThumb;
 
   try {
+    const isValidArt = (u: any): boolean =>
+      typeof u === 'string' &&
+      u.trim().length > 5 &&
+      !u.startsWith('blob:') &&
+      !u.includes('photo-1614613535308-eb5fbd3d2c17');
+
     // 1. Check last played track in localStorage
     const lastPlayedRaw = localStorage.getItem('mouzika_last_played_track');
     if (lastPlayedRaw) {
       try {
         const lastPlayed = JSON.parse(lastPlayedRaw);
-        if (
-          lastPlayed &&
-          lastPlayed.id === id &&
-          lastPlayed.thumb &&
-          !lastPlayed.thumb.startsWith('blob:') &&
-          lastPlayed.thumb.trim().length > 5
-        ) {
+        if (lastPlayed && lastPlayed.id === id && isValidArt(lastPlayed.thumb)) {
           return lastPlayed.thumb;
         }
       } catch {}
@@ -143,7 +143,7 @@ export function getStoredCoverForTrack(id: string): string | null {
       // Check recentlyPlayed first (most recent track data)
       if (Array.isArray(parsed.recentlyPlayed)) {
         const found = parsed.recentlyPlayed.find((t: any) => t && t.id === id);
-        if (found?.thumb && !found.thumb.startsWith('blob:') && found.thumb.length > 5) {
+        if (isValidArt(found?.thumb)) {
           return found.thumb;
         }
       }
@@ -151,7 +151,7 @@ export function getStoredCoverForTrack(id: string): string | null {
       // Check likedSongs
       if (Array.isArray(parsed.likedSongs)) {
         const found = parsed.likedSongs.find((t: any) => t && t.id === id);
-        if (found?.thumb && !found.thumb.startsWith('blob:') && found.thumb.length > 5) {
+        if (isValidArt(found?.thumb)) {
           return found.thumb;
         }
       }
@@ -161,7 +161,7 @@ export function getStoredCoverForTrack(id: string): string | null {
         for (const pl of parsed.customPlaylists) {
           if (Array.isArray(pl.tracks)) {
             const found = pl.tracks.find((t: any) => t && t.id === id);
-            if (found?.thumb && !found.thumb.startsWith('blob:') && found.thumb.length > 5) {
+            if (isValidArt(found?.thumb)) {
               return found.thumb;
             }
           }
@@ -335,7 +335,7 @@ export function saveDeviceSettings(profile: Partial<UserProfile>) {
       dataSaverLevel: profile.dataSaverLevel || 'off',
       downloadQuality: profile.downloadQuality || 'stable',
       downloadArtOffline: profile.downloadArtOffline !== false,
-      artQualityOffline: profile.artQualityOffline || 'low',
+      artQualityOffline: profile.artQualityOffline || 'high',
       customAppName: profile.customAppName || undefined,
       appLogo: profile.appLogo || 'default',
       downloadLyricsOffline: profile.downloadLyricsOffline !== false,
