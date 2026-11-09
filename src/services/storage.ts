@@ -537,32 +537,12 @@ export function mergeProfilesSafely(
       if (!prev) {
         plMap.set(pl.id, { ...pl });
       } else {
-        const incomingIds = new Set((pl.tracks || []).map((t: any) => t?.id).filter(Boolean));
-        const orderedTracks: any[] = [];
-        const seenTrackIds = new Set<string>();
-        // Preserve the incoming (e.g. serverData) track order first
-        if (Array.isArray(pl.tracks)) {
-          pl.tracks.forEach((t: any) => {
-            if (t && t.id && !seenTrackIds.has(t.id)) {
-              seenTrackIds.add(t.id);
-              orderedTracks.push(t);
-            }
-          });
-        }
-        // Append any local-only tracks not yet on server
-        if (Array.isArray(prev.tracks)) {
-          prev.tracks.forEach((t: any) => {
-            if (t && t.id && !incomingIds.has(t.id) && !seenTrackIds.has(t.id)) {
-              seenTrackIds.add(t.id);
-              orderedTracks.push(t);
-            }
-          });
-        }
+        // Use the incoming playlist's exact track list & order so deleted/reordered tracks are respected
         plMap.set(pl.id, {
           ...prev,
           ...pl,
           title: pl.title || prev.title,
-          tracks: orderedTracks,
+          tracks: Array.isArray(pl.tracks) ? pl.tracks : (prev.tracks || []),
         });
       }
     });
