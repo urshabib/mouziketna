@@ -2812,47 +2812,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     hasNudgedTransitionRef.current = false;
     playNextCountRef.current = 0;
     audio.muted = false;
+    const token = ++playTokenRef.current;
+    hasPrefetchedNextRef.current = false;
     audio.volume = (volumeRef.current || 50) / 100;
     ensureCarrierActive();
 
-    // Immediately anchor MediaSession metadata and declare 'playing' state to OS
-    // Crucial for Android 17 / One UI 9 Background Audio Hardening and iOS WebKit audio persistence
-    updateMediaSession(track);
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.playbackState = 'playing';
-      if ('setPositionState' in navigator.mediaSession) {
-        try {
-          navigator.mediaSession.setPositionState({
-            duration: track.duration || 180,
-            playbackRate: 1,
-            position: 0.001,
-          });
-        } catch {}
-      }
-    }
-
-    hasPrefetchedNextRef.current = false;
-    const token = ++playTokenRef.current;
-
-    // Safety timeout: ensure isLoadingTrackRef is never stuck true even if network or candidate resolution lags
+    // Auto-timeout watchdog for stalled candidate loading
     const loadingSafetyTimer = setTimeout(() => {
-      if (token === playTokenRef.current) {
+      if (token === playTokenRef.current && isLoadingTrackRef.current) {
         isLoadingTrackRef.current = false;
+        setIsBuffering(false);
       }
-    }, 3500);
-
-    // When playing directly from outside queue (search or home), create autoplay queue
-    if (!fromQueue) {
-      setPlaybackQueue([track]);
-      setQueueIndex(0);
-      generateRadioQueue(track);
-    }
-
-    // Push to history
-    if (activeTrack && activeTrack.id !== track.id) {
-      playedHistoryRef.current.push(activeTrack);
-      if (playedHistoryRef.current.length > 50) playedHistoryRef.current.shift();
-    }
+    }, 25000);
 
     // Ensure we never store a dead blob URL into persistent storage and recover best available 500px+ cover
     const safeInitialThumb = (track.thumb && !track.thumb.startsWith('blob:') && track.thumb.trim().length > 5 && track.thumb !== FALLBACK_ART)
@@ -2865,6 +2836,37 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                   ? upgradeThumbQuality(getStoredCoverForTrack(track.id))
                   : (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/maxresdefault.jpg` : canonicalThumbUrl(track.id)))));
     const persistentInitialTrack = { ...track, thumb: safeInitialThumb };
+
+    if (!fromQueue) {
+      setPlaybackQueue((prev) => {
+        const existingIdx = prev.findIndex((t) => t.id === track.id);
+        if (existingIdx !== -1) {
+          setQueueIndex(existingIdx);
+          queueIndexRef.current = existingIdx;
+          return prev;
+        }
+        const newQueue = [persistentInitialTrack, ...prev.filter((t) => t.id !== track.id)];
+        setQueueIndex(0);
+        queueIndexRef.current = 0;
+        return newQueue;
+      });
+    }
+
+    // Immediately anchor MediaSession metadata with the resolved song cover and declare 'playing' state to OS
+    // Crucial for Android 17 / One UI 9 Background Audio Hardening and iOS WebKit audio persistence
+    updateMediaSession(persistentInitialTrack);
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'playing';
+      if ('setPositionState' in navigator.mediaSession) {
+        try {
+          navigator.mediaSession.setPositionState({
+            duration: track.duration || 180,
+            playbackRate: 1,
+            position: 0.001,
+          });
+        } catch {}
+      }
+    }
 
     setActiveTrack(persistentInitialTrack);
     setIsMiniPlayerDismissed(false);
@@ -3332,7 +3334,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       );
     };
 
-    // Candidate 1: Raw direct URL (guarantees OS media notification engine can grab it without proxy failures)
+    // Candidate 1: Direct song artwork (primary)
     addCandidateSizes(primaryThumb);
 
     // Candidate 2: High-resolution direct YouTube CDN variants if 11-char YouTube ID
@@ -3342,22 +3344,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addCandidateSizes(`https://i.ytimg.com/vi/${t.id}/maxresdefault.jpg`);
     }
 
-    // Candidate 3: wsrv.nl square cropped proxy for platforms that support external image proxies
+    // Candidate 3: wsrv.nl square cropped proxy for platforms that prefer square dimensions
     if (!primaryThumb.startsWith('blob:') && !primaryThumb.startsWith('data:') && !primaryThumb.includes('wsrv.nl')) {
       try {
         const proxied = `https://wsrv.nl/?url=${encodeURIComponent(primaryThumb)}&w=512&h=512&fit=cover`;
         addCandidateSizes(proxied);
       } catch {}
     }
-
-    // Always append fallback app icon so lockscreen/island NEVER renders empty or broken
-    try {
-      const appIconUrl = new URL('./icon-512.png', window.location.href).href;
-      artworkList.push(
-        { src: appIconUrl, sizes: '192x192', type: 'image/png' },
-        { src: appIconUrl, sizes: '512x512', type: 'image/png' }
-      );
-    } catch {}
 
     try {
       navigator.mediaSession.metadata = new MediaMetadata({

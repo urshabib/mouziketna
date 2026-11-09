@@ -682,8 +682,9 @@ export async function resolveRthmxStream(
     const res = await fetchWithTimeout(beUrl, 3800);
     if (res.ok) {
       const data = await res.json();
-      if (data?.streamUrl && data.streamUrl.startsWith('http')) {
-        return data.streamUrl;
+      const resolvedUrl = data?.url || data?.streamUrl;
+      if (resolvedUrl && typeof resolvedUrl === 'string' && resolvedUrl.startsWith('http')) {
+        return resolvedUrl;
       }
     }
   } catch {}
