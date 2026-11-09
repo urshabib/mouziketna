@@ -3688,11 +3688,17 @@ export function cleanSongTitleAndArtist(rawTitle?: string | null, rawArtist?: st
     .replace(/\s*(?:records|recordings|entertainment|studios?|music|france|mena|india|latin|label|group|production[s]?)\b/gi, '')
     .trim();
 
-  // 2. Strip brackets with junk: (Official Video), [Lyrics], (Audio), (feat. X), etc.
-  const bracketJunk = /[\(\[\{][^\)\]\}]*(?:official|officiel|oficial|music|video|audio|lyric|remaster|visualizer|clip|prod|live|performance|hd|4k|8k|version|edit|color\s*coded|sub\s*español|legendado|sped\s*up|slowed|reverb|clean|explicit|ft\.?|feat\.?)[^\)\]\}]*[\)\]\}]/gi;
+  // 2. Strip ellipses and dots sequence
+  title = title.replace(/\.{2,}|…/g, ' ').trim();
+
+  // 3. Strip brackets with metadata junk (even if truncated or unclosed, e.g. "(Official Lyric...)", "(Official Mus... )", "[Music Video]")
+  const bracketJunk = /[\(\[\{][^\)\]\}]*(?:official|officiel|oficial|music|mus\b|video|vid\b|audio|lyric|remaster|visualizer|clip|prod|live|performance|hd|4k|8k|version|edit|color\s*coded|sub\s*español|legendado|sped\s*up|slowed|reverb|clean|explicit|ft\.?|feat\.?|from\b)[^\)\]\}]*(?:[\)\]\}]|$)/gi;
   let cleanT = title.replace(bracketJunk, ' ');
 
-  // 3. Strip standalone junk words / phrases
+  // Strip unclosed opening bracket at end of string
+  cleanT = cleanT.replace(/\s*[\(\[\{][^\)\]\}]*$/, ' ');
+
+  // 4. Strip standalone junk words / phrases
   cleanT = cleanT
     .replace(/\b(official\s*(?:music)?\s*(?:video|audio|lyric|clip|visualizer)?)\b/gi, ' ')
     .replace(/\b(music\s*video|lyric\s*video|clip\s*officiel|video\s*officiel|audio\s*officiel)\b/gi, ' ')
@@ -3711,7 +3717,7 @@ export function cleanSongTitleAndArtist(rawTitle?: string | null, rawArtist?: st
     extractedArtists.push(artist);
   }
 
-  // 4. Detect separator in title: Artist - Title OR Title - Artist
+  // 5. Detect separator in title: Artist - Title OR Title - Artist
   if (/[-–—:|•_]/.test(cleanT)) {
     const parts = cleanT.split(/\s*[-–—:|•_]\s*/).map((p) => p.trim()).filter(Boolean);
     if (parts.length >= 2) {
@@ -3730,19 +3736,30 @@ export function cleanSongTitleAndArtist(rawTitle?: string | null, rawArtist?: st
     }
   }
 
-  // 5. If pureTitle still starts with artist name, remove it
+  // 6. If pureTitle still starts with artist name (with or without dots, e.g. "A.L.A" or "ALA"), remove it
   for (const a of extractedArtists) {
-    if (a && a.length >= 2 && pureTitle.toLowerCase().startsWith(a.toLowerCase())) {
-      pureTitle = pureTitle.slice(a.length).replace(/^[\s\-–—:|•_]+/, '').trim();
+    if (a && a.length >= 2) {
+      const aNoDot = a.replace(/\./g, '');
+      if (pureTitle.toLowerCase().startsWith(a.toLowerCase())) {
+        pureTitle = pureTitle.slice(a.length).replace(/^[\s\-–—:|•_.]+/, '').trim();
+      } else if (pureTitle.toLowerCase().startsWith(aNoDot.toLowerCase())) {
+        pureTitle = pureTitle.slice(aNoDot.length).replace(/^[\s\-–—:|•_.]+/, '').trim();
+      }
     }
   }
 
-  // 6. Split extracted artists by comma, &, feat, /
+  pureTitle = pureTitle.replace(/^[\s\-–—:|•_.]+|[\s\-–—:|•_.]+$/g, '').trim();
+
+  // 7. Split extracted artists by comma, &, feat, / and extract clean variants
   const finalArtists: string[] = [];
   for (const a of extractedArtists) {
     a.split(/[,&/+]|\bfeat\.?\b|\bft\.?\b/gi).forEach((sub) => {
-      const s = sub.trim();
+      const s = sub.trim().replace(/^[\s\-–—:|•_.]+|[\s\-–—:|•_.]+$/g, '');
       if (s && s.length >= 2 && !finalArtists.includes(s)) finalArtists.push(s);
+      const dotLess = s.replace(/\./g, '').trim();
+      if (dotLess && dotLess.length >= 2 && !finalArtists.includes(dotLess)) {
+        finalArtists.push(dotLess);
+      }
     });
   }
 
@@ -3765,16 +3782,20 @@ export function generateSongSearchQueries(rawTitle?: string | null, rawArtist?: 
     if (s && s.length >= 2) qSet.add(s);
   };
 
-  // 1. Song name alone (pure title)
+  // 1. Song name alone (pure title) e.g. "Wfet" or "Wili"
   add(info.pureTitle);
 
-  // 2. Artist "space" song name
-  if (info.primaryArtist) add(`${info.primaryArtist} ${info.pureTitle}`);
-  for (const a of info.artists) add(`${a} ${info.pureTitle}`);
+  // 2. Dot-less artist + song name (e.g. "ALA Wfet" which matches JioSaavn exactly!)
+  for (const a of info.artists) {
+    add(`${a} ${info.pureTitle}`);
+    add(`${info.pureTitle} ${a}`);
+  }
 
-  // 3. Song name "space" artist
-  if (info.primaryArtist) add(`${info.pureTitle} ${info.primaryArtist}`);
-  for (const a of info.artists) add(`${info.pureTitle} ${a}`);
+  // 3. Primary artist + song name
+  if (info.primaryArtist) {
+    add(`${info.primaryArtist} ${info.pureTitle}`);
+    add(`${info.pureTitle} ${info.primaryArtist}`);
+  }
 
   // 4. Cleaned title alone if distinct
   if (info.cleanTitle !== info.pureTitle && !info.cleanTitle.includes(' - ')) {
@@ -3807,8 +3828,9 @@ export function strictMatchSong(
 ): boolean {
   if (!origTitle || !cand || !cand.title) return false;
 
+  const targetInfo = cleanSongTitleAndArtist(origTitle, origArtist);
   const normTarget = normalizeTextForMatching(origTitle);
-  const normCleanTarget = normalizeTextForMatching(extractTargetTitleClean(origTitle));
+  const normCleanTarget = normalizeTextForMatching(targetInfo.pureTitle);
   const normCand = normalizeTextForMatching(cand.title);
 
   const strictTarget = cleanStrictLetters(normTarget);
@@ -3847,11 +3869,14 @@ export function strictMatchSong(
 
   if (!titleMatch) return false;
 
-  // 2. Artist Name Validation (Artist especially must match to prevent wrong media / cover mismatch)
-  const targetArtists = extractTargetArtistList(origTitle, origArtist);
+  // 2. Strict Artist Name Validation:
+  // If the candidate's artist does NOT match ours, immediately refuse it!
+  const targetArtists = targetInfo.artists;
   const candArtists = extractArtistCandidates(cand);
 
-  if (targetArtists.length === 0) return true;
+  if (targetArtists.length === 0 || candArtists.length === 0) {
+    return false;
+  }
 
   let artistMatch = false;
   for (const tA of targetArtists) {
@@ -3860,15 +3885,28 @@ export function strictMatchSong(
     for (const cA of candArtists) {
       const sCA = cleanStrictLetters(cA);
       if (!sCA || sCA.length < 2) continue;
-      if (sCA === sTA || sCA.includes(sTA) || sTA.includes(sCA)) {
+
+      // Exact normalized letter match (e.g. "ala" === "ala")
+      if (sCA === sTA) {
         artistMatch = true;
         break;
       }
-      const firstWordTA = cleanStrictLetters(tA.split(/\s+/)[0]);
-      const firstWordCA = cleanStrictLetters(cA.split(/\s+/)[0]);
-      if (firstWordTA && firstWordCA && firstWordTA.length >= 3 && firstWordTA === firstWordCA) {
+
+      // Substring match ONLY if both strings are substantial (length >= 4)
+      if (sTA.length >= 4 && sCA.length >= 4 && (sCA.includes(sTA) || sTA.includes(sCA))) {
         artistMatch = true;
         break;
+      }
+
+      // Word-level token match (e.g. "Amr Diab" vs "Amr Diab Official")
+      const wordsTA = tA.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+      const wordsCA = cA.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+      if (wordsTA.length >= 2 && wordsCA.length >= 2) {
+        const commonWords = wordsTA.filter((w) => wordsCA.includes(w));
+        if (commonWords.length >= 2 && commonWords.length / wordsTA.length >= 0.7) {
+          artistMatch = true;
+          break;
+        }
       }
     }
     if (artistMatch) break;
@@ -3973,6 +4011,68 @@ async function resolveRthmxStream(targetTitle: string, targetArtist: string, qua
   return null;
 }
 
+// ==========================================
+// METHOD 3: CYBROX AUDIO EXTRACTOR
+// ==========================================
+export function normalizeYoutubeUrl(url: string): string {
+  try {
+    const trimmed = (url || '').trim();
+    if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+      return `http://youtube.com/watch?v=${trimmed}`;
+    }
+    const urlObj = new URL(trimmed);
+    if (urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')) {
+      const videoId = urlObj.hostname.includes('youtu.be')
+        ? urlObj.pathname.slice(1)
+        : urlObj.searchParams.get('v');
+      if (videoId) {
+        return `http://youtube.com/watch?v=${videoId}`;
+      }
+    }
+  } catch {}
+  return url;
+}
+
+export async function resolveCybroxAudio(trackIdOrUrl: string): Promise<{ downloadUrl: string; title?: string } | null> {
+  if (!trackIdOrUrl) return null;
+  const cleanUrl = normalizeYoutubeUrl(trackIdOrUrl);
+
+  try {
+    const res = await fetch(`https://cybrox.pro/api/extract?url=${encodeURIComponent(cleanUrl)}`, {
+      signal: AbortSignal.timeout(6500),
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36',
+        Referer: 'https://cybrox.pro/',
+        Origin: 'https://cybrox.pro',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+      },
+    });
+
+    if (!res.ok) return null;
+    const metadata: any = await res.json().catch(() => null);
+    if (!metadata || !metadata.success || !Array.isArray(metadata.formats) || metadata.formats.length === 0) {
+      return null;
+    }
+
+    const targetFormat =
+      metadata.formats.find((f: any) => f.ext === 'mp3') ||
+      metadata.formats.find((f: any) => f.label && String(f.label).toLowerCase().includes('audio'));
+
+    if (!targetFormat || !targetFormat.download_url) return null;
+
+    const fullDownloadUrl = new URL(targetFormat.download_url, 'https://cybrox.pro').href;
+    return {
+      downloadUrl: fullDownloadUrl,
+      title: metadata.title,
+    };
+  } catch (err: any) {
+    console.warn('[Cybrox] Extraction notice:', err?.message || err);
+    return null;
+  }
+}
 
 const serverAudioStreamCache = new Map<string, { url: string; expires: number; formats?: any[] }>();
 
@@ -4086,59 +4186,8 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
         } catch {}
       }
 
-      // Tier 1: Deterministic Multi-Tier Studio Stream Resolution (Saavn 320kbps MP4)
-      if (songTitle && songArtist && songArtist !== 'Various Artists') {
-        const cleanT = songTitle
-          .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-          .replace(/[\(\[\{][^)\]\}]*[\)\]\}]/g, '')
-          .replace(/["'"]/g, '')
-          .trim();
-        const cleanA = (songArtist || '')
-          .replace(/(\s*-\s*Topic|\s*Official|\s*VEVO)/gi, '')
-          .replace(/,.*$/, '')
-          .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/i, '')
-          .trim();
-        const firstWordA = cleanA.split(/[\s,]/)[0].trim();
-
-        const probeSaavn = async (tStr: string, aStr: string): Promise<string | null> => {
-          try {
-            const saavnRes = await fetch(
-              `https://fast-saavn.vercel.app/api?title=${encodeURIComponent(tStr)}&artist=${encodeURIComponent(aStr)}`,
-              { signal: AbortSignal.timeout(3000) }
-            );
-            if (!saavnRes.ok) return null;
-            const saavnId = (await saavnRes.text()).trim();
-            if (saavnId && saavnId.length >= 6 && !saavnId.includes(' ') && !saavnId.toLowerCase().includes('error')) {
-              return `https://aac.saavncdn.com/${saavnId}_320.mp4`;
-            }
-          } catch {}
-          return null;
-        };
-
-        // Priority 1: Exact Clean Title + Clean Artist
-        let saavnHit = await probeSaavn(cleanT, cleanA);
-        if (!saavnHit && songTitle !== cleanT) {
-          saavnHit = await probeSaavn(songTitle, songArtist);
-        }
-
-        // Priority 2: Transliteration / First Word of Artist
-        if (!saavnHit && firstWordA && firstWordA !== cleanA && firstWordA.length >= 3) {
-          saavnHit = await probeSaavn(cleanT, firstWordA);
-        }
-
-        if (saavnHit) {
-          resolvedAudioUrl = saavnHit;
-          cachedFormats = [{ type: 'audio/mp4', bitrate: 320000, url: resolvedAudioUrl }];
-          serverAudioStreamCache.set(id, {
-            url: resolvedAudioUrl,
-            expires: Date.now() + 6 * 60 * 60 * 1000,
-            formats: cachedFormats,
-          });
-        }
-      }
-
-      // Tier 1.9: Rthmx High-Fidelity Decrypted Saavn Resolver (Strict Song & Artist Matching)
-      // Recovers less famous or broken songs that failed on Tier 1 (fast-saavn) using artist "space" song name search
+      // Tier 1: Fallback Server Studio Stream Resolution (Rthmx Decrypted with Strict Artist Match)
+      // Only returns songs where title AND artist strictly match our app's track
       if (!resolvedAudioUrl && songTitle) {
         try {
           const rthmxHit = await resolveRthmxStream(songTitle, songArtist || '');
@@ -4152,7 +4201,50 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
             });
           }
         } catch (rthmxErr) {
-          console.warn('[StreamProxy] rthmx fallback notice:', rthmxErr);
+          console.warn('[StreamProxy] rthmx notice:', rthmxErr);
+        }
+      }
+
+      // Map to YouTube video ID if needed for Method 3 (Cybrox) and subsequent fallbacks
+      if (!resolvedAudioUrl && !targetYtId && songTitle) {
+        try {
+          const cleanInfo = cleanSongTitleAndArtist(songTitle, songArtist);
+          const sRes = await fetch(
+            `${UPSTREAM_WORKER}/api/search-proxy?q=${encodeURIComponent(`${cleanInfo.pureTitle} ${cleanInfo.primaryArtist}`.trim())}&f=song`,
+            { signal: AbortSignal.timeout(3000) }
+          );
+          if (sRes.ok) {
+            const sData = await sRes.json();
+            const items = Array.isArray(sData) ? sData : sData.items || [];
+            const matchedItem = items.find((it: any) => it.id && it.id.length === 11 && isMeaningfulMatch(songTitle, songArtist, it.title, it.artist || it.author));
+            if (matchedItem) {
+              targetYtId = matchedItem.id;
+            }
+          }
+        } catch {}
+      }
+
+      // Method 3: Cybrox Audio Extraction for Failed/Mismatched Songs (https://www.youtube.com/watch?v=trackid)
+      if (!resolvedAudioUrl && targetYtId) {
+        try {
+          const cybroxHit = await resolveCybroxAudio(targetYtId);
+          if (cybroxHit && cybroxHit.downloadUrl) {
+            resolvedAudioUrl = cybroxHit.downloadUrl;
+            cachedFormats = [
+              {
+                type: 'audio/mpeg',
+                bitrate: 320000,
+                url: resolvedAudioUrl,
+              },
+            ];
+            serverAudioStreamCache.set(id, {
+              url: resolvedAudioUrl,
+              expires: Date.now() + 4 * 60 * 60 * 1000,
+              formats: cachedFormats,
+            });
+          }
+        } catch (cybroxErr: any) {
+          console.warn(`[StreamProxy] Cybrox extraction notice for ${targetYtId}:`, cybroxErr?.message || cybroxErr);
         }
       }
 
@@ -4319,10 +4411,17 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
 
       // Stream audio chunks with full Range support directly to browser audio element
       const rangeHeader = req.headers.range;
+      const isCybrox = resolvedAudioUrl.includes('cybrox.pro');
       const streamRes = await fetch(resolvedAudioUrl, {
         headers: {
           ...(rangeHeader ? { range: rangeHeader } : {}),
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/157.0.0.0 Safari/537.36',
+          ...(isCybrox
+            ? {
+                Referer: 'https://cybrox.pro/',
+                Origin: 'https://cybrox.pro',
+              }
+            : {}),
         },
       });
 
@@ -4426,6 +4525,59 @@ app.get('/api/resolve-rthmx', async (req: Request, res: Response) => {
     return res.status(404).json({ error: 'No matching audio found' });
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'Resolution error' });
+  }
+});
+
+// Dedicated Method 3: Cybrox Audio Resolver endpoint
+app.get('/api/resolve-cybrox', async (req: Request, res: Response) => {
+  const targetId = (req.query.id as string) || '';
+  const targetUrl = (req.query.url as string) || '';
+  const title = (req.query.title as string) || '';
+  const artist = (req.query.artist as string) || '';
+
+  let queryId = targetId;
+  if (!queryId && targetUrl) {
+    const m = targetUrl.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([a-zA-Z0-9_-]{11})/);
+    if (m) queryId = m[1];
+  }
+
+  if (!queryId && (title || artist)) {
+    try {
+      const cleanInfo = cleanSongTitleAndArtist(title, artist);
+      const sRes = await fetch(
+        `${UPSTREAM_WORKER}/api/search-proxy?q=${encodeURIComponent(`${cleanInfo.pureTitle} ${cleanInfo.primaryArtist}`.trim())}&f=song`,
+        { signal: AbortSignal.timeout(3500) }
+      );
+      if (sRes.ok) {
+        const sData = await sRes.json();
+        const items = Array.isArray(sData) ? sData : sData.items || [];
+        const match = items.find((it: any) => it.id && it.id.length === 11);
+        if (match) queryId = match.id;
+      }
+    } catch {}
+  }
+
+  if (!queryId) {
+    return res.status(400).json({ error: 'Missing track id or url' });
+  }
+
+  try {
+    const cybrox = await resolveCybroxAudio(queryId);
+    if (!cybrox) {
+      return res.status(404).json({ error: 'Failed to extract audio from cybrox' });
+    }
+
+    const proxyStreamUrl = `/api/stream-proxy/${queryId}?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`;
+
+    return res.json({
+      success: true,
+      trackId: queryId,
+      title: cybrox.title,
+      streamUrl: proxyStreamUrl,
+      directDownloadUrl: cybrox.downloadUrl,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Cybrox extraction error' });
   }
 });
 

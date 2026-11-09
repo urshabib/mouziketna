@@ -14,6 +14,7 @@ import {
   resolveMirrorStreams,
   resolveWorkerStream,
   resolveSaavnStream,
+  resolveCybroxStream,
   canonicalThumbUrl,
   upgradeThumbQuality,
   fetchArtworkBlob,

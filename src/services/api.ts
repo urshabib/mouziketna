@@ -459,11 +459,17 @@ export function cleanSongTitleAndArtist(rawTitle?: string | null, rawArtist?: st
     .replace(/\s*(?:records|recordings|entertainment|studios?|music|france|mena|india|latin|label|group|production[s]?)\b/gi, '')
     .trim();
 
-  // 2. Strip brackets with junk: (Official Video), [Lyrics], (Audio), (feat. X), etc.
-  const bracketJunk = /[\(\[\{][^\)\]\}]*(?:official|officiel|oficial|music|video|audio|lyric|remaster|visualizer|clip|prod|live|performance|hd|4k|8k|version|edit|color\s*coded|sub\s*español|legendado|sped\s*up|slowed|reverb|clean|explicit|ft\.?|feat\.?)[^\)\]\}]*[\)\]\}]/gi;
+  // 2. Strip ellipses and dots sequence
+  title = title.replace(/\.{2,}|…/g, ' ').trim();
+
+  // 3. Strip brackets with metadata junk (even if truncated or unclosed, e.g. "(Official Lyric...)", "(Official Mus... )", "[Music Video]")
+  const bracketJunk = /[\(\[\{][^\)\]\}]*(?:official|officiel|oficial|music|mus\b|video|vid\b|audio|lyric|remaster|visualizer|clip|prod|live|performance|hd|4k|8k|version|edit|color\s*coded|sub\s*español|legendado|sped\s*up|slowed|reverb|clean|explicit|ft\.?|feat\.?|from\b)[^\)\]\}]*(?:[\)\]\}]|$)/gi;
   let cleanT = title.replace(bracketJunk, ' ');
 
-  // 3. Strip standalone junk words / phrases
+  // Strip unclosed opening bracket at end of string
+  cleanT = cleanT.replace(/\s*[\(\[\{][^\)\]\}]*$/, ' ');
+
+  // 4. Strip standalone junk words / phrases
   cleanT = cleanT
     .replace(/\b(official\s*(?:music)?\s*(?:video|audio|lyric|clip|visualizer)?)\b/gi, ' ')
     .replace(/\b(music\s*video|lyric\s*video|clip\s*officiel|video\s*officiel|audio\s*officiel)\b/gi, ' ')
@@ -482,7 +488,7 @@ export function cleanSongTitleAndArtist(rawTitle?: string | null, rawArtist?: st
     extractedArtists.push(artist);
   }
 
-  // 4. Detect separator in title: Artist - Title OR Title - Artist
+  // 5. Detect separator in title: Artist - Title OR Title - Artist
   if (/[-–—:|•_]/.test(cleanT)) {
     const parts = cleanT.split(/\s*[-–—:|•_]\s*/).map((p) => p.trim()).filter(Boolean);
     if (parts.length >= 2) {
@@ -501,19 +507,30 @@ export function cleanSongTitleAndArtist(rawTitle?: string | null, rawArtist?: st
     }
   }
 
-  // 5. If pureTitle still starts with artist name, remove it
+  // 6. If pureTitle still starts with artist name (with or without dots, e.g. "A.L.A" or "ALA"), remove it
   for (const a of extractedArtists) {
-    if (a && a.length >= 2 && pureTitle.toLowerCase().startsWith(a.toLowerCase())) {
-      pureTitle = pureTitle.slice(a.length).replace(/^[\s\-–—:|•_]+/, '').trim();
+    if (a && a.length >= 2) {
+      const aNoDot = a.replace(/\./g, '');
+      if (pureTitle.toLowerCase().startsWith(a.toLowerCase())) {
+        pureTitle = pureTitle.slice(a.length).replace(/^[\s\-–—:|•_.]+/, '').trim();
+      } else if (pureTitle.toLowerCase().startsWith(aNoDot.toLowerCase())) {
+        pureTitle = pureTitle.slice(aNoDot.length).replace(/^[\s\-–—:|•_.]+/, '').trim();
+      }
     }
   }
 
-  // 6. Split extracted artists by comma, &, feat, /
+  pureTitle = pureTitle.replace(/^[\s\-–—:|•_.]+|[\s\-–—:|•_.]+$/g, '').trim();
+
+  // 7. Split extracted artists by comma, &, feat, / and extract clean variants
   const finalArtists: string[] = [];
   for (const a of extractedArtists) {
     a.split(/[,&/+]|\bfeat\.?\b|\bft\.?\b/gi).forEach((sub) => {
-      const s = sub.trim();
+      const s = sub.trim().replace(/^[\s\-–—:|•_.]+|[\s\-–—:|•_.]+$/g, '');
       if (s && s.length >= 2 && !finalArtists.includes(s)) finalArtists.push(s);
+      const dotLess = s.replace(/\./g, '').trim();
+      if (dotLess && dotLess.length >= 2 && !finalArtists.includes(dotLess)) {
+        finalArtists.push(dotLess);
+      }
     });
   }
 
@@ -536,16 +553,20 @@ export function generateSongSearchQueries(rawTitle?: string | null, rawArtist?: 
     if (s && s.length >= 2) qSet.add(s);
   };
 
-  // 1. Song name alone (pure title)
+  // 1. Song name alone (pure title) e.g. "Wfet" or "Wili"
   add(info.pureTitle);
 
-  // 2. Artist "space" song name
-  if (info.primaryArtist) add(`${info.primaryArtist} ${info.pureTitle}`);
-  for (const a of info.artists) add(`${a} ${info.pureTitle}`);
+  // 2. Dot-less artist + song name (e.g. "ALA Wfet" which matches JioSaavn exactly!)
+  for (const a of info.artists) {
+    add(`${a} ${info.pureTitle}`);
+    add(`${info.pureTitle} ${a}`);
+  }
 
-  // 3. Song name "space" artist
-  if (info.primaryArtist) add(`${info.pureTitle} ${info.primaryArtist}`);
-  for (const a of info.artists) add(`${info.pureTitle} ${a}`);
+  // 3. Primary artist + song name
+  if (info.primaryArtist) {
+    add(`${info.primaryArtist} ${info.pureTitle}`);
+    add(`${info.pureTitle} ${info.primaryArtist}`);
+  }
 
   // 4. Cleaned title alone if distinct
   if (info.cleanTitle !== info.pureTitle && !info.cleanTitle.includes(' - ')) {
@@ -578,8 +599,9 @@ export function strictMatchSong(
 ): boolean {
   if (!origTitle || !cand || !cand.title) return false;
 
+  const targetInfo = cleanSongTitleAndArtist(origTitle, origArtist);
   const normTarget = normalizeTextForMatching(origTitle);
-  const normCleanTarget = normalizeTextForMatching(extractTargetTitleClean(origTitle));
+  const normCleanTarget = normalizeTextForMatching(targetInfo.pureTitle);
   const normCand = normalizeTextForMatching(cand.title);
 
   const strictTarget = cleanStrictLetters(normTarget);
@@ -618,11 +640,14 @@ export function strictMatchSong(
 
   if (!titleMatch) return false;
 
-  // 2. Artist Name Validation (Artist especially must match to prevent wrong media / cover mismatch)
-  const targetArtists = extractTargetArtistList(origTitle, origArtist);
+  // 2. Strict Artist Name Validation:
+  // If the candidate's artist does NOT match ours, immediately refuse it!
+  const targetArtists = targetInfo.artists;
   const candArtists = extractArtistCandidates(cand);
 
-  if (targetArtists.length === 0) return true;
+  if (targetArtists.length === 0 || candArtists.length === 0) {
+    return false;
+  }
 
   let artistMatch = false;
   for (const tA of targetArtists) {
@@ -631,15 +656,28 @@ export function strictMatchSong(
     for (const cA of candArtists) {
       const sCA = cleanStrictLetters(cA);
       if (!sCA || sCA.length < 2) continue;
-      if (sCA === sTA || sCA.includes(sTA) || sTA.includes(sCA)) {
+
+      // Exact normalized letter match (e.g. "ala" === "ala")
+      if (sCA === sTA) {
         artistMatch = true;
         break;
       }
-      const firstWordTA = cleanStrictLetters(tA.split(/\s+/)[0]);
-      const firstWordCA = cleanStrictLetters(cA.split(/\s+/)[0]);
-      if (firstWordTA && firstWordCA && firstWordTA.length >= 3 && firstWordTA === firstWordCA) {
+
+      // Substring match ONLY if both strings are substantial (length >= 4)
+      if (sTA.length >= 4 && sCA.length >= 4 && (sCA.includes(sTA) || sTA.includes(sCA))) {
         artistMatch = true;
         break;
+      }
+
+      // Word-level token match (e.g. "Amr Diab" vs "Amr Diab Official")
+      const wordsTA = tA.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+      const wordsCA = cA.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+      if (wordsTA.length >= 2 && wordsCA.length >= 2) {
+        const commonWords = wordsTA.filter((w) => wordsCA.includes(w));
+        if (commonWords.length >= 2 && commonWords.length / wordsTA.length >= 0.7) {
+          artistMatch = true;
+          break;
+        }
       }
     }
     if (artistMatch) break;
@@ -747,9 +785,8 @@ export async function resolveRthmxStream(
 }
 
 /**
- * Deterministic Tiered Saavn Stream Resolution
- * Priority Tier 1 (Exact Match) ALWAYS takes precedence over Tier 2/3 loose queries,
- * completely eliminating non-deterministic Promise.any race conditions where wrong songs win.
+ * Fallback Server Studio Stream Resolution with Strict Artist Verification
+ * If the artist does not strictly match ours, it is instantly refused and considered dead/failed.
  */
 export async function resolveSaavnStream(
   title: string,
@@ -758,65 +795,36 @@ export async function resolveSaavnStream(
   rawTitle: string | null = null,
   rawArtist: string | null = null
 ): Promise<string> {
-  const cleanT = cleanTitleForLyrics(title) || title;
-  const cleanA = cleanArtistName(artist);
+  const targetTitle = rawTitle || title;
+  const targetArtist = rawArtist || artist;
 
-  if (!cleanT || !cleanA || cleanA === 'Various Artists') {
-    // If artist is missing or generic, try rawTitle extraction
-    if (rawTitle) {
-      const derivedA = deriveArtistForLyrics(rawTitle, rawArtist || artist);
-      const cleanRawT = cleanTitleForLyrics(rawTitle);
-      if (cleanRawT && derivedA && derivedA !== 'Various Artists') {
-        const hit = await probeSaavnVariant(cleanRawT, derivedA, quality);
-        if (hit) return hit;
-      }
-    }
-    // Attempt RTHMX resolution before giving up
-    const rthmxHit = await resolveRthmxStream(cleanT, cleanA, quality, rawTitle, rawArtist);
-    if (rthmxHit) return rthmxHit;
-    throw new Error('Specific title and artist required for Saavn stream resolution');
-  }
-
-  // Tier 1 (High Confidence): Exact Title + Clean Artist
-  const tier1Hit = await probeSaavnVariant(cleanT, cleanA, quality);
-  if (tier1Hit) return tier1Hit;
-
-  // Tier 1.5: Dash-split check (e.g. "Artist - Title" or "Title - Artist")
-  const textWithDash = [rawTitle, title].find((s) => s && /\s+[-–—]\s+/.test(s));
-  if (textWithDash) {
-    const parts = textWithDash.split(/\s+[-–—]\s+/).map((p) => p.trim());
-    if (parts.length >= 2) {
-      const left = cleanTitleForLyrics(parts[0]) || parts[0];
-      const right = cleanTitleForLyrics(parts.slice(1).join(' - ')) || parts.slice(1).join(' - ');
-      
-      const dashHits = await Promise.all([
-        probeSaavnVariant(right, cleanArtistName(parts[0]), quality),
-        probeSaavnVariant(left, cleanArtistName(parts.slice(1).join(' - ')), quality),
-      ]);
-      const validDash = dashHits.find(Boolean);
-      if (validDash) return validDash;
-    }
-  }
-
-  // Tier 2 (Medium Confidence): Clean Title + Primary Artist (without featured artists)
-  const firstArtist = cleanA.split(/[,&]|\bfeat\.?\b|\bft\.?\b/i)[0].trim();
-  if (firstArtist && firstArtist !== cleanA) {
-    const tier2Hit = await probeSaavnVariant(cleanT, firstArtist, quality);
-    if (tier2Hit) return tier2Hit;
-  }
-
-  // Tier 3 (Fallback for Transliterations): Clean Title + First Word of Artist (e.g., Fairouz -> Fairuz)
-  const firstWord = firstArtist.split(/[\s,]/)[0].trim();
-  if (firstWord && firstWord !== firstArtist && firstWord.length >= 3) {
-    const tier3Hit = await probeSaavnVariant(cleanT, firstWord, quality);
-    if (tier3Hit) return tier3Hit;
-  }
-
-  // Tier 4 (RTHMX Deep Decrypt Resolver): for broken / less famous songs that missed fast-saavn
-  const rthmxHit = await resolveRthmxStream(cleanT, cleanA, quality, rawTitle, rawArtist);
+  const rthmxHit = await resolveRthmxStream(title, artist, quality, targetTitle, targetArtist);
   if (rthmxHit) return rthmxHit;
 
-  throw new Error('No match found on Saavn resolver');
+  throw new Error('No strictly matching track found on fallback server');
+}
+
+/**
+ * Method 3: Cybrox Audio Resolver (https://www.youtube.com/watch?v=trackid)
+ * Directly extracts authentic audio format via Cybrox for songs that failed fallback server
+ */
+export async function resolveCybroxStream(id: string, title?: string, artist?: string): Promise<string | null> {
+  if (!id || id.length < 3) return null;
+  try {
+    const q = new URLSearchParams({
+      id,
+      ...(title ? { title } : {}),
+      ...(artist ? { artist } : {}),
+    }).toString();
+    const res = await fetchWithTimeout(`${NEW_HUB_BACKEND}/api/resolve-cybrox?${q}`, 5000);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.streamUrl) {
+        return `${NEW_HUB_BACKEND}${data.streamUrl}`;
+      }
+    }
+  } catch {}
+  return `${NEW_HUB_BACKEND}/api/stream-proxy/${id}?title=${encodeURIComponent(title || '')}&artist=${encodeURIComponent(artist || '')}`;
 }
 
 export async function resolveWorkerStream(id: string, title?: string, artist?: string): Promise<string | null> {
