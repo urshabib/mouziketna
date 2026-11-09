@@ -4430,11 +4430,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [activeTrack, currentTime, playTrack, showToast]);
 
-  const isSettingsUnlocked = Boolean(
-    globalUser === 'admin' ||
-    globalUser === 'habib' ||
-    userProfile?.isSettingsUnlocked
-  );
+  const isSettingsUnlocked = true;
 
   const unlockSettingsWithSocial = async (platform: 'instagram' | 'tiktok', handle?: string) => {
     setUserProfile((prev) => {
