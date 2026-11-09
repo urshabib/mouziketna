@@ -2375,10 +2375,11 @@ app.post(['/api/save-profile', '/api/sync-profile', '/api/user-profile'], async 
         if (!prev) {
           plMap.set(pl.id, pl);
         } else {
-          const tMap = new Map<string, any>();
-          if (Array.isArray(prev.tracks)) prev.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
-          if (Array.isArray(pl.tracks)) pl.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
-          plMap.set(pl.id, { ...prev, ...pl, tracks: Array.from(tMap.values()) });
+          plMap.set(pl.id, {
+            ...prev,
+            ...pl,
+            tracks: Array.isArray(pl.tracks) ? pl.tracks : (prev.tracks || []),
+          });
         }
       }
     });
