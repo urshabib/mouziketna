@@ -26,6 +26,7 @@ import {
   verifySocialFollow,
   isMeaningfulMatch,
   invalidateStreamUrlCache,
+  generateSongSearchQueries,
 } from '../services/api';
 import {
   cacheProfileLocally,
@@ -3136,8 +3137,13 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // 4. Alternative track search if no direct candidates could be resolved
     if (candidates.length === 0 || (candidates.length === 1 && candidates[0] === serverProxyUrl)) {
       try {
-        const fallbackSearch = await searchTracks(`${cleanT} ${cleanedArtist}`, 'song').catch(() => []);
-        const altTrack = fallbackSearch.find((t) => t.id && t.id.length === 11 && t.id !== resolvedTrack.id && isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, t.title, t.artist));
+        const searchQueries = generateSongSearchQueries(resolvedTrack.title, resolvedTrack.artist);
+        let altTrack: Track | undefined;
+        for (const sq of searchQueries) {
+          const fallbackSearch = await searchTracks(sq, 'song').catch(() => []);
+          altTrack = fallbackSearch.find((t) => t.id && t.id.length === 11 && t.id !== resolvedTrack.id && isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, t.title, t.artist));
+          if (altTrack) break;
+        }
         if (altTrack) {
           logPlaybackDiagnostic('Found alternative track candidate', { altId: altTrack.id, altTitle: altTrack.title });
           const [altSaavn, altMirrors] = await Promise.all([
@@ -3182,14 +3188,19 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     if (!ok && token === playTokenRef.current) {
       logPlaybackDiagnostic('Initial candidate cycle failed, attempting alternative track fallback');
       try {
-        const altSearch = await searchTracks(`${resolvedTrack.title} ${cleanedArtist}`, 'song').catch(() => []);
-        const altTrack = altSearch.find(
-          (t) =>
-            t.id &&
-            t.id.length === 11 &&
-            t.id !== resolvedTrack.id &&
-            isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, t.title, t.artist)
-        );
+        const altQueries = generateSongSearchQueries(resolvedTrack.title, resolvedTrack.artist);
+        let altTrack: Track | undefined;
+        for (const aq of altQueries) {
+          const altSearch = await searchTracks(aq, 'song').catch(() => []);
+          altTrack = altSearch.find(
+            (t) =>
+              t.id &&
+              t.id.length === 11 &&
+              t.id !== resolvedTrack.id &&
+              isMeaningfulMatch(resolvedTrack.title, resolvedTrack.artist, t.title, t.artist)
+          );
+          if (altTrack) break;
+        }
         if (altTrack) {
           const altProxyUrl = `${NEW_HUB_BACKEND}/api/stream-proxy/${altTrack.id}?title=${encodeURIComponent(altTrack.title)}&artist=${encodeURIComponent(altTrack.artist || '')}`;
           const altSaavn = await resolveSaavnStream(

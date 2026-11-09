@@ -1,6 +1,7 @@
 import { CustomPlaylist, LyricsData, SyncedLyricsLine, Track } from '../types';
 import { getExplicitInterestedTracks, getExplicitNotInterestedTracks } from './storage';
 import { sessionManager } from './sessionManager';
+import CryptoJS from 'crypto-js';
 
 export const NEW_HUB_BACKEND =
   typeof window !== 'undefined' &&
@@ -406,6 +407,347 @@ async function probeSaavnVariant(title: string, artist: string, quality: string)
   return null;
 }
 
+export function cleanStrictLetters(str?: string | null): string {
+  if (!str) return '';
+  return decodeHtmlEntities(String(str)).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+export function extractArtistCandidates(cand: {
+  artist?: string | null;
+  author?: string | null;
+  subtitle?: string | null;
+  title?: string | null;
+  more_info?: any;
+}): string[] {
+  const list: string[] = [];
+  if (cand.artist) list.push(cand.artist);
+  if (cand.author) list.push(cand.author);
+  if (cand.subtitle) {
+    const beforeDash = cand.subtitle.split(/\s*[-–—]\s*/)[0];
+    list.push(beforeDash);
+    beforeDash.split(/[,&/+]|\bfeat\.?\b|\bft\.?\b/gi).forEach((a) => list.push(a.trim()));
+  }
+  if (cand.more_info?.artists?.primary) {
+    cand.more_info.artists.primary.forEach((a: any) => { if (a?.name) list.push(a.name); });
+  }
+  if (cand.more_info?.artists?.featured) {
+    cand.more_info.artists.featured.forEach((a: any) => { if (a?.name) list.push(a.name); });
+  }
+  if (cand.more_info?.music) {
+    list.push(cand.more_info.music);
+  }
+  if (cand.title && /\s+[-–—]\s+/.test(cand.title)) {
+    const prefix = cand.title.split(/\s+[-–—]\s+/)[0].trim();
+    if (prefix.length >= 2 && prefix.length <= 40) list.push(prefix);
+  }
+  return list.filter(Boolean);
+}
+
+export interface CleanSongInfo {
+  pureTitle: string;
+  cleanTitle: string;
+  artists: string[];
+  primaryArtist: string;
+}
+
+export function cleanSongTitleAndArtist(rawTitle?: string | null, rawArtist?: string | null): CleanSongInfo {
+  let title = decodeHtmlEntities(String(rawTitle || '')).trim();
+  let artist = decodeHtmlEntities(String(rawArtist || '')).trim();
+
+  // 1. Strip common YouTube uploader / publisher junk from artist
+  artist = artist
+    .replace(/\s*-\s*Topic\b/gi, '')
+    .replace(/\s*vevo\b/gi, '')
+    .replace(/\s*official\s*(?:video|audio|channel)?\b/gi, '')
+    .replace(/\s*(?:records|recordings|entertainment|studios?|music|france|mena|india|latin|label|group|production[s]?)\b/gi, '')
+    .trim();
+
+  // 2. Strip brackets with junk: (Official Video), [Lyrics], (Audio), (feat. X), etc.
+  const bracketJunk = /[\(\[\{][^\)\]\}]*(?:official|officiel|oficial|music|video|audio|lyric|remaster|visualizer|clip|prod|live|performance|hd|4k|8k|version|edit|color\s*coded|sub\s*español|legendado|sped\s*up|slowed|reverb|clean|explicit|ft\.?|feat\.?)[^\)\]\}]*[\)\]\}]/gi;
+  let cleanT = title.replace(bracketJunk, ' ');
+
+  // 3. Strip standalone junk words / phrases
+  cleanT = cleanT
+    .replace(/\b(official\s*(?:music)?\s*(?:video|audio|lyric|clip|visualizer)?)\b/gi, ' ')
+    .replace(/\b(music\s*video|lyric\s*video|clip\s*officiel|video\s*officiel|audio\s*officiel)\b/gi, ' ')
+    .replace(/\b(feat\.?|ft\.?|featuring)\b.*$/gi, ' ')
+    .replace(/\b(prod\.?\s*by|prod\b).*$/gi, ' ')
+    .replace(/\b(remaster(?:ed)?(?:\s*\d{4})?)\b/gi, ' ')
+    .replace(/\b(lyrics?|paroles?|letra)\b/gi, ' ')
+    .replace(/\b(hd|hq|4k|8k|mv)\b/gi, ' ')
+    .replace(/["'""«»]/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  let pureTitle = cleanT;
+  const extractedArtists: string[] = [];
+  if (artist && artist !== 'Various Artists' && artist !== 'Loading...') {
+    extractedArtists.push(artist);
+  }
+
+  // 4. Detect separator in title: Artist - Title OR Title - Artist
+  if (/[-–—:|•_]/.test(cleanT)) {
+    const parts = cleanT.split(/\s*[-–—:|•_]\s*/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const left = parts[0];
+      const right = parts.slice(1).join(' - ');
+
+      const rightIsArtist = artist && right.toLowerCase().includes(artist.toLowerCase());
+
+      if (rightIsArtist) {
+        pureTitle = left;
+        extractedArtists.unshift(right);
+      } else {
+        pureTitle = right;
+        extractedArtists.unshift(left);
+      }
+    }
+  }
+
+  // 5. If pureTitle still starts with artist name, remove it
+  for (const a of extractedArtists) {
+    if (a && a.length >= 2 && pureTitle.toLowerCase().startsWith(a.toLowerCase())) {
+      pureTitle = pureTitle.slice(a.length).replace(/^[\s\-–—:|•_]+/, '').trim();
+    }
+  }
+
+  // 6. Split extracted artists by comma, &, feat, /
+  const finalArtists: string[] = [];
+  for (const a of extractedArtists) {
+    a.split(/[,&/+]|\bfeat\.?\b|\bft\.?\b/gi).forEach((sub) => {
+      const s = sub.trim();
+      if (s && s.length >= 2 && !finalArtists.includes(s)) finalArtists.push(s);
+    });
+  }
+
+  const primaryArtist = finalArtists[0] || (artist && artist !== 'Various Artists' ? artist : '');
+
+  return {
+    pureTitle: pureTitle || cleanT || title,
+    cleanTitle: cleanT || title,
+    artists: finalArtists,
+    primaryArtist,
+  };
+}
+
+export function generateSongSearchQueries(rawTitle?: string | null, rawArtist?: string | null): string[] {
+  const info = cleanSongTitleAndArtist(rawTitle, rawArtist);
+  const qSet = new Set<string>();
+
+  const add = (q: string) => {
+    const s = (q || '').replace(/\s+/g, ' ').trim();
+    if (s && s.length >= 2) qSet.add(s);
+  };
+
+  // 1. Song name alone (pure title)
+  add(info.pureTitle);
+
+  // 2. Artist "space" song name
+  if (info.primaryArtist) add(`${info.primaryArtist} ${info.pureTitle}`);
+  for (const a of info.artists) add(`${a} ${info.pureTitle}`);
+
+  // 3. Song name "space" artist
+  if (info.primaryArtist) add(`${info.pureTitle} ${info.primaryArtist}`);
+  for (const a of info.artists) add(`${info.pureTitle} ${a}`);
+
+  // 4. Cleaned title alone if distinct
+  if (info.cleanTitle !== info.pureTitle && !info.cleanTitle.includes(' - ')) {
+    add(info.cleanTitle);
+  }
+
+  return Array.from(qSet);
+}
+
+export function extractTargetArtistList(origTitle?: string | null, origArtist?: string | null): string[] {
+  const info = cleanSongTitleAndArtist(origTitle, origArtist);
+  return info.artists;
+}
+
+export function extractTargetTitleClean(origTitle?: string | null): string {
+  const info = cleanSongTitleAndArtist(origTitle, null);
+  return info.pureTitle;
+}
+
+export function strictMatchSong(
+  origTitle?: string | null,
+  origArtist?: string | null,
+  cand?: {
+    title?: string | null;
+    artist?: string | null;
+    author?: string | null;
+    subtitle?: string | null;
+    more_info?: any;
+  } | null
+): boolean {
+  if (!origTitle || !cand || !cand.title) return false;
+
+  const normTarget = normalizeTextForMatching(origTitle);
+  const normCleanTarget = normalizeTextForMatching(extractTargetTitleClean(origTitle));
+  const normCand = normalizeTextForMatching(cand.title);
+
+  const strictTarget = cleanStrictLetters(normTarget);
+  const strictCleanTarget = cleanStrictLetters(normCleanTarget);
+  const strictCand = cleanStrictLetters(normCand);
+
+  if (!strictCand || (!strictTarget && !strictCleanTarget)) return false;
+
+  // 1. Song Title Validation (Title must match, even if not 100% exact due to punctuation or extra tags)
+  let titleMatch = false;
+  if (strictCand === strictTarget || strictCand === strictCleanTarget) {
+    titleMatch = true;
+  } else if (
+    (strictTarget && (strictCand.includes(strictTarget) || strictTarget.includes(strictCand))) ||
+    (strictCleanTarget && (strictCand.includes(strictCleanTarget) || strictCleanTarget.includes(strictCand)))
+  ) {
+    const targetRef = strictCleanTarget && strictCand.includes(strictCleanTarget) ? strictCleanTarget : strictTarget;
+    const minL = Math.min(targetRef.length, strictCand.length);
+    const maxL = Math.max(targetRef.length, strictCand.length);
+    if (minL >= 3 && (minL / maxL >= 0.5 || maxL - minL <= 5)) {
+      titleMatch = true;
+    }
+  } else {
+    const targetTokens = (normCleanTarget || normTarget).split(' ').filter((w) => w.length >= 2);
+    const candTokens = normCand.split(' ').filter((w) => w.length >= 2);
+    if (targetTokens.length > 0 && candTokens.length > 0) {
+      const common = targetTokens.filter((t) => candTokens.includes(t));
+      if (
+        common.length === targetTokens.length ||
+        (common.length >= 2 && common.length / targetTokens.length >= 0.6)
+      ) {
+        titleMatch = true;
+      }
+    }
+  }
+
+  if (!titleMatch) return false;
+
+  // 2. Artist Name Validation (Artist especially must match to prevent wrong media / cover mismatch)
+  const targetArtists = extractTargetArtistList(origTitle, origArtist);
+  const candArtists = extractArtistCandidates(cand);
+
+  if (targetArtists.length === 0) return true;
+
+  let artistMatch = false;
+  for (const tA of targetArtists) {
+    const sTA = cleanStrictLetters(tA);
+    if (!sTA || sTA.length < 2) continue;
+    for (const cA of candArtists) {
+      const sCA = cleanStrictLetters(cA);
+      if (!sCA || sCA.length < 2) continue;
+      if (sCA === sTA || sCA.includes(sTA) || sTA.includes(sCA)) {
+        artistMatch = true;
+        break;
+      }
+      const firstWordTA = cleanStrictLetters(tA.split(/\s+/)[0]);
+      const firstWordCA = cleanStrictLetters(cA.split(/\s+/)[0]);
+      if (firstWordTA && firstWordCA && firstWordTA.length >= 3 && firstWordTA === firstWordCA) {
+        artistMatch = true;
+        break;
+      }
+    }
+    if (artistMatch) break;
+  }
+
+  return artistMatch;
+}
+
+export function decryptRthmxMediaUrl(encUrl: string): string {
+  try {
+    const key = CryptoJS.enc.Utf8.parse('38346591');
+    const dec = CryptoJS.DES.decrypt(
+      encUrl,
+      key,
+      { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 }
+    );
+    return dec.toString(CryptoJS.enc.Utf8).replace(/_96\.mp4|_160\.mp4|_12\.mp4|_48\.mp4/g, '_320.mp4');
+  } catch (err) {
+    return '';
+  }
+}
+
+export async function resolveRthmxStream(
+  title: string,
+  artist: string,
+  quality = '320',
+  rawTitle?: string | null,
+  rawArtist?: string | null
+): Promise<string | null> {
+  const targetTitle = rawTitle || title;
+  const targetArtist = rawArtist || artist;
+  if (!targetTitle) return null;
+
+  // First check backend endpoint /api/resolve-rthmx
+  try {
+    const beUrl = `${NEW_HUB_BACKEND}/api/resolve-rthmx?title=${encodeURIComponent(targetTitle)}&artist=${encodeURIComponent(targetArtist || '')}&quality=${quality}`;
+    const res = await fetchWithTimeout(beUrl, 3800);
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.streamUrl && data.streamUrl.startsWith('http')) {
+        return data.streamUrl;
+      }
+    }
+  } catch {}
+
+  // Fallback to direct fetch
+  const queries = generateSongSearchQueries(targetTitle, targetArtist);
+  if (queries.length === 0) return null;
+
+  const queryBatches = [queries.slice(0, 4), queries.slice(4, 8)].filter((b) => b.length > 0);
+
+  for (const batch of queryBatches) {
+    try {
+      const settled = await Promise.allSettled(
+        batch.map(async (q) => {
+          const res = await fetchWithTimeout(`https://rthmx.vercel.app/api/songs?q=${encodeURIComponent(q)}`, 3500);
+          if (!res.ok) return [];
+          const data: any = await res.json().catch(() => null);
+          return Array.isArray(data?.results) ? data.results : [];
+        })
+      );
+
+      const candidates: any[] = [];
+      const seenTokens = new Set<string>();
+      for (const s of settled) {
+        if (s.status === 'fulfilled' && Array.isArray(s.value)) {
+          for (const item of s.value) {
+            const key = item.id || item.token || item.title;
+            if (key && !seenTokens.has(key)) {
+              seenTokens.add(key);
+              candidates.push(item);
+            }
+          }
+        }
+      }
+
+      if (candidates.length > 0) {
+        const match = candidates.find((cand) => strictMatchSong(targetTitle, targetArtist, cand));
+        if (match) {
+          let encUrl = match.more_info?.encrypted_media_url;
+          if (!encUrl && match.token) {
+            try {
+              const songRes = await fetchWithTimeout(`https://rthmx.vercel.app/api/song?token=${encodeURIComponent(match.token)}`, 3000);
+              if (songRes.ok) {
+                const songData: any = await songRes.json().catch(() => null);
+                encUrl = songData?.more_info?.encrypted_media_url;
+              }
+            } catch {}
+          }
+          if (encUrl) {
+            const finalUrl = decryptRthmxMediaUrl(encUrl);
+            if (finalUrl && finalUrl.startsWith('http')) {
+              if (quality && quality !== '320') {
+                return finalUrl.replace('_320.mp4', `_${quality}.mp4`);
+              }
+              return finalUrl;
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
 /**
  * Deterministic Tiered Saavn Stream Resolution
  * Priority Tier 1 (Exact Match) ALWAYS takes precedence over Tier 2/3 loose queries,
@@ -431,6 +773,9 @@ export async function resolveSaavnStream(
         if (hit) return hit;
       }
     }
+    // Attempt RTHMX resolution before giving up
+    const rthmxHit = await resolveRthmxStream(cleanT, cleanA, quality, rawTitle, rawArtist);
+    if (rthmxHit) return rthmxHit;
     throw new Error('Specific title and artist required for Saavn stream resolution');
   }
 
@@ -468,6 +813,10 @@ export async function resolveSaavnStream(
     const tier3Hit = await probeSaavnVariant(cleanT, firstWord, quality);
     if (tier3Hit) return tier3Hit;
   }
+
+  // Tier 4 (RTHMX Deep Decrypt Resolver): for broken / less famous songs that missed fast-saavn
+  const rthmxHit = await resolveRthmxStream(cleanT, cleanA, quality, rawTitle, rawArtist);
+  if (rthmxHit) return rthmxHit;
 
   throw new Error('No match found on Saavn resolver');
 }
@@ -625,49 +974,11 @@ export function isMeaningfulMatch(
   candArtist?: string | null
 ): boolean {
   if (!origTitle || origTitle === 'Loading...' || !candTitle) return true;
-
-  const oT = normalizeTextForMatching(origTitle);
-  const cT = normalizeTextForMatching(candTitle);
-
-  if (!oT || !cT) {
-    const rawO = (origTitle || '').toLowerCase().trim();
-    const rawC = (candTitle || '').toLowerCase().trim();
-    return rawO.includes(rawC) || rawC.includes(rawO);
-  }
-
-  // Direct substring or equality match
-  if (oT === cT || oT.includes(cT) || cT.includes(oT)) {
-    return true;
-  }
-
-  const oTokens = oT.split(' ').filter((w) => w.length >= 2);
-  const cTokens = cT.split(' ').filter((w) => w.length >= 2);
-
-  if (oTokens.length === 0 || cTokens.length === 0) {
-    return false;
-  }
-
-  const commonTitleTokens = oTokens.filter((t) => cTokens.includes(t));
-  const titleOverlapRatio = commonTitleTokens.length / oTokens.length;
-
-  if (oTokens.length === 1) {
-    if (commonTitleTokens.length === 1) return true;
-  } else {
-    if (titleOverlapRatio >= 0.5 || commonTitleTokens.length >= 2) {
-      return true;
-    }
-  }
-
-  const oA = normalizeTextForMatching(origArtist || '');
-  const cA = normalizeTextForMatching(candArtist || '');
-
-  if (oA && cA && (oA.includes(cA) || cA.includes(oA) || cT.includes(oA) || oT.includes(cA))) {
-    if (commonTitleTokens.length >= 1) {
-      return true;
-    }
-  }
-
-  return false;
+  return strictMatchSong(origTitle, origArtist, {
+    title: candTitle,
+    artist: candArtist,
+    author: candArtist,
+  });
 }
 
 // Prefetches next track stream and caches in memory
