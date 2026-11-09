@@ -236,7 +236,7 @@ export const CollectionView: React.FC = () => {
         const shuffled = [...plTracks].sort(() => Math.random() - 0.5);
         const seeds = shuffled.slice(0, 3);
 
-        const relatedPromises = seeds.map((s) => getRelatedTracks(s.id));
+        const relatedPromises = seeds.map((s) => getRelatedTracks(s.id, s.title, s.artist));
         const relatedResults = await Promise.all(relatedPromises);
 
         const candidateList: Track[] = [];

@@ -700,6 +700,13 @@ export function decryptRthmxMediaUrl(encUrl: string): string {
   }
 }
 
+export function isNonEnglishOrArabic(str?: string | null): boolean {
+  if (!str) return false;
+  // Detects Arabic characters (\u0600-\u06FF, \u0750-\u077F, \u08A0-\u08FF, \uFB50-\uFDFF, \uFE70-\uFEFF)
+  // or any non-ASCII / non-English letter
+  return /[^\x00-\x7F]/.test(str) || /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(str);
+}
+
 export async function resolveRthmxStream(
   title: string,
   artist: string,
@@ -710,6 +717,10 @@ export async function resolveRthmxStream(
   const targetTitle = rawTitle || title;
   const targetArtist = rawArtist || artist;
   if (!targetTitle) return null;
+
+  if (isNonEnglishOrArabic(targetTitle) || isNonEnglishOrArabic(targetArtist)) {
+    return null;
+  }
 
   // First check backend endpoint /api/resolve-rthmx
   try {
@@ -785,8 +796,11 @@ export async function resolveRthmxStream(
 }
 
 /**
- * Fallback Server Studio Stream Resolution with Strict Artist Verification
- * If the artist does not strictly match ours, it is instantly refused and considered dead/failed.
+ * Primary + Fallback Server Studio Stream Resolution:
+ * 1. Check JioSaavn primary server (fast-saavn) first for quick reply and playback.
+ * 2. If it fails, check if title/artist contains Arabic or non-English/special letters:
+ *    - If YES: skip the second server (rthmx) and throw so caller goes directly to Method 3 (Cybrox).
+ *    - If NO: try the second server (rthmx) with strict artist verification.
  */
 export async function resolveSaavnStream(
   title: string,
@@ -797,7 +811,21 @@ export async function resolveSaavnStream(
 ): Promise<string> {
   const targetTitle = rawTitle || title;
   const targetArtist = rawArtist || artist;
+  const cleanT = cleanTitleForLyrics(title) || title;
+  const cleanA = cleanArtistName(artist);
 
+  // 1. Check first server (JioSaavn primary) for quick reply and playback
+  if (cleanT && cleanA && cleanA !== 'Various Artists') {
+    const tier1Hit = await probeSaavnVariant(cleanT, cleanA, quality);
+    if (tier1Hit) return tier1Hit;
+  }
+
+  // 2. If first server failed, check if title or artist contains Arabic or non-English/special letters
+  if (isNonEnglishOrArabic(targetTitle) || isNonEnglishOrArabic(targetArtist)) {
+    throw new Error('Arabic or non-English track: skipping second server, using Method 3 directly');
+  }
+
+  // 3. Second server (RTHMX) with strict artist verification
   const rthmxHit = await resolveRthmxStream(title, artist, quality, targetTitle, targetArtist);
   if (rthmxHit) return rthmxHit;
 
@@ -1412,26 +1440,16 @@ export async function fetchTrendingTracks(forceRefresh = false): Promise<Track[]
     }
   } catch {}
 
-  // Tier 2: Real Verified Billboard & Global Viral Songs
-  const CURATED_TRENDING_QUERIES = [
-    'Lady Gaga Bruno Mars Die With A Smile',
-    'Billie Eilish Birds of a Feather',
-    'Sabrina Carpenter Espresso',
-    'Sabrina Carpenter Taste',
-    'Chappell Roan Good Luck Babe',
-    'Kendrick Lamar Not Like Us',
-    'Benson Boone Beautiful Things',
-    'Teddy Swims Lose Control',
-    'Shaboozey A Bar Song Tipsy',
-    'Post Malone Morgan Wallen I Had Some Help',
-    'Rose Bruno Mars APT',
-    'The Weeknd Playboi Carti Timeless',
-    'Tommy Richman MILLION DOLLAR BABY',
-    'FloyyMenor Cris Mj Gata Only',
+  // Tier 2: Live Dynamic Trending & Viral Charts
+  const LIVE_TRENDING_QUERIES = [
+    'top hits 2026',
+    'viral hits 2026',
+    'global top 50 songs',
+    'new music friday hits',
   ];
 
   try {
-    const promises = CURATED_TRENDING_QUERIES.slice(0, 10).map((q) =>
+    const promises = LIVE_TRENDING_QUERIES.map((q) =>
       searchTracks(q, 'song').catch(() => [])
     );
     const results = await Promise.all(promises);
@@ -1440,15 +1458,21 @@ export async function fetchTrendingTracks(forceRefresh = false): Promise<Track[]
 
     for (const r of results) {
       if (r && r.length > 0) {
-        const top = r[0];
-        if (top && !seen.has(top.id)) {
-          seen.add(top.id);
-          pooled.push(top);
+        for (const item of r.slice(0, 6)) {
+          if (item && item.id && !seen.has(item.id)) {
+            seen.add(item.id);
+            pooled.push(item);
+          }
         }
       }
     }
 
     if (pooled.length >= 6) {
+      // Shuffle slightly for fresh feed variety
+      for (let i = pooled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pooled[i], pooled[j]] = [pooled[j], pooled[i]];
+      }
       trendingTracksCache = pooled;
       trendingCacheTime = now;
       return pooled;
@@ -1463,7 +1487,7 @@ export async function fetchTrendingTracks(forceRefresh = false): Promise<Track[]
 // ---------------------------------------------------------------------------
 const relatedCache = new Map<string, Track[]>();
 
-export async function getRelatedTracks(seedTrackId: string): Promise<Track[]> {
+export async function getRelatedTracks(seedTrackId: string, seedTitle?: string, seedArtist?: string): Promise<Track[]> {
   if (!seedTrackId || seedTrackId.length < 5) return [];
   if (relatedCache.has(seedTrackId)) {
     return relatedCache.get(seedTrackId)!;
@@ -1477,7 +1501,7 @@ export async function getRelatedTracks(seedTrackId: string): Promise<Track[]> {
 
   for (const mirror of candidateMirrors) {
     try {
-      const res = await fetchWithTimeout(`${mirror}${encodeURIComponent(seedTrackId)}`, 4500);
+      const res = await fetchWithTimeout(`${mirror}${encodeURIComponent(seedTrackId)}`, 3500);
       if (res.ok) {
         const data = await res.json();
         const recommended = data?.recommendedVideos;
@@ -1505,6 +1529,30 @@ export async function getRelatedTracks(seedTrackId: string): Promise<Track[]> {
             return list;
           }
         }
+      }
+    } catch {}
+  }
+
+  // Fallback: Search for similar style/radio songs when Invidious mirrors are unavailable
+  const cleanA = seedArtist && seedArtist !== 'Various Artists' ? cleanArtistName(seedArtist) : '';
+  const cleanT = seedTitle ? cleanTitleForLyrics(seedTitle) || seedTitle : '';
+  const fallbackQuery = cleanA && cleanT
+    ? `${cleanT} ${cleanA} mix`
+    : (cleanT || (cleanA.length >= 4 ? `${cleanA} mix` : ''));
+  if (fallbackQuery) {
+    try {
+      const searchRes = await searchTracks(fallbackQuery, 'song').catch(() => []);
+      const filtered = searchRes.filter((t) => {
+        if (!t.id || t.id === seedTrackId) return false;
+        const tLower = (t.title || '').toLowerCase();
+        if (tLower.includes('type beat') || tLower.includes('instrumental') || tLower.includes('reaction') || tLower.includes('karaoke')) {
+          return false;
+        }
+        return true;
+      });
+      if (filtered.length > 0) {
+        relatedCache.set(seedTrackId, filtered);
+        return filtered;
       }
     } catch {}
   }
@@ -1578,7 +1626,7 @@ export async function getTasteProfileRecommendations(
       }
 
       // Fetch related tracks for picked seed tracks
-      const relatedPromises = pickedSeeds.map((s) => getRelatedTracks(s.id));
+      const relatedPromises = pickedSeeds.map((s) => getRelatedTracks(s.id, s.title, s.artist));
       const relatedResults = await Promise.all(relatedPromises);
 
       const candidateTracks: Track[] = [];

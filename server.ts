@@ -3944,8 +3944,18 @@ function decryptRthmxMediaUrl(encUrl: string): string {
   }
 }
 
+export function isNonEnglishOrArabic(str?: string | null): boolean {
+  if (!str) return false;
+  // Detects Arabic characters (\u0600-\u06FF, \u0750-\u077F, \u08A0-\u08FF, \uFB50-\uFDFF, \uFE70-\uFEFF)
+  // or any non-ASCII / non-English letter
+  return /[^\x00-\x7F]/.test(str) || /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(str);
+}
+
 async function resolveRthmxStream(targetTitle: string, targetArtist: string, quality = '320'): Promise<string | null> {
   if (!targetTitle) return null;
+  if (isNonEnglishOrArabic(targetTitle) || isNonEnglishOrArabic(targetArtist)) {
+    return null;
+  }
 
   const queries = generateSongSearchQueries(targetTitle, targetArtist);
   if (queries.length === 0) return null;
@@ -4187,8 +4197,9 @@ app.get('/api/stream-proxy/:id', async (req: Request, res: Response) => {
       }
 
       // Tier 1: Fallback Server Studio Stream Resolution (Rthmx Decrypted with Strict Artist Match)
-      // Only returns songs where title AND artist strictly match our app's track
-      if (!resolvedAudioUrl && songTitle) {
+      // Non-English / Arabic titles or artists directly bypass Tier 1 to use Method 3 (Cybrox)
+      const skipTier1 = isNonEnglishOrArabic(songTitle) || isNonEnglishOrArabic(songArtist);
+      if (!resolvedAudioUrl && songTitle && !skipTier1) {
         try {
           const rthmxHit = await resolveRthmxStream(songTitle, songArtist || '');
           if (rthmxHit) {
