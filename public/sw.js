@@ -1,5 +1,5 @@
 // Service Worker for MOUZIKETNA PWA
-const CACHE_NAME = 'mouzika-pwa-1794225978124';
+const CACHE_NAME = 'mouzika-pwa-1794253324562';
 const BRANDING_CACHE = 'mouzika-branding-cache-v1';
 
 // Precache static shell assets
@@ -135,8 +135,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // HTML / Navigation requests: ALWAYS Network-First with cache: 'no-cache'
-  // Prevents white screen and guarantees fresh index.html
+  // Helper: fetch with fast timeout so offline iOS/Android devices don't hang on dead networks
+  const fetchWithFastTimeout = (req, opts = {}, ms = 2500) => {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('SW fetch timeout')), ms);
+      fetch(req, opts).then(
+        (res) => {
+          clearTimeout(timer);
+          resolve(res);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        }
+      );
+    });
+  };
+
+  // HTML / Navigation requests: Network-First with fast 2.5s timeout, instant cache fallback for offline
   const isNav = event.request.mode === 'navigate' || event.request.headers.get('accept')?.includes('text/html');
 
   if (isNav) {
@@ -150,12 +166,14 @@ self.addEventListener('fetch', (event) => {
     }
 
     event.respondWith(
-      fetch(event.request, { cache: 'no-cache' })
+      fetchWithFastTimeout(event.request, { cache: 'no-cache' }, 2500)
         .then((response) => {
           if (response && response.status === 200) {
             const respClone = response.clone();
+            const rootClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(event.request, respClone).catch(() => {});
+              cache.put('./index.html', rootClone).catch(() => {});
             }).catch(() => {});
             return response;
           }
@@ -169,7 +187,7 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(async () => {
-          // If offline, use cached index.html
+          // If offline, use cached index.html immediately
           const cached =
             (await caches.match(event.request, { ignoreSearch: true })) ||
             (await caches.match('./index.html', { ignoreSearch: true })) ||
@@ -211,8 +229,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static JavaScript and CSS code assets: Network-First with cache: 'no-cache'
-  // Revalidates with server, preventing mobile browsers from keeping stale disk cache
+  // Static JavaScript and CSS code assets: Network-First with fast 2.5s timeout, cache fallback
   const isCodeAsset =
     pathname.endsWith('.js') ||
     pathname.endsWith('.css') ||
@@ -224,7 +241,7 @@ self.addEventListener('fetch', (event) => {
 
   if (isCodeAsset) {
     event.respondWith(
-      fetch(event.request, { cache: 'no-cache' })
+      fetchWithFastTimeout(event.request, { cache: 'no-cache' }, 2500)
         .then((response) => {
           if (response && response.status === 200 && response.type !== 'opaque') {
             const responseToCache = response.clone();

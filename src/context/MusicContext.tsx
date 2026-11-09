@@ -3885,9 +3885,31 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Prevents mobile OS and browsers from suspending downloads when screen is locked or app is in background
   const activeDownloadsCountRef = useRef(0);
   const wakeLockSentinelRef = useRef<any>(null);
+  const downloadLockReleaseRef = useRef<(() => void) | null>(null);
+
+  const requestNotificationPermissionOnce = () => {
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      try {
+        Notification.requestPermission().catch(() => {});
+      } catch {}
+    }
+  };
 
   const acquireDownloadKeepAlive = async () => {
     activeDownloadsCountRef.current++;
+    requestNotificationPermissionOnce();
+
+    // Acquire Web Lock so Android/Chrome does not freeze background fetch tasks
+    if (typeof navigator !== 'undefined' && 'locks' in navigator && !downloadLockReleaseRef.current) {
+      try {
+        (navigator as any).locks.request('mouziketna-download-lock', () => {
+          return new Promise<void>((resolve) => {
+            downloadLockReleaseRef.current = resolve;
+          });
+        }).catch(() => {});
+      } catch {}
+    }
+
     // Request Screen Wake Lock so background downloads are not suspended by device sleep
     if (typeof navigator !== 'undefined' && 'wakeLock' in navigator && !wakeLockSentinelRef.current) {
       try {
@@ -3897,7 +3919,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       } catch {}
     }
-    // Keep media process active when music is paused so mobile background downloads run uninterrupted
+    // Keep media process active when music is paused so iOS/Android background downloads run uninterrupted
     if (carrierAudioRef.current && (!userIntentPlayingRef.current || audioRef.current?.paused)) {
       try {
         if (carrierAudioRef.current.paused) {
@@ -3910,6 +3932,12 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const releaseDownloadKeepAlive = () => {
     activeDownloadsCountRef.current = Math.max(0, activeDownloadsCountRef.current - 1);
     if (activeDownloadsCountRef.current === 0) {
+      if (downloadLockReleaseRef.current) {
+        try {
+          downloadLockReleaseRef.current();
+        } catch {}
+        downloadLockReleaseRef.current = null;
+      }
       if (wakeLockSentinelRef.current) {
         try {
           wakeLockSentinelRef.current.release();
@@ -4010,18 +4038,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           const [directUrl, saavnUrl] = await Promise.all([
             Promise.race([
               resolveWorkerStream(targetId, track.title, track.artist),
-              new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+              new Promise<null>((r) => setTimeout(() => r(null), 1500)),
             ]).catch(() => null),
             Promise.race([
-              resolveSaavnStream(track.title, cleanedArtist, quality).catch(() => null),
-              new Promise<null>((r) => setTimeout(() => r(null), 2500)),
+              resolveSaavnStream(track.title, cleanedArtist, quality, track.title, track.artist).catch(() => null),
+              new Promise<null>((r) => setTimeout(() => r(null), 1500)),
             ]).catch(() => null),
           ]);
-          if (directUrl && !candidates.includes(directUrl)) {
-            candidates.push(directUrl);
-          }
           if (saavnUrl && !candidates.includes(saavnUrl)) {
             candidates.push(saavnUrl);
+          }
+          if (directUrl && !candidates.includes(directUrl)) {
+            candidates.push(directUrl);
           }
         } catch {}
       }
