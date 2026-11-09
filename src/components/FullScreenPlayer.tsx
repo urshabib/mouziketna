@@ -645,6 +645,7 @@ export const FullScreenPlayer: React.FC = () => {
               {viewMode === 'spectrum' ? (
                 /* 3. Spicetify / NCS Circular Spectrum Visualizer */
                 <NvsVisualizer
+                  track={activeTrack}
                   thumbSrc={thumbSrc}
                   trackTitle={activeTrack.title}
                   isPlaying={isPlaying}
@@ -659,6 +660,7 @@ export const FullScreenPlayer: React.FC = () => {
               ) : viewMode === 'waveform' ? (
                 /* 4. Fluid Waveform Visualizer */
                 <NvsVisualizer
+                  track={activeTrack}
                   thumbSrc={thumbSrc}
                   trackTitle={activeTrack.title}
                   isPlaying={isPlaying}

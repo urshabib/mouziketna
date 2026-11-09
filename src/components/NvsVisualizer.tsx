@@ -6,8 +6,9 @@ import {
   getVibrationIntensity,
   resumeAudioContext,
 } from '../services/audioEnhancer';
-import { FALLBACK_ART } from '../services/api';
-import { isLetterboxedThumb } from '../services/useTrackThumb';
+import { FALLBACK_ART, corsSafeThumbUrl } from '../services/api';
+import { isLetterboxedThumb, TrackThumbImage } from '../services/useTrackThumb';
+import { Track } from '../types';
 import { Waves, Disc3, Sparkles } from 'lucide-react';
 
 export type VisualizerStyle = 'ncs' | 'wave' | 'pulse' | 'circular';
@@ -16,6 +17,7 @@ interface NvsVisualizerProps {
   thumbSrc: string;
   trackTitle: string;
   isPlaying: boolean;
+  track?: Track | null;
   mode?: 'ncs' | 'wave' | 'circular';
   onNextView: () => void;
   currentTime?: number;
@@ -36,6 +38,7 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
   thumbSrc,
   trackTitle,
   isPlaying,
+  track,
   mode = 'ncs',
   onNextView,
 }) => {
@@ -55,7 +58,8 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
     if (!thumbSrc) return;
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.src = thumbSrc;
+    // Use corsSafeThumbUrl so external origins (YouTube, Saavn) can be sampled on canvas without taint
+    img.src = corsSafeThumbUrl(thumbSrc) || thumbSrc;
     img.onload = () => {
       try {
         const offCanvas = document.createElement('canvas');
@@ -87,6 +91,10 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
           });
         }
       } catch {}
+    };
+    img.onerror = () => {
+      // In case canvas proxy failed, fallback to default vibrant accent
+      setDominantColor({ r: 255, g: 107, b: 26 });
     };
   }, [thumbSrc]);
 
@@ -407,14 +415,9 @@ export const NvsVisualizer: React.FC<NvsVisualizerProps> = ({
           boxShadow: `0 0 40px rgba(${dominantColor.r}, ${dominantColor.g}, ${dominantColor.b}, 0.55), inset 0 0 25px rgba(0,0,0,0.85)`,
         }}
       >
-        <img
-          src={thumbSrc}
+        <TrackThumbImage
+          track={track || { id: '', title: trackTitle, artist: '', thumb: thumbSrc, type: 'song' }}
           alt={trackTitle}
-          referrerPolicy="no-referrer"
-          crossOrigin="anonymous"
-          onError={(e) => {
-            e.currentTarget.src = FALLBACK_ART;
-          }}
           className={`w-full h-full object-cover rounded-full pointer-events-none select-none ${
             isPlaying ? 'animate-[spin_24s_linear_infinite]' : ''
           }`}

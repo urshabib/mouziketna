@@ -3290,40 +3290,81 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateMediaSession = (t: Track) => {
     if (!('mediaSession' in navigator)) return;
 
-    let artUrl = t.thumb || FALLBACK_ART;
+    // 1. Resolve primary image URL
+    let primaryThumb = t.thumb || '';
+    if (!primaryThumb || primaryThumb === FALLBACK_ART || primaryThumb.includes('photo-1614613535308-eb5fbd3d2c17')) {
+      const stored = getStoredCoverForTrack(t.id);
+      if (stored && !stored.includes('photo-1614613535308-eb5fbd3d2c17')) {
+        primaryThumb = stored;
+      } else if (t.id && t.id.length === 11) {
+        primaryThumb = `https://i.ytimg.com/vi/${t.id}/hqdefault.jpg`;
+      }
+    }
+
+    // Check offline cached thumbnail if available
+    const offlineThumb = getOfflineThumbUrlSync(t.id);
+    if (offlineThumb) {
+      primaryThumb = offlineThumb;
+    }
+
+    if (!primaryThumb) primaryThumb = FALLBACK_ART;
+
     // Upgrade JioSaavn thumbnails to 500x500 square HD
-    if (artUrl.includes('150x150.jpg')) {
-      artUrl = artUrl.replace('150x150.jpg', '500x500.jpg');
-    } else if (artUrl.includes('50x50.jpg')) {
-      artUrl = artUrl.replace('50x50.jpg', '500x500.jpg');
-    } else if (!artUrl.startsWith('blob:') && !artUrl.startsWith('data:')) {
-      // Crop to perfect 512x512 square so Samsung/Android/iOS lock screen displays crisp full square artwork
+    if (primaryThumb.includes('150x150.jpg')) {
+      primaryThumb = primaryThumb.replace('150x150.jpg', '500x500.jpg');
+    } else if (primaryThumb.includes('50x50.jpg')) {
+      primaryThumb = primaryThumb.replace('50x50.jpg', '500x500.jpg');
+    }
+
+    // Build array of artwork candidates for system lock screen / dynamic island / notification center
+    const artworkList: { src: string; sizes: string; type: string }[] = [];
+
+    // Helper to add size set for a candidate URL
+    const addCandidateSizes = (url: string) => {
+      if (!url) return;
+      artworkList.push(
+        { src: url, sizes: '96x96', type: 'image/jpeg' },
+        { src: url, sizes: '128x128', type: 'image/jpeg' },
+        { src: url, sizes: '192x192', type: 'image/jpeg' },
+        { src: url, sizes: '256x256', type: 'image/jpeg' },
+        { src: url, sizes: '384x384', type: 'image/jpeg' },
+        { src: url, sizes: '512x512', type: 'image/jpeg' }
+      );
+    };
+
+    // Candidate 1: Raw direct URL (guarantees OS media notification engine can grab it without proxy failures)
+    addCandidateSizes(primaryThumb);
+
+    // Candidate 2: High-resolution direct YouTube CDN variants if 11-char YouTube ID
+    if (t.id && t.id.length === 11) {
+      addCandidateSizes(`https://i.ytimg.com/vi/${t.id}/hqdefault.jpg`);
+      addCandidateSizes(`https://i.ytimg.com/vi/${t.id}/mqdefault.jpg`);
+      addCandidateSizes(`https://i.ytimg.com/vi/${t.id}/maxresdefault.jpg`);
+    }
+
+    // Candidate 3: wsrv.nl square cropped proxy for platforms that support external image proxies
+    if (!primaryThumb.startsWith('blob:') && !primaryThumb.startsWith('data:') && !primaryThumb.includes('wsrv.nl')) {
       try {
-        if (artUrl.includes('wsrv.nl/?url=')) {
-          const parsed = new URL(artUrl);
-          parsed.searchParams.set('w', '512');
-          parsed.searchParams.set('h', '512');
-          parsed.searchParams.set('fit', 'cover');
-          artUrl = parsed.toString();
-        } else {
-          artUrl = `https://wsrv.nl/?url=${encodeURIComponent(artUrl)}&w=512&h=512&fit=cover`;
-        }
+        const proxied = `https://wsrv.nl/?url=${encodeURIComponent(primaryThumb)}&w=512&h=512&fit=cover`;
+        addCandidateSizes(proxied);
       } catch {}
     }
+
+    // Always append fallback app icon so lockscreen/island NEVER renders empty or broken
+    try {
+      const appIconUrl = new URL('./icon-512.png', window.location.href).href;
+      artworkList.push(
+        { src: appIconUrl, sizes: '192x192', type: 'image/png' },
+        { src: appIconUrl, sizes: '512x512', type: 'image/png' }
+      );
+    } catch {}
 
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: t.title,
         artist: t.artist,
         album: t.album || 'MOUZIKETNA',
-        artwork: [
-          { src: artUrl, sizes: '96x96', type: 'image/jpeg' },
-          { src: artUrl, sizes: '128x128', type: 'image/jpeg' },
-          { src: artUrl, sizes: '192x192', type: 'image/jpeg' },
-          { src: artUrl, sizes: '256x256', type: 'image/jpeg' },
-          { src: artUrl, sizes: '384x384', type: 'image/jpeg' },
-          { src: artUrl, sizes: '512x512', type: 'image/jpeg' },
-        ],
+        artwork: artworkList,
       });
       navigator.mediaSession.playbackState = 'playing';
 
