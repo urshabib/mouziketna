@@ -537,14 +537,32 @@ export function mergeProfilesSafely(
       if (!prev) {
         plMap.set(pl.id, { ...pl });
       } else {
-        const tMap = new Map<string, any>();
-        if (Array.isArray(prev.tracks)) prev.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
-        if (Array.isArray(pl.tracks)) pl.tracks.forEach((t: any) => { if (t && t.id) tMap.set(t.id, t); });
+        const incomingIds = new Set((pl.tracks || []).map((t: any) => t?.id).filter(Boolean));
+        const orderedTracks: any[] = [];
+        const seenTrackIds = new Set<string>();
+        // Preserve the incoming (e.g. serverData) track order first
+        if (Array.isArray(pl.tracks)) {
+          pl.tracks.forEach((t: any) => {
+            if (t && t.id && !seenTrackIds.has(t.id)) {
+              seenTrackIds.add(t.id);
+              orderedTracks.push(t);
+            }
+          });
+        }
+        // Append any local-only tracks not yet on server
+        if (Array.isArray(prev.tracks)) {
+          prev.tracks.forEach((t: any) => {
+            if (t && t.id && !incomingIds.has(t.id) && !seenTrackIds.has(t.id)) {
+              seenTrackIds.add(t.id);
+              orderedTracks.push(t);
+            }
+          });
+        }
         plMap.set(pl.id, {
           ...prev,
           ...pl,
           title: pl.title || prev.title,
-          tracks: Array.from(tMap.values()),
+          tracks: orderedTracks,
         });
       }
     });
