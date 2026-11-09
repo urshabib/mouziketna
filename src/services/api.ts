@@ -5,10 +5,7 @@ import CryptoJS from 'crypto-js';
 
 export const NEW_HUB_BACKEND =
   typeof window !== 'undefined' &&
-  (window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1' ||
-    window.location.hostname.includes('run.app') ||
-    window.location.port === '3000')
+  !window.location.hostname.endsWith('github.io')
     ? ''
     : 'https://new-music-space-api.urshabib.workers.dev';
 

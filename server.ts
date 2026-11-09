@@ -17,7 +17,7 @@ const __dirname = path.dirname(__filename);
 
 const ytdl = new Ytdl();
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 const UPSTREAM_WORKER = 'https://new-music-space-api.urshabib.workers.dev';
 
