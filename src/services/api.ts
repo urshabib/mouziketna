@@ -143,16 +143,16 @@ export function upgradeThumbQuality(url: string | null | undefined): string {
     return url.replace('ab67616d00001e02', 'ab67616d0000b273').replace('ab67616d00004851', 'ab67616d0000b273');
   }
 
-  // High-res YouTube Video Thumbnails: upgrade to maxresdefault (1280x720 HD) for maximum sharpness!
+  // YouTube Video Thumbnails: keep hqdefault/hq720/maxresdefault safely without breaking on 404s
   if (url.includes('ytimg.com')) {
-    if (url.includes('maxresdefault') || url.includes('hq720')) {
+    if (url.includes('hqdefault') || url.includes('maxresdefault') || url.includes('hq720')) {
       return url;
     }
     const idMatch = url.match(/\/vi(?:_webp)?\/([A-Za-z0-9_-]{11})\//);
     if (idMatch && idMatch[1]) {
-      return `https://i.ytimg.com/vi/${idMatch[1]}/maxresdefault.jpg`;
+      return `https://i.ytimg.com/vi/${idMatch[1]}/hqdefault.jpg`;
     }
-    return url.replace(/\/(?:sddefault|hqdefault|mqdefault|default)\.(?:webp|jpg)/, '/maxresdefault.jpg');
+    return url;
   }
 
   // Wsrv.nl URLs - bump to 1200x1200 with q=95
@@ -201,8 +201,8 @@ export function canonicalThumbUrl(id: string): string {
   if (!id || id.length !== 11) {
     return FALLBACK_ART;
   }
-  // maxresdefault is 1280x720 (crystal-clear 720p HD)
-  return `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+  // hqdefault (480x360) is guaranteed to exist on EVERY YouTube video and never 404s
+  return `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 }
 
 export function corsSafeThumbUrl(url: string | null): string | null {

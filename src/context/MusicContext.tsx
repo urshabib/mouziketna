@@ -75,6 +75,7 @@ import {
 } from '../services/storage';
 import { ensureAudioGraph, setBaseAudioVolume, resumeAudioContext, isAudioGraphNeeded, isMobileDevice } from '../services/audioEnhancer';
 import { sessionManager, SupersededEvent } from '../services/sessionManager';
+import { generateSquareArtworkForMediaSession, renderSquareCoverDataUrl, resetMediaSessionTrackTracking } from '../services/useTrackThumb';
 
 interface Toast {
   id: string;
@@ -2813,6 +2814,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     playNextCountRef.current = 0;
     audio.muted = false;
     const token = ++playTokenRef.current;
+    resetMediaSessionTrackTracking();
     hasPrefetchedNextRef.current = false;
     audio.volume = (volumeRef.current || 50) / 100;
     ensureCarrierActive();
@@ -2834,7 +2836,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               ? upgradeThumbQuality(userProfile.likedSongs.find((t) => t.id === track.id)!.thumb)
               : (getStoredCoverForTrack(track.id)
                   ? upgradeThumbQuality(getStoredCoverForTrack(track.id))
-                  : (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/maxresdefault.jpg` : canonicalThumbUrl(track.id)))));
+                  : (track.id.length === 11 ? `https://i.ytimg.com/vi/${track.id}/hqdefault.jpg` : canonicalThumbUrl(track.id)))));
     const persistentInitialTrack = { ...track, thumb: safeInitialThumb };
 
     if (!fromQueue) {
@@ -3257,7 +3259,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         resolvedTrack.thumb =
           safeInitialThumb ||
           (getStoredCoverForTrack(resolvedTrack.id) ? upgradeThumbQuality(getStoredCoverForTrack(resolvedTrack.id)) : null) ||
-          (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/maxresdefault.jpg` : canonicalThumbUrl(resolvedTrack.id));
+          (resolvedTrack.id.length === 11 ? `https://i.ytimg.com/vi/${resolvedTrack.id}/hqdefault.jpg` : canonicalThumbUrl(resolvedTrack.id));
       } else {
         resolvedTrack.thumb = upgradeThumbQuality(resolvedTrack.thumb);
       }
@@ -3292,65 +3294,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const updateMediaSession = (t: Track) => {
     if (!('mediaSession' in navigator)) return;
 
-    // 1. Resolve primary image URL
-    let primaryThumb = t.thumb || '';
-    if (!primaryThumb || primaryThumb === FALLBACK_ART || primaryThumb.includes('photo-1614613535308-eb5fbd3d2c17')) {
-      const stored = getStoredCoverForTrack(t.id);
-      if (stored && !stored.includes('photo-1614613535308-eb5fbd3d2c17')) {
-        primaryThumb = stored;
-      } else if (t.id && t.id.length === 11) {
-        primaryThumb = `https://i.ytimg.com/vi/${t.id}/hqdefault.jpg`;
-      }
-    }
-
-    // Check offline cached thumbnail if available
-    const offlineThumb = getOfflineThumbUrlSync(t.id);
-    if (offlineThumb) {
-      primaryThumb = offlineThumb;
-    }
-
-    if (!primaryThumb) primaryThumb = FALLBACK_ART;
-
-    // Upgrade JioSaavn thumbnails to 500x500 square HD
-    if (primaryThumb.includes('150x150.jpg')) {
-      primaryThumb = primaryThumb.replace('150x150.jpg', '500x500.jpg');
-    } else if (primaryThumb.includes('50x50.jpg')) {
-      primaryThumb = primaryThumb.replace('50x50.jpg', '500x500.jpg');
-    }
-
-    // Build array of artwork candidates for system lock screen / dynamic island / notification center
-    const artworkList: { src: string; sizes: string; type: string }[] = [];
-
-    // Helper to add size set for a candidate URL
-    const addCandidateSizes = (url: string) => {
-      if (!url) return;
-      artworkList.push(
-        { src: url, sizes: '96x96', type: 'image/jpeg' },
-        { src: url, sizes: '128x128', type: 'image/jpeg' },
-        { src: url, sizes: '192x192', type: 'image/jpeg' },
-        { src: url, sizes: '256x256', type: 'image/jpeg' },
-        { src: url, sizes: '384x384', type: 'image/jpeg' },
-        { src: url, sizes: '512x512', type: 'image/jpeg' }
-      );
-    };
-
-    // Candidate 1: Direct song artwork (primary)
-    addCandidateSizes(primaryThumb);
-
-    // Candidate 2: High-resolution direct YouTube CDN variants if 11-char YouTube ID
-    if (t.id && t.id.length === 11) {
-      addCandidateSizes(`https://i.ytimg.com/vi/${t.id}/hqdefault.jpg`);
-      addCandidateSizes(`https://i.ytimg.com/vi/${t.id}/mqdefault.jpg`);
-      addCandidateSizes(`https://i.ytimg.com/vi/${t.id}/maxresdefault.jpg`);
-    }
-
-    // Candidate 3: wsrv.nl square cropped proxy for platforms that prefer square dimensions
-    if (!primaryThumb.startsWith('blob:') && !primaryThumb.startsWith('data:') && !primaryThumb.includes('wsrv.nl')) {
-      try {
-        const proxied = `https://wsrv.nl/?url=${encodeURIComponent(primaryThumb)}&w=512&h=512&fit=cover`;
-        addCandidateSizes(proxied);
-      } catch {}
-    }
+    // 1. Immediately build prioritized square-cropped artwork list (1:1 true square, black bars removed)
+    const artworkList = generateSquareArtworkForMediaSession(t);
 
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -3412,6 +3357,29 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         seekBy(details.seekOffset || 10);
       });
     } catch {}
+
+    // 2. High-resolution local canvas square crop (720x720) for instant lockscreen / Samsung Now bar rendering
+    const sourceCover = t.thumb || (t.id && t.id.length === 11 ? `https://i.ytimg.com/vi/${t.id}/hq720.jpg` : '');
+    if (sourceCover && !sourceCover.startsWith('data:')) {
+      renderSquareCoverDataUrl(sourceCover, t.id).then((squareDataUrl) => {
+        if (
+          squareDataUrl &&
+          activeTrackRef.current?.id === t.id &&
+          'mediaSession' in navigator &&
+          navigator.mediaSession.metadata
+        ) {
+          try {
+            navigator.mediaSession.metadata.artwork = [
+              { src: squareDataUrl, sizes: '720x720', type: 'image/jpeg' },
+              { src: squareDataUrl, sizes: '512x512', type: 'image/jpeg' },
+              { src: squareDataUrl, sizes: '384x384', type: 'image/jpeg' },
+              { src: squareDataUrl, sizes: '256x256', type: 'image/jpeg' },
+              ...artworkList,
+            ];
+          } catch {}
+        }
+      });
+    }
   };
 
   const togglePlay = async () => {
