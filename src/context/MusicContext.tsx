@@ -1003,13 +1003,18 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         } catch {}
       }
 
-      // Accumulate listening seconds
+      // Accumulate actual elapsed listening seconds (handles background throttling on iOS/Android)
       if (curSec !== lastTrackSec && curSec > 0) {
+        const delta =
+          lastTrackSec > 0 && curSec > lastTrackSec && curSec - lastTrackSec <= 30
+            ? curSec - lastTrackSec
+            : 1;
         lastTrackSec = curSec;
-        listeningSecondsAccumRef.current += 1;
+        listeningSecondsAccumRef.current += delta;
         if (listeningSecondsAccumRef.current >= 45) {
-          listeningSecondsAccumRef.current = 0;
-          recordListeningMinute(1);
+          const minsToRecord = Math.max(1, Math.floor(listeningSecondsAccumRef.current / 45));
+          listeningSecondsAccumRef.current = listeningSecondsAccumRef.current % 45;
+          recordListeningMinute(minsToRecord);
         }
 
         // Cross-device sync broadcast from active device
@@ -2638,8 +2643,8 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedStats = {
         totalMinutesListened: (stats.totalMinutesListened || 0) + mins,
         totalTracksPlayed: stats.totalTracksPlayed || 0,
-        topSongs: topSongs.slice(0, 50),
-        topArtists: topArtists.slice(0, 30),
+        topSongs: topSongs.slice(0, 250),
+        topArtists: topArtists.slice(0, 100),
         lastUpdated: Date.now(),
       };
 
@@ -2735,7 +2740,7 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updatedStats = {
         ...stats,
         totalTracksPlayed: (stats.totalTracksPlayed || 0) + 1,
-        topSongs: topSongs.slice(0, 50),
+        topSongs: topSongs.slice(0, 250),
         lastUpdated: Date.now(),
       };
 
@@ -2776,11 +2781,16 @@ export const MusicProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return current;
       });
 
-      // Save locally immediately; batch sync periodically without hammering server on each track click
+      // Save locally immediately and sync stats to server (throttled to 10s)
       if (globalUser && globalUser !== 'admin') {
         cacheProfileLocally(globalUser, updatedProf);
         pendingSyncProfRef.current = updatedProf;
         isSyncDirtyRef.current = true;
+        const now = Date.now();
+        if (now - lastStatsSyncTimeRef.current >= 10000) {
+          lastStatsSyncTimeRef.current = now;
+          flushProfileToServer(updatedProf).catch(() => {});
+        }
       }
       return updatedProf;
     });
